@@ -1,0 +1,399 @@
+// =========================================================
+// 🧠 WORKER HÍBRIDO v2: IA GEMINI + PROXY GAS + SUPABASE SYNC
+// =========================================================
+// Env vars requeridas en Cloudflare:
+//   GEMINI_API_KEY       → API key de Google Gemini
+//   SUPABASE_URL         → https://gjeyvbidomxzofcdycya.supabase.co
+//   SUPABASE_SERVICE_KEY → service_role key (NO la anon key) para bypass RLS
+// =========================================================
+
+const GAS_URL = "https://script.google.com/macros/s/AKfycbx658Gk5bxbTeuItQEBZm0zHF0mNk4q6IcZJ_x7sfTSZPvcB41UFT-FFvzrTFLR013L/exec";
+
+const baseCorsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Max-Age": "86400",
+};
+
+function withCors(headers = {}, extra = {}) {
+  return { ...baseCorsHeaders, ...headers, ...extra };
+}
+
+function tryParseJSON(text) {
+  try { return JSON.parse(text); } catch (_) { return null; }
+}
+
+// =========================================================
+// SUPABASE HELPERS
+// =========================================================
+
+async function supabaseInsert(env, table, data) {
+  const url = `${env.SUPABASE_URL}/rest/v1/${table}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": env.SUPABASE_SERVICE_KEY,
+      "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      "Prefer": "return=representation",
+    },
+    body: JSON.stringify(data),
+  });
+  return res.ok ? await res.json() : null;
+}
+
+async function supabaseUpsert(env, table, data, onConflict = "sig") {
+  const url = `${env.SUPABASE_URL}/rest/v1/${table}?on_conflict=${onConflict}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": env.SUPABASE_SERVICE_KEY,
+      "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      "Prefer": "return=representation,resolution=merge-duplicates",
+    },
+    body: JSON.stringify(data),
+  });
+  return res.ok ? await res.json() : null;
+}
+
+async function supabaseQuery(env, table, params = "") {
+  const url = `${env.SUPABASE_URL}/rest/v1/${table}?${params}`;
+  const res = await fetch(url, {
+    headers: {
+      "apikey": env.SUPABASE_SERVICE_KEY,
+      "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+    },
+  });
+  return res.ok ? await res.json() : [];
+}
+
+async function supabasePatch(env, table, match, data) {
+  const url = `${env.SUPABASE_URL}/rest/v1/${table}?${match}`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": env.SUPABASE_SERVICE_KEY,
+      "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      "Prefer": "return=representation",
+    },
+    body: JSON.stringify(data),
+  });
+  return res.ok ? await res.json() : null;
+}
+
+// =========================================================
+// PARSEO DE PRODUCTOS (texto → array de items)
+// =========================================================
+function parsearProductos(productosRaw) {
+  if (!productosRaw) return [];
+  return productosRaw.split("\n")
+    .map(l => l.trim()).filter(Boolean)
+    .map(linea => {
+      const match = linea.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+      return match
+        ? { descripcion: match[2].trim(), cantidad: parseFloat(match[1]) }
+        : { descripcion: linea, cantidad: 1 };
+    });
+}
+
+// =========================================================
+// SINCRONIZAR PEDIDO A SUPABASE (fire-and-forget compatible)
+// =========================================================
+async function syncPedidoASupabase(env, pedidoData) {
+  try {
+    const {
+      sig, vendedor, cliente, productos, observaciones,
+      fechaEntrega, timestamp
+    } = pedidoData;
+
+    // 1. Upsert pedido (idempotente por sig)
+    const pedidoRow = {
+      sig,
+      vendedor: (vendedor || "").toUpperCase(),
+      cliente_id: String(cliente || ""),
+      productos_raw: productos || "",
+      observaciones: observaciones || "",
+      fecha_entrega: fechaEntrega || null,
+      fecha_pedido: timestamp ? new Date(timestamp).toISOString() : new Date().toISOString(),
+      estado: "pendiente",
+    };
+
+    const inserted = await supabaseUpsert(env, "pedidos", pedidoRow, "sig");
+    if (!inserted || !inserted[0]) return;
+
+    const pedidoId = inserted[0].id;
+
+    // 2. Insertar items (solo si el pedido fue creado nuevo, no en update)
+    const items = parsearProductos(productos);
+    if (items.length > 0) {
+      const itemsRows = items.map(item => ({
+        pedido_id: pedidoId,
+        descripcion: item.descripcion,
+        cantidad: item.cantidad,
+      }));
+
+      // Borrar items previos y reinsertar (para mantener consistencia)
+      await fetch(`${env.SUPABASE_URL}/rest/v1/items_pedido?pedido_id=eq.${pedidoId}`, {
+        method: "DELETE",
+        headers: {
+          "apikey": env.SUPABASE_SERVICE_KEY,
+          "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+        },
+      });
+
+      await supabaseInsert(env, "items_pedido", itemsRows);
+    }
+
+    // 3. Auditoría
+    await supabaseInsert(env, "auditoria", {
+      pedido_id: pedidoId,
+      accion: "pedido_recibido",
+      usuario: pedidoData.vendedor || "sistema",
+      detalle: { sig, origen: "worker", items_count: items.length },
+    });
+
+  } catch (e) {
+    console.error("syncPedidoASupabase error:", e.message);
+  }
+}
+
+// =========================================================
+// HANDLER PRINCIPAL
+// =========================================================
+export default {
+  async fetch(request, env, ctx) {
+    try {
+      const method = request.method.toUpperCase();
+      const url = new URL(request.url);
+      const path = url.pathname;
+
+      // ✅ OPTIONS (CORS preflight)
+      if (method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: withCors({
+            "Access-Control-Allow-Headers":
+              request.headers.get("Access-Control-Request-Headers") || "Content-Type",
+          }),
+        });
+      }
+
+      // =========================================================
+      // RUTAS GET
+      // =========================================================
+      if (method === "GET") {
+
+        // GET /pedidos — lista pedidos con filtros opcionales
+        // ?estado=pendiente&fecha=2025-03-26
+        if (path === "/pedidos") {
+          const estado = url.searchParams.get("estado");
+          const fecha  = url.searchParams.get("fecha");
+
+          let filtros = "order=created_at.desc&limit=100";
+          if (estado) filtros += `&estado=eq.${estado}`;
+          if (fecha)  filtros += `&fecha_entrega=eq.${fecha}`;
+
+          const pedidos = await supabaseQuery(env, "pedidos", filtros);
+          return new Response(JSON.stringify(pedidos), {
+            headers: withCors({ "Content-Type": "application/json" }),
+          });
+        }
+
+        // GET /pedido/:id — detalle completo con items
+        if (path.startsWith("/pedido/")) {
+          const pedidoId = path.split("/")[2];
+          const [pedido, items] = await Promise.all([
+            supabaseQuery(env, "pedidos", `id=eq.${pedidoId}`),
+            supabaseQuery(env, "items_pedido", `pedido_id=eq.${pedidoId}&order=id.asc`),
+          ]);
+          return new Response(JSON.stringify({ pedido: pedido[0], items }), {
+            headers: withCors({ "Content-Type": "application/json" }),
+          });
+        }
+
+        // GET /auditoria/:pedidoId
+        if (path.startsWith("/auditoria/")) {
+          const pedidoId = path.split("/")[2];
+          const logs = await supabaseQuery(env, "auditoria",
+            `pedido_id=eq.${pedidoId}&order=created_at.asc`);
+          return new Response(JSON.stringify(logs), {
+            headers: withCors({ "Content-Type": "application/json" }),
+          });
+        }
+
+        // GET proxy a GAS (comportamiento original)
+        const upstream = await fetch(GAS_URL + url.search, {
+          method: "GET",
+          headers: { "Accept": "application/json" },
+          redirect: "follow",
+        });
+        const raw = await upstream.text();
+        const parsed = tryParseJSON(raw);
+        return new Response(JSON.stringify(parsed || { error: "No JSON" }), {
+          status: upstream.status,
+          headers: withCors({ "Content-Type": "application/json" }),
+        });
+      }
+
+      // =========================================================
+      // RUTAS POST
+      // =========================================================
+      if (method === "POST") {
+        const clone = request.clone();
+        let bodyJson = null;
+        try { bodyJson = await clone.json(); } catch (e) {}
+
+        // 🧠 RUTA IA: Gemini (si tiene prompt + sys)
+        if (bodyJson && bodyJson.prompt && bodyJson.sys) {
+          const apiKey = env.GEMINI_API_KEY;
+          if (!apiKey) {
+            return new Response(JSON.stringify({ text: "Error: Falta GEMINI_API_KEY." }), {
+              headers: withCors({ "Content-Type": "application/json" }),
+            });
+          }
+
+          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+          const aiResponse = await fetch(geminiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: bodyJson.prompt }] }],
+              systemInstruction: { parts: [{ text: bodyJson.sys }] },
+            }),
+          });
+
+          const aiData = await aiResponse.json();
+          const text = aiData.candidates?.[0]?.content?.parts?.[0]?.text
+            || "No se pudo procesar la IA.";
+
+          return new Response(JSON.stringify({ text }), {
+            headers: withCors({ "Content-Type": "application/json" }),
+          });
+        }
+
+        // 📦 RUTA ESTADO: actualizar estado de pedido / item
+        // { accion: "marcar_armado"|"marcar_facturado"|"marcar_item", ... }
+        if (bodyJson && bodyJson.accion) {
+          const { accion, pedidoId, itemId, usuario, estado } = bodyJson;
+
+          if (accion === "marcar_armado" && pedidoId) {
+            await supabasePatch(env, "pedidos", `id=eq.${pedidoId}`,
+              { estado: "armado" });
+            await supabaseInsert(env, "auditoria", {
+              pedido_id: pedidoId, accion: "pedido_armado",
+              usuario: usuario || "deposito", detalle: {},
+            });
+            return new Response(JSON.stringify({ exito: true }), {
+              headers: withCors({ "Content-Type": "application/json" }),
+            });
+          }
+
+          if (accion === "marcar_item_armado" && itemId) {
+            const now = new Date().toISOString();
+            await supabasePatch(env, "items_pedido", `id=eq.${itemId}`, {
+              armado: true, armado_por: usuario || "A", armado_at: now,
+            });
+            return new Response(JSON.stringify({ exito: true }), {
+              headers: withCors({ "Content-Type": "application/json" }),
+            });
+          }
+
+          if (accion === "marcar_item_facturado" && itemId) {
+            const now = new Date().toISOString();
+            await supabasePatch(env, "items_pedido", `id=eq.${itemId}`, {
+              facturado: true, facturado_por: usuario || "C", facturado_at: now,
+            });
+            return new Response(JSON.stringify({ exito: true }), {
+              headers: withCors({ "Content-Type": "application/json" }),
+            });
+          }
+
+          if (accion === "marcar_facturado" && pedidoId) {
+            await supabasePatch(env, "pedidos", `id=eq.${pedidoId}`,
+              { estado: "facturado" });
+            await supabaseInsert(env, "auditoria", {
+              pedido_id: pedidoId, accion: "pedido_facturado",
+              usuario: usuario || "facturacion", detalle: {},
+            });
+            return new Response(JSON.stringify({ exito: true }), {
+              headers: withCors({ "Content-Type": "application/json" }),
+            });
+          }
+
+          if (accion === "auditoria" && pedidoId) {
+            await supabaseInsert(env, "auditoria", {
+              pedido_id: pedidoId,
+              accion: bodyJson.tipo || "accion",
+              usuario: usuario || "sistema",
+              detalle: bodyJson.detalle || {},
+            });
+            return new Response(JSON.stringify({ exito: true }), {
+              headers: withCors({ "Content-Type": "application/json" }),
+            });
+          }
+        }
+
+        // 🔄 RUTA ORIGINAL: proxy a GAS + sync a Supabase
+        const bodyText = await request.text();
+        const parsedBody = tryParseJSON(bodyText);
+
+        // Proxy a GAS (comportamiento original intacto)
+        const upstream = await fetch(GAS_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": request.headers.get("Content-Type") || "application/json",
+            "Accept": "application/json",
+          },
+          body: bodyText,
+          redirect: "follow",
+        });
+
+        const raw = await upstream.text();
+        const parsed = tryParseJSON(raw);
+
+        // NUEVO: Duplicar a Supabase si el body tiene datos de pedido
+        if (parsedBody && (parsedBody.fechaEntrega || parsedBody.fecha_entrega)) {
+          // Fire-and-forget: no bloqueamos la respuesta al vendedor
+          const syncData = {
+            sig: parsedBody.sig || parsedBody.sig || String(Date.now()),
+            vendedor: parsedBody.nombreVendedor || parsedBody.vendedor || "",
+            cliente: parsedBody.numeroCliente || parsedBody.cliente || "",
+            productos: parsedBody.productos || "",
+            observaciones: parsedBody.observaciones || "",
+            fechaEntrega: parsedBody.fechaEntrega || parsedBody.fecha_entrega || "",
+            timestamp: Date.now(),
+          };
+          // ctx.waitUntil mantiene la promesa viva después de responder
+          env.SUPABASE_URL && ctx.waitUntil(syncPedidoASupabase(env, syncData).catch(() => {}));
+        }
+
+        if (!parsed) {
+          return new Response(JSON.stringify({
+            status: "error",
+            message: "GAS no devolvió JSON.",
+            raw_response: raw.slice(0, 100),
+          }), {
+            status: 502,
+            headers: withCors({ "Content-Type": "application/json" }),
+          });
+        }
+
+        return new Response(JSON.stringify(parsed), {
+          status: upstream.status,
+          headers: withCors({ "Content-Type": "application/json" }),
+        });
+      }
+
+      return new Response("Method not allowed", { status: 405, headers: baseCorsHeaders });
+
+    } catch (e) {
+      return new Response(JSON.stringify({ error: e.message }), {
+        status: 500,
+        headers: withCors({ "Content-Type": "application/json" }),
+      });
+    }
+  },
+};

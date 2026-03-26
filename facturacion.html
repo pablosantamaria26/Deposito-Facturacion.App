@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Facturación ML</title>
+  <meta name="theme-color" content="#0f172a" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --primary: #3b82f6;
+    --primary-dark: #1d4ed8;
+    --primary-dim: rgba(59,130,246,0.15);
+    --bg: #0f172a;
+    --bg-card: rgba(30,41,59,0.85);
+    --bg-panel: rgba(15,23,42,0.95);
+    --text: #f8fafc;
+    --muted: #94a3b8;
+    --border: rgba(148,163,184,0.15);
+    --success: #10b981;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --radius: 12px;
+    --shadow: 0 8px 32px rgba(0,0,0,0.4);
+    --panel-w: 380px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Roboto', sans-serif;
+    height: 100vh; overflow: hidden;
+  }
+
+  /* ─────────────── LOGIN ─────────────── */
+  #loginScreen {
+    display: flex; align-items: center; justify-content: center;
+    height: 100vh; flex-direction: column; gap: 20px;
+    background: radial-gradient(circle at center, #1e293b, #0f172a);
+  }
+  .login-btn {
+    background: var(--primary); color: white; border: none;
+    padding: 16px 40px; border-radius: var(--radius); font-size: 18px;
+    font-weight: 900; cursor: pointer; min-width: 200px; transition: 0.2s;
+  }
+  .login-btn:hover { background: var(--primary-dark); }
+  .login-btn.secondary { background: #475569; }
+  .login-btn.secondary:hover { background: #64748b; }
+
+  /* ─────────────── LAYOUT SPLIT ─────────────── */
+  #app { display: none; height: 100vh; flex-direction: column; }
+
+  .topbar {
+    height: 52px; background: rgba(15,23,42,0.98);
+    backdrop-filter: blur(10px); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; padding: 0 16px;
+    flex-shrink: 0; z-index: 100;
+  }
+  .topbar-title { font-size: 16px; font-weight: 900; flex: 1; }
+  .user-chip {
+    background: var(--primary-dim); border: 1px solid var(--primary);
+    color: var(--primary); padding: 4px 12px; border-radius: 99px;
+    font-size: 13px; font-weight: 700;
+  }
+  .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); transition: 0.3s; }
+  .conn-dot.online { background: var(--success); box-shadow: 0 0 6px rgba(16,185,129,0.5); }
+  .conn-dot.syncing { background: var(--warning); animation: pulse 1s infinite; }
+
+  .split { display: flex; flex: 1; overflow: hidden; }
+
+  /* ─────────────── PANEL IZQUIERDO ─────────────── */
+  .panel-left {
+    width: var(--panel-w); flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+    background: rgba(8,15,30,0.8);
+  }
+  .panel-header {
+    padding: 12px 14px; border-bottom: 1px solid var(--border);
+    display: flex; gap: 8px; align-items: center;
+  }
+  .panel-header h3 { font-size: 14px; font-weight: 700; flex: 1; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .date-tabs {
+    display: flex; gap: 6px; padding: 10px 14px;
+    border-bottom: 1px solid var(--border); overflow-x: auto; flex-shrink: 0;
+  }
+  .date-tabs::-webkit-scrollbar { display: none; }
+  .date-tab {
+    background: var(--bg-card); border: 1px solid var(--border);
+    color: var(--muted); padding: 6px 14px; border-radius: 99px;
+    font-size: 11px; font-weight: 700; white-space: nowrap; cursor: pointer;
+    flex-shrink: 0; transition: 0.15s;
+  }
+  .date-tab.active { background: var(--primary-dim); border-color: var(--primary); color: var(--primary); }
+
+  .search-box {
+    padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .search-box input {
+    width: 100%; background: var(--bg-card); border: 1px solid var(--border);
+    color: var(--text); padding: 8px 12px; border-radius: 8px; font-size: 13px;
+    outline: none;
+  }
+  .search-box input:focus { border-color: var(--primary); }
+
+  #pedidosList { flex: 1; overflow-y: auto; padding: 8px; }
+  #pedidosList::-webkit-scrollbar { width: 4px; }
+  #pedidosList::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .pedido-item {
+    padding: 12px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--border); margin-bottom: 6px;
+    transition: 0.15s; border-left: 3px solid var(--border);
+  }
+  .pedido-item:hover { background: rgba(255,255,255,0.04); }
+  .pedido-item.selected { background: var(--primary-dim); border-color: var(--primary); border-left-color: var(--primary); }
+  .pedido-item.estado-armado { border-left-color: var(--warning); }
+  .pedido-item.estado-facturado { border-left-color: var(--success); opacity: 0.6; }
+  .pi-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
+  .pi-nombre { font-size: 13px; font-weight: 700; }
+  .pi-badge {
+    font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: 99px;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .pi-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .pi-progress { height: 3px; background: rgba(255,255,255,0.08); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+  .pi-progress-fill { height: 100%; background: var(--primary); }
+
+  /* ─────────────── PANEL DERECHO ─────────────── */
+  .panel-right {
+    flex: 1; display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  .pedido-header {
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    flex-shrink: 0; display: flex; align-items: center; gap: 12px;
+  }
+  .pedido-header-info { flex: 1; }
+  .pedido-header-info h2 { font-size: 20px; font-weight: 900; }
+  .pedido-header-info p { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .pedido-meta-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .chip {
+    background: var(--bg-card); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 99px; font-size: 11px; color: var(--muted);
+  }
+
+  .ia-toolbar {
+    display: flex; gap: 8px; padding: 10px 20px;
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+    background: rgba(8,15,30,0.5);
+  }
+  .btn-ia {
+    background: var(--bg-card); border: 1px solid var(--border);
+    color: var(--muted); padding: 7px 14px; border-radius: 8px;
+    font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.15s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .btn-ia:hover { border-color: var(--primary); color: var(--primary); }
+  .btn-ia.active { background: var(--primary-dim); border-color: var(--primary); color: var(--primary); }
+
+  #itemsContainer {
+    flex: 1; overflow-y: auto; padding: 12px 20px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  #itemsContainer::-webkit-scrollbar { width: 4px; }
+  #itemsContainer::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .item-fact {
+    display: grid; grid-template-columns: 44px 1fr 80px 44px;
+    align-items: center; gap: 10px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; transition: 0.15s;
+  }
+  .item-fact.facturado {
+    border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.05);
+  }
+  .item-fact.faltante {
+    border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.05);
+  }
+  .item-fact:hover { border-color: var(--primary); }
+
+  .item-check-fact {
+    width: 36px; height: 36px; border-radius: 8px;
+    border: 2px solid var(--border); background: transparent;
+    font-size: 16px; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; transition: 0.15s;
+    flex-shrink: 0;
+  }
+  .item-check-fact.checked { background: var(--success); border-color: var(--success); color: white; }
+  .item-check-fact.faltante-check { background: rgba(239,68,68,0.15); border-color: var(--danger); }
+  .item-check-fact:active { transform: scale(0.9); }
+
+  .item-fact-desc { font-size: 14px; font-weight: 500; line-height: 1.3; }
+  .item-fact-desc.tachado { text-decoration: line-through; color: var(--muted); }
+  .item-fact-who { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  .qty-input {
+    width: 70px; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; padding: 8px; font-size: 16px;
+    font-weight: 700; text-align: center; font-family: 'Roboto Mono', monospace;
+    transition: 0.15s;
+  }
+  .qty-input:focus { border-color: var(--primary); outline: none; background: rgba(59,130,246,0.1); }
+  .qty-input.modificado { border-color: var(--warning); color: var(--warning); }
+
+  .btn-faltante {
+    width: 36px; height: 36px; border-radius: 8px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--muted); font-size: 14px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: 0.15s;
+  }
+  .btn-faltante:hover { border-color: var(--danger); color: var(--danger); background: rgba(239,68,68,0.1); }
+  .btn-faltante.activo { border-color: var(--danger); color: var(--danger); background: rgba(239,68,68,0.15); }
+
+  /* Footer acciones */
+  .pedido-footer {
+    padding: 14px 20px; border-top: 1px solid var(--border); flex-shrink: 0;
+    background: rgba(8,15,30,0.8);
+  }
+  .footer-stats {
+    display: flex; gap: 16px; margin-bottom: 12px; font-size: 12px; color: var(--muted);
+  }
+  .footer-stats span { display: flex; align-items: center; gap: 4px; }
+  .footer-actions { display: flex; gap: 10px; }
+  .btn-accion {
+    flex: 1; padding: 14px; border-radius: var(--radius); font-size: 14px;
+    font-weight: 800; border: none; cursor: pointer; transition: 0.2s;
+    letter-spacing: 0.3px;
+  }
+  .btn-accion.primary { background: var(--success); color: white; }
+  .btn-accion.primary:disabled { background: rgba(16,185,129,0.25); color: rgba(255,255,255,0.35); cursor: not-allowed; }
+  .btn-accion.secondary { background: var(--bg-card); border: 1px solid var(--border); color: var(--muted); max-width: 160px; }
+  .btn-accion:not(:disabled):active { transform: scale(0.98); }
+
+  /* ESTADO VACÍO */
+  .no-selection {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px;
+    color: var(--muted); padding: 40px;
+  }
+  .no-selection .icon { font-size: 56px; }
+
+  /* PANEL IA */
+  #iaPanel {
+    display: none; position: absolute; right: 20px; top: 120px;
+    width: 340px; background: #1e293b; border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow); z-index: 200;
+    flex-direction: column; max-height: calc(100vh - 140px); overflow: hidden;
+  }
+  .ia-panel-header {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .ia-panel-content { padding: 16px; overflow-y: auto; flex: 1; }
+  .ia-msg { font-size: 13px; line-height: 1.6; color: #e2e8f0; white-space: pre-wrap; }
+  .btn-close-ia {
+    background: transparent; border: none; color: var(--muted);
+    font-size: 18px; cursor: pointer; padding: 4px;
+  }
+
+  /* AUDITORÍA PANEL */
+  #auditPanel {
+    display: none; position: absolute; left: var(--panel-w); right: 0; top: 52px; bottom: 0;
+    background: rgba(8,15,30,0.97); z-index: 150; flex-direction: column;
+    padding: 20px; overflow-y: auto;
+  }
+  .audit-entry {
+    display: flex; gap: 12px; padding: 10px 0;
+    border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .audit-time { color: var(--muted); white-space: nowrap; font-size: 11px; min-width: 80px; }
+
+  /* LOADER / SPINNER */
+  .spinner-small {
+    width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite;
+    display: inline-block;
+  }
+
+  /* TOAST */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: #1e293b; color: white; padding: 12px 24px;
+    border-radius: 99px; font-size: 14px; font-weight: 600;
+    box-shadow: var(--shadow); border: 1px solid var(--border);
+    z-index: 9000; white-space: nowrap;
+    animation: fadeUp 0.3s ease forwards;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translate(-50%, 16px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+  }
+
+  /* Responsive: en tablet/mobile apila los paneles */
+  @media (max-width: 768px) {
+    :root { --panel-w: 100vw; }
+    .panel-left { width: 100%; }
+    .panel-right { display: none; }
+    .panel-left.pedido-abierto { display: none; }
+    .panel-right.pedido-abierto { display: flex; width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div style="font-size:52px; margin-bottom:8px;">🧾</div>
+  <h1 style="font-size:26px; font-weight:900; color:#3b82f6;">Facturación ML</h1>
+  <p style="color:#94a3b8; font-size:14px; margin-bottom:20px;">Identificate para continuar</p>
+  <button class="login-btn" onclick="login('A')">Soy A</button>
+  <button class="login-btn secondary" style="margin-top:8px;" onclick="login('C')">Soy C</button>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="conn-dot" id="connDot"></div>
+    <div class="topbar-title">🧾 Facturación ML</div>
+    <div id="iaStatusChip" style="display:none; font-size:11px; color:var(--warning); font-weight:700;">IA activa</div>
+    <div id="userChip" class="user-chip">A</div>
+    <button class="btn-ia" onclick="toggleAudit()" style="font-size:11px; padding:5px 10px;">📋 Log</button>
+  </div>
+
+  <!-- Split layout -->
+  <div class="split">
+
+    <!-- PANEL IZQUIERDO: lista pedidos -->
+    <div class="panel-left" id="panelLeft">
+      <div class="panel-header">
+        <h3>📂 Pedidos</h3>
+        <span id="contadorPedidos" style="font-size:12px; color:var(--muted);"></span>
+      </div>
+
+      <!-- Tabs de fecha -->
+      <div class="date-tabs" id="dateTabs"></div>
+
+      <!-- Búsqueda -->
+      <div class="search-box">
+        <input id="searchInput" type="search" placeholder="Buscar cliente o N°..." oninput="filtrarPedidos()" />
+      </div>
+
+      <!-- Lista -->
+      <div id="pedidosList"></div>
+    </div>
+
+    <!-- PANEL DERECHO: detalle pedido -->
+    <div class="panel-right" id="panelRight">
+      <!-- Estado vacío -->
+      <div class="no-selection" id="noSelection">
+        <div class="icon">👈</div>
+        <div style="font-size:16px; font-weight:700;">Seleccioná un pedido</div>
+        <div style="font-size:13px;">Aparecen los pedidos en estado <strong style="color:var(--warning)">armado</strong></div>
+      </div>
+
+      <!-- Contenido del pedido -->
+      <div id="pedidoContent" style="display:none; flex-direction:column; height:100%;">
+
+        <!-- Header del pedido -->
+        <div class="pedido-header">
+          <div class="pedido-header-info">
+            <h2 id="phNombre">—</h2>
+            <p id="phMeta">—</p>
+            <div class="pedido-meta-chips" id="phChips"></div>
+          </div>
+          <div id="phEstadoBadge" class="pi-badge" style="font-size:12px; padding:6px 14px;"></div>
+        </div>
+
+        <!-- IA Toolbar -->
+        <div class="ia-toolbar">
+          <button class="btn-ia" id="btnIaVerificar" onclick="iaVerificarPedido()">🧠 Verificar con IA</button>
+          <button class="btn-ia" id="btnIaResumen" onclick="iaResumen()">📝 Resumen</button>
+          <button class="btn-ia" id="btnMarcarTodos" onclick="marcarTodos()">✅ Marcar todos</button>
+          <button class="btn-ia" id="btnDesmarcarTodos" onclick="desmarcarTodos()" style="margin-left:auto;">↩ Desmarcar</button>
+        </div>
+
+        <!-- Items -->
+        <div id="itemsContainer"></div>
+
+        <!-- Footer -->
+        <div class="pedido-footer">
+          <div class="footer-stats">
+            <span>📦 <span id="statsTotal">0</span> items</span>
+            <span>✅ <span id="statsFacturados">0</span> facturados</span>
+            <span>❌ <span id="statsFaltantes">0</span> faltantes</span>
+          </div>
+          <div class="footer-actions">
+            <button class="btn-accion secondary" onclick="pedidoContent_whatsapp()">💬 WA</button>
+            <button class="btn-accion primary" id="btnFacturar" disabled onclick="facturarPedido()">
+              ✅ MARCAR FACTURADO
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel IA flotante -->
+      <div id="iaPanel">
+        <div class="ia-panel-header">
+          <span style="font-size:13px; font-weight:700;">🧠 Análisis IA</span>
+          <button class="btn-close-ia" onclick="cerrarIaPanel()">✕</button>
+        </div>
+        <div class="ia-panel-content">
+          <div class="ia-msg" id="iaMsgContent">Analizando...</div>
+        </div>
+      </div>
+
+      <!-- Panel auditoría -->
+      <div id="auditPanel">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <h3 style="font-size:16px; font-weight:700;">📋 Auditoría del pedido</h3>
+          <button onclick="toggleAudit()" style="background:transparent; border:none; color:var(--muted); font-size:18px; cursor:pointer;">✕</button>
+        </div>
+        <div id="auditContent"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const SUPABASE_URL  = "https://gjeyvbidomxzofcdycya.supabase.co";
+const SUPABASE_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
+const WORKER_URL    = "https://frosty-term-20ea.santamariapablodaniel.workers.dev";
+
+let currentUser   = null;
+let pedidoActivo  = null;
+let itemsActivos  = [];
+let pedidosAll    = [];
+let pedidosFiltrados = [];
+let fechaSeleccionada = "hoy";
+let auditVisible  = false;
+
+// ============================================================
+// SUPABASE REST
+// ============================================================
+async function sbGet(table, params = "") {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
+    headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` }
+  });
+  return r.ok ? r.json() : [];
+}
+
+async function sbPatch(table, match, data) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${match}`, {
+    method: "PATCH",
+    headers: {
+      apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}`,
+      "Content-Type": "application/json", Prefer: "return=representation"
+    },
+    body: JSON.stringify(data)
+  });
+  return r.ok ? r.json() : null;
+}
+
+async function sbInsert(table, data) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}`,
+      "Content-Type": "application/json", Prefer: "return=representation"
+    },
+    body: JSON.stringify(data)
+  });
+  return r.ok ? r.json() : null;
+}
+
+// ============================================================
+// REALTIME WEBSOCKET
+// ============================================================
+function conectarRealtime() {
+  const wsUrl = `${SUPABASE_URL.replace("https://","wss://")}/realtime/v1/websocket?apikey=${SUPABASE_ANON}&vsn=1.0.0`;
+  const ws = new WebSocket(wsUrl);
+  let hb;
+
+  ws.onopen = () => {
+    setConn("online");
+    ws.send(JSON.stringify({
+      topic: "realtime:public:pedidos", event: "phx_join",
+      payload: { config: { postgres_changes: [{ event: "*", schema: "public", table: "pedidos" }] } },
+      ref: "1"
+    }));
+    ws.send(JSON.stringify({
+      topic: "realtime:public:items_pedido", event: "phx_join",
+      payload: { config: { postgres_changes: [{ event: "*", schema: "public", table: "items_pedido" }] } },
+      ref: "2"
+    }));
+    hb = setInterval(() => ws.readyState === 1 && ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: "hb" })), 20000);
+  };
+
+  ws.onmessage = async (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      const tableChanged = msg.payload?.data?.table;
+
+      if (tableChanged === "pedidos") {
+        await cargarPedidos();
+        // Si el pedido activo cambió, recargar items
+        if (pedidoActivo) {
+          const updated = pedidosAll.find(p => p.id === pedidoActivo.id);
+          if (updated) pedidoActivo = updated;
+          renderHeader();
+        }
+      }
+      if (tableChanged === "items_pedido" && pedidoActivo) {
+        await cargarItemsActivos(pedidoActivo.id);
+      }
+    } catch(_) {}
+  };
+
+  ws.onclose = () => {
+    setConn("offline"); clearInterval(hb);
+    setTimeout(conectarRealtime, 3000);
+  };
+  ws.onerror = () => setConn("offline");
+}
+
+function setConn(e) {
+  const d = document.getElementById("connDot");
+  if (d) d.className = "conn-dot " + e;
+}
+
+// ============================================================
+// LOGIN
+// ============================================================
+function login(user) {
+  currentUser = user;
+  localStorage.setItem("factUser", user);
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("app").style.display = "flex";
+  document.getElementById("app").style.flexDirection = "column";
+  document.getElementById("userChip").textContent = user;
+  iniciarApp();
+}
+
+// ============================================================
+// CARGA DE PEDIDOS
+// ============================================================
+async function cargarPedidos() {
+  setConn("syncing");
+  try {
+    const hoy = new Date().toISOString().split("T")[0];
+
+    // Calcular fechas para las tabs
+    const fechas = generarFechasTabs();
+    renderDateTabs(fechas);
+
+    let params = `order=created_at.desc&limit=200`;
+
+    // Filtramos por fecha seleccionada
+    if (fechaSeleccionada === "hoy") {
+      params += `&created_at=gte.${hoy}T00:00:00`;
+    } else if (fechaSeleccionada !== "todos") {
+      params += `&created_at=gte.${fechaSeleccionada}T00:00:00&created_at=lt.${fechaSeleccionada}T23:59:59`;
+    }
+
+    pedidosAll = await sbGet("pedidos", params);
+    filtrarPedidos();
+    setConn("online");
+  } catch(e) {
+    setConn("offline");
+  }
+}
+
+function generarFechasTabs() {
+  const fechas = [];
+  const hoy = new Date();
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(hoy);
+    d.setDate(hoy.getDate() - i);
+    const iso = d.toISOString().split("T")[0];
+    const label = i === 0 ? "Hoy" : i === 1 ? "Ayer" : d.toLocaleDateString("es-AR", { weekday: "short", day: "numeric" });
+    fechas.push({ iso, label });
+  }
+  return fechas;
+}
+
+function renderDateTabs(fechas) {
+  const box = document.getElementById("dateTabs");
+  box.innerHTML = `
+    <div class="date-tab ${fechaSeleccionada === "todos" ? "active" : ""}" onclick="cambiarFecha('todos', this)">Todos</div>
+    ${fechas.map(f => `
+      <div class="date-tab ${fechaSeleccionada === f.iso || (f.iso === new Date().toISOString().split("T")[0] && fechaSeleccionada === "hoy") ? "active" : ""}"
+        onclick="cambiarFecha('${f.iso}', this)">${f.label}</div>
+    `).join("")}
+  `;
+}
+
+function cambiarFecha(fecha, btn) {
+  fechaSeleccionada = fecha;
+  document.querySelectorAll(".date-tab").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  cargarPedidos();
+}
+
+function filtrarPedidos() {
+  const q = (document.getElementById("searchInput").value || "").toLowerCase();
+  pedidosFiltrados = pedidosAll.filter(p => {
+    if (!q) return true;
+    return (p.cliente_nombre || "").toLowerCase().includes(q)
+      || String(p.cliente_id || "").includes(q)
+      || (p.vendedor || "").toLowerCase().includes(q);
+  });
+  renderPedidosList();
+}
+
+function renderPedidosList() {
+  const box = document.getElementById("pedidosList");
+  document.getElementById("contadorPedidos").textContent = `${pedidosFiltrados.length} pedidos`;
+
+  if (!pedidosFiltrados.length) {
+    box.innerHTML = `<div style="text-align:center; padding:40px; color:var(--muted); font-size:13px;">Sin pedidos para este filtro.</div>`;
+    return;
+  }
+
+  box.innerHTML = pedidosFiltrados.map(p => {
+    const esActivo = pedidoActivo?.id === p.id;
+    const pct = p.items_total ? Math.round((p.items_facturados || 0) / p.items_total * 100) : 0;
+    const hora = new Date(p.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+    const badgeColor = { pendiente: "#64748b", armado: "#f59e0b", en_facturacion: "#3b82f6", facturado: "#10b981" }[p.estado] || "#64748b";
+
+    return `
+      <div class="pedido-item estado-${p.estado} ${esActivo ? "selected" : ""}" onclick="seleccionarPedido('${p.id}')">
+        <div class="pi-top">
+          <div class="pi-nombre">${p.cliente_nombre || ("Cliente " + (p.cliente_id || "—"))}</div>
+          <div class="pi-badge" style="background:${badgeColor}22; color:${badgeColor}; border:1px solid ${badgeColor}44;">
+            ${estadoLabel(p.estado)}
+          </div>
+        </div>
+        <div class="pi-meta">
+          N° ${p.cliente_id || "—"} · ${p.vendedor || "—"} · ${hora}
+          ${p.fecha_entrega ? ` · 📅 ${fmtFecha(p.fecha_entrega)}` : ""}
+        </div>
+        ${p.items_total ? `<div class="pi-progress"><div class="pi-progress-fill" style="width:${pct}%; background:${badgeColor};"></div></div>` : ""}
+      </div>
+    `;
+  }).join("");
+}
+
+// ============================================================
+// SELECCIÓN Y DETALLE DE PEDIDO
+// ============================================================
+async function seleccionarPedido(id) {
+  pedidoActivo = pedidosAll.find(p => p.id === id);
+  if (!pedidoActivo) return;
+
+  // Marcar en lista
+  renderPedidosList();
+
+  // Mostrar panel derecho
+  document.getElementById("noSelection").style.display = "none";
+  const content = document.getElementById("pedidoContent");
+  content.style.display = "flex";
+  content.style.flexDirection = "column";
+  content.style.height = "100%";
+
+  // Actualizar estado en Supabase si está armado → en_facturacion
+  if (pedidoActivo.estado === "armado") {
+    await sbPatch("pedidos", `id=eq.${id}`, { estado: "en_facturacion" });
+    await auditoria(id, "abierto_facturacion", { usuario: currentUser });
+    pedidoActivo.estado = "en_facturacion";
+  }
+
+  renderHeader();
+  await cargarItemsActivos(id);
+  if (auditVisible) cargarAuditoria(id);
+
+  // Responsive mobile
+  document.getElementById("panelLeft").classList.remove("pedido-abierto");
+  document.getElementById("panelRight").classList.add("pedido-abierto");
+}
+
+function renderHeader() {
+  if (!pedidoActivo) return;
+  document.getElementById("phNombre").textContent =
+    pedidoActivo.cliente_nombre || ("Cliente " + (pedidoActivo.cliente_id || "—"));
+  document.getElementById("phMeta").textContent =
+    `Vendedor: ${pedidoActivo.vendedor || "—"} · ${pedidoActivo.observaciones || "Sin observaciones"}`;
+
+  const fe = pedidoActivo.fecha_entrega ? fmtFecha(pedidoActivo.fecha_entrega) : "—";
+  document.getElementById("phChips").innerHTML = `
+    <div class="chip">📅 Entrega: ${fe}</div>
+    <div class="chip">🕐 ${new Date(pedidoActivo.created_at).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}</div>
+    ${pedidoActivo.sig ? `<div class="chip" style="font-family:monospace; font-size:10px;">${pedidoActivo.sig.slice(0,8)}</div>` : ""}
+  `;
+
+  const badgeColor = { pendiente:"#64748b", armado:"#f59e0b", en_facturacion:"#3b82f6", facturado:"#10b981" }[pedidoActivo.estado];
+  const badge = document.getElementById("phEstadoBadge");
+  badge.textContent = estadoLabel(pedidoActivo.estado);
+  badge.style.background = badgeColor + "22";
+  badge.style.color = badgeColor;
+  badge.style.border = `1px solid ${badgeColor}44`;
+}
+
+async function cargarItemsActivos(pedidoId) {
+  itemsActivos = await sbGet("items_pedido", `pedido_id=eq.${pedidoId}&order=id.asc`);
+  renderItems();
+}
+
+function renderItems() {
+  const box = document.getElementById("itemsContainer");
+  if (!itemsActivos.length) {
+    box.innerHTML = `<div style="text-align:center; padding:40px; color:var(--muted);">Sin items registrados.</div>`;
+    return;
+  }
+
+  box.innerHTML = itemsActivos.map((item, i) => {
+    const clases = `item-fact ${item.facturado ? "facturado" : ""} ${item.es_faltante ? "faltante" : ""}`;
+    const checkClase = item.facturado ? "checked" : item.es_faltante ? "faltante-check" : "";
+    const faltanteActivo = item.es_faltante ? "activo" : "";
+
+    return `
+      <div class="${clases}" id="irow-${item.id}">
+        <button class="item-check-fact ${checkClase}" onclick="toggleFacturado('${item.id}', ${i})">
+          ${item.facturado ? "✓" : item.es_faltante ? "✕" : ""}
+        </button>
+        <div>
+          <div class="item-fact-desc ${item.facturado ? "tachado" : ""}" id="idesc-${item.id}">
+            ${item.descripcion}
+          </div>
+          ${item.facturado_por ? `<div class="item-fact-who">✓ ${item.facturado_por} · ${fmtTime(item.facturado_at)}</div>` : ""}
+        </div>
+        <input class="qty-input ${item.cantidad_real != null && item.cantidad_real !== item.cantidad ? "modificado" : ""}"
+          type="number" min="0" value="${item.cantidad_real ?? item.cantidad}"
+          onchange="cambiarCantidad('${item.id}', ${i}, this.value)"
+          id="qty-${item.id}" />
+        <button class="btn-faltante ${faltanteActivo}" onclick="toggleFaltante('${item.id}', ${i})" title="Marcar faltante">
+          ${item.es_faltante ? "🔴" : "○"}
+        </button>
+      </div>
+    `;
+  }).join("");
+
+  actualizarStats();
+}
+
+async function toggleFacturado(itemId, idx) {
+  const nuevoEstado = !itemsActivos[idx].facturado;
+  itemsActivos[idx].facturado = nuevoEstado;
+  if (nuevoEstado) itemsActivos[idx].es_faltante = false; // Si facturo, quito faltante
+
+  // UI inmediata
+  renderItems();
+
+  const now = new Date().toISOString();
+  await sbPatch("items_pedido", `id=eq.${itemId}`, {
+    facturado: nuevoEstado,
+    facturado_por: nuevoEstado ? currentUser : null,
+    facturado_at: nuevoEstado ? now : null,
+  });
+}
+
+async function toggleFaltante(itemId, idx) {
+  const nuevoEstado = !itemsActivos[idx].es_faltante;
+  itemsActivos[idx].es_faltante = nuevoEstado;
+  if (nuevoEstado) itemsActivos[idx].facturado = false;
+  renderItems();
+
+  await sbPatch("items_pedido", `id=eq.${itemId}`, { es_faltante: nuevoEstado, facturado: false });
+}
+
+async function cambiarCantidad(itemId, idx, valor) {
+  const qty = parseFloat(valor);
+  if (isNaN(qty) || qty < 0) return;
+  itemsActivos[idx].cantidad_real = qty;
+
+  const input = document.getElementById(`qty-${itemId}`);
+  if (qty !== itemsActivos[idx].cantidad) {
+    input.classList.add("modificado");
+  } else {
+    input.classList.remove("modificado");
+  }
+
+  await sbPatch("items_pedido", `id=eq.${itemId}`, { cantidad_real: qty });
+}
+
+function marcarTodos() {
+  itemsActivos.forEach((item, i) => { item.facturado = true; item.es_faltante = false; });
+  renderItems();
+  const now = new Date().toISOString();
+  Promise.all(itemsActivos.map(item =>
+    sbPatch("items_pedido", `id=eq.${item.id}`, {
+      facturado: true, facturado_por: currentUser, facturado_at: now, es_faltante: false
+    })
+  ));
+}
+
+function desmarcarTodos() {
+  itemsActivos.forEach(item => { item.facturado = false; });
+  renderItems();
+  Promise.all(itemsActivos.map(item =>
+    sbPatch("items_pedido", `id=eq.${item.id}`, { facturado: false, facturado_por: null, facturado_at: null })
+  ));
+}
+
+function actualizarStats() {
+  const total = itemsActivos.length;
+  const facturados = itemsActivos.filter(i => i.facturado).length;
+  const faltantes = itemsActivos.filter(i => i.es_faltante).length;
+  document.getElementById("statsTotal").textContent = total;
+  document.getElementById("statsFacturados").textContent = facturados;
+  document.getElementById("statsFaltantes").textContent = faltantes;
+
+  const btn = document.getElementById("btnFacturar");
+  const listos = facturados + faltantes;
+  btn.disabled = listos < total || pedidoActivo?.estado === "facturado";
+  if (pedidoActivo?.estado === "facturado") btn.textContent = "✅ YA FACTURADO";
+}
+
+async function facturarPedido() {
+  if (!pedidoActivo) return;
+  showToast("Procesando...", false, true);
+  await sbPatch("pedidos", `id=eq.${pedidoActivo.id}`, { estado: "facturado" });
+  await auditoria(pedidoActivo.id, "pedido_facturado", {
+    usuario: currentUser,
+    facturados: itemsActivos.filter(i => i.facturado).length,
+    faltantes: itemsActivos.filter(i => i.es_faltante).length,
+  });
+  pedidoActivo.estado = "facturado";
+  renderHeader();
+  actualizarStats();
+  toast("¡Pedido facturado! ✅");
+  setTimeout(() => cargarPedidos(), 500);
+}
+
+// ============================================================
+// WHATSAPP
+// ============================================================
+function pedidoContent_whatsapp() {
+  if (!pedidoActivo || !itemsActivos.length) return;
+  const faltantes = itemsActivos.filter(i => i.es_faltante).map(i => `- ${i.cantidad} ${i.descripcion}`).join("\n");
+  if (!faltantes) return showToast("No hay faltantes marcados.");
+
+  const msg = `Hola! Pedido de ${pedidoActivo.cliente_nombre || pedidoActivo.cliente_id}:\n\n*Faltantes:*\n${faltantes}\n\nSe entregan en el próximo reparto.`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+}
+
+// ============================================================
+// IA (via Worker → Gemini)
+// ============================================================
+async function callIA(prompt, sys) {
+  const r = await fetch(WORKER_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, sys })
+  });
+  if (!r.ok) return null;
+  const d = await r.json();
+  return d.text;
+}
+
+async function iaVerificarPedido() {
+  if (!pedidoActivo || !itemsActivos.length) return;
+  document.getElementById("iaStatusChip").style.display = "block";
+  abrirIaPanel("Analizando pedido...");
+
+  const lista = itemsActivos.map(i => `${i.cantidad} ${i.descripcion}`).join("\n");
+  const sys = `Sos un asistente de control de calidad para un depósito/facturación.
+Tu tarea es revisar listas de pedidos y detectar posibles errores, cantidades inusuales, nombres mal escritos, o inconsistencias.
+Respondé en español, de forma breve y directa. Usa emojis para señalar problemas.`;
+
+  const resp = await callIA(
+    `Revisá esta lista de items del pedido de ${pedidoActivo.cliente_nombre || "cliente"}:\n\n${lista}\n\n¿Hay algo raro, cantidades inusuales, o items que probablemente sean errores de tipeo?`,
+    sys
+  );
+
+  document.getElementById("iaMsgContent").textContent = resp || "No se pudo analizar.";
+  document.getElementById("iaStatusChip").style.display = "none";
+}
+
+async function iaResumen() {
+  if (!pedidoActivo || !itemsActivos.length) return;
+  document.getElementById("iaStatusChip").style.display = "block";
+  abrirIaPanel("Generando resumen...");
+
+  const facturados = itemsActivos.filter(i => i.facturado).map(i => `${i.cantidad_real ?? i.cantidad} ${i.descripcion}`);
+  const faltantes = itemsActivos.filter(i => i.es_faltante).map(i => `${i.cantidad} ${i.descripcion}`);
+
+  const sys = `Sos un asistente de logística. Generá resúmenes claros y concisos de pedidos. Usá formato legible.`;
+  const prompt = `Generá un resumen de facturación para ${pedidoActivo.cliente_nombre}:
+\nFACTURADOS (${facturados.length}):\n${facturados.join("\n") || "ninguno"}
+\nFALTANTES (${faltantes.length}):\n${faltantes.join("\n") || "ninguno"}
+
+Hacé un resumen ejecutivo de 2-3 líneas.`;
+
+  const resp = await callIA(prompt, sys);
+  document.getElementById("iaMsgContent").textContent = resp || "No se pudo generar resumen.";
+  document.getElementById("iaStatusChip").style.display = "none";
+}
+
+function abrirIaPanel(msg = "") {
+  const panel = document.getElementById("iaPanel");
+  document.getElementById("iaMsgContent").textContent = msg;
+  panel.style.display = "flex";
+  panel.style.flexDirection = "column";
+}
+
+function cerrarIaPanel() {
+  document.getElementById("iaPanel").style.display = "none";
+  document.getElementById("iaStatusChip").style.display = "none";
+}
+
+// ============================================================
+// AUDITORÍA
+// ============================================================
+async function toggleAudit() {
+  auditVisible = !auditVisible;
+  const panel = document.getElementById("auditPanel");
+  panel.style.display = auditVisible ? "flex" : "none";
+  if (auditVisible) panel.style.flexDirection = "column";
+  if (auditVisible && pedidoActivo) cargarAuditoria(pedidoActivo.id);
+}
+
+async function cargarAuditoria(pedidoId) {
+  const logs = await sbGet("auditoria", `pedido_id=eq.${pedidoId}&order=created_at.asc`);
+  const box = document.getElementById("auditContent");
+  if (!logs.length) { box.innerHTML = `<div style="color:var(--muted); font-size:13px;">Sin registros aún.</div>`; return; }
+  box.innerHTML = logs.map(l => `
+    <div class="audit-entry">
+      <div class="audit-time">${fmtTime(l.created_at)}</div>
+      <div>
+        <strong style="color:var(--primary);">${l.usuario || "sistema"}</strong>
+        · ${l.accion}
+        ${l.detalle && Object.keys(l.detalle).length ? `<span style="color:var(--muted); font-size:11px;"> · ${JSON.stringify(l.detalle)}</span>` : ""}
+      </div>
+    </div>
+  `).join("");
+}
+
+async function auditoria(pedidoId, accion, detalle = {}) {
+  try {
+    await sbInsert("auditoria", { pedido_id: pedidoId, accion, usuario: currentUser, detalle });
+  } catch(_) {}
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function estadoLabel(e) {
+  return { pendiente:"Pendiente", armado:"Armado", en_facturacion:"Facturando…", facturado:"✅ Facturado" }[e] || e;
+}
+function fmtFecha(iso) {
+  return new Date(iso + "T12:00:00").toLocaleDateString("es-AR", { day:"2-digit", month:"short" });
+}
+function fmtTime(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString("es-AR", { hour:"2-digit", minute:"2-digit" });
+}
+
+let toastTimer;
+function toast(msg, error = false) {
+  const existing = document.querySelector(".toast");
+  if (existing) existing.remove();
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.textContent = msg;
+  if (error) el.style.borderColor = "var(--danger)";
+  document.body.appendChild(el);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.remove(), 2500);
+}
+function showToast(msg) { toast(msg); }
+
+// ============================================================
+// INIT
+// ============================================================
+function iniciarApp() {
+  cargarPedidos();
+  conectarRealtime();
+  setInterval(cargarPedidos, 30000);
+}
+
+window.onload = () => {
+  const saved = localStorage.getItem("factUser");
+  if (saved) {
+    login(saved);
+  } else {
+    document.getElementById("loginScreen").style.display = "flex";
+  }
+};
+</script>
+</body>
+</html>
