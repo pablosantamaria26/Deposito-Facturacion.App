@@ -434,9 +434,13 @@
 </div>
 
 <script>
+  window.SUPABASE_URL      = 'https://gjeyvbidomxzofcdycya.supabase.co';
+  window.SUPABASE_ANON_KEY = 'sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT';
+</script>
+<script>
 // ── CONFIG ──
-const SUPABASE_URL  = "https://gjeyvbidomxzofcdycya.supabase.co";
-const SUPABASE_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
+const SUPABASE_URL  = window.SUPABASE_URL;
+const SUPABASE_ANON = window.SUPABASE_ANON_KEY;
 const WORKER_URL    = "https://frosty-term-20ea.santamariapablodaniel.workers.dev";
 
 let currentUser  = null;

@@ -314,9 +314,13 @@
 </div>
 
 <script>
+  window.SUPABASE_URL      = 'https://gjeyvbidomxzofcdycya.supabase.co';
+  window.SUPABASE_ANON_KEY = 'sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT';
+</script>
+<script>
 // ── CONFIG ──
-const SB_URL  = "https://gjeyvbidomxzofcdycya.supabase.co";
-const SB_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
+const SB_URL  = window.SUPABASE_URL;
+const SB_ANON = window.SUPABASE_ANON_KEY;
 
 let tabActual      = "hoy";
 let pedidosCache   = [];
