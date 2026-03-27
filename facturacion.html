@@ -306,41 +306,48 @@
   .hist-nombre { font-size: 14px; font-weight: 800; color: var(--text); }
   .hist-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
-  /* ── NOTAS CLIENTE ── */
-  .notas-section { flex-shrink: 0; border-top: 2px solid var(--border); background: #fff; max-height: 220px; flex-direction: column; overflow: hidden; }
-  .notas-toggle { padding: 10px 24px; font-size: 13px; font-weight: 800; color: var(--muted); display: flex; align-items: center; gap: 8px; cursor: pointer; background: #f8fafc; border: none; width: 100%; text-align: left; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-  .notas-toggle:hover { background: #f1f5f9; }
-  #notasList { flex: 1; overflow-y: auto; padding: 8px 16px; display: flex; flex-direction: column; gap: 6px; }
-  .nota-item { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
-  .nota-txt { font-size: 13px; color: var(--text); line-height: 1.4; }
-  .nota-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
-  .notas-input-row { padding: 8px 16px; display: flex; gap: 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
-  .notas-input-row input { flex: 1; padding: 8px 14px; border: 2px solid var(--border); border-radius: 99px; font-size: 13px; outline: none; color: var(--text); background: var(--bg); }
-  .notas-input-row input:focus { border-color: var(--prox); background: #fff; }
-  .btn-nota-save { padding: 8px 18px; background: var(--prox); color: #fff; border: none; border-radius: 99px; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+  /* ── MODALES ── */
+  .modal-over { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: flex-end; justify-content: center; z-index: 8000; backdrop-filter: blur(3px); }
+  .modal-box { background: #fff; border-radius: 24px 24px 0 0; padding: 28px 24px 36px; width: 100%; max-width: 520px; animation: slideUp .2s ease; }
+  .modal-box.notas-box { max-height: 72vh; display: flex; flex-direction: column; padding-bottom: 24px; }
+  .modal-title { font-size: 20px; font-weight: 900; margin-bottom: 6px; }
+  .modal-sub { font-size: 14px; color: var(--muted); margin-bottom: 16px; }
+  .modal-input { width: 100%; padding: 14px; border: 2px solid var(--border); border-radius: 12px; font-size: 18px; font-weight: 700; outline: none; color: var(--text); margin-bottom: 14px; }
+  .modal-input:focus { border-color: var(--prox); }
+  .modal-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-btns.solo { grid-template-columns: 1fr; }
+  .modal-btn { padding: 14px; border-radius: 12px; font-size: 16px; font-weight: 800; border: none; cursor: pointer; transition: .15s; }
+  .modal-btn.ok { background: var(--prox); color: #fff; }
+  .modal-btn.cancel { background: var(--bg); border: 2px solid var(--border); color: var(--muted); }
+  .modal-btn:active { transform: scale(.97); }
+
+  /* Notas modal */
+  .notas-lista-modal { flex: 1; overflow-y: auto; margin: 12px 0; display: flex; flex-direction: column; gap: 8px; min-height: 60px; }
+  .nota-modal-item { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
+  .nota-modal-txt { font-size: 14px; color: var(--text); line-height: 1.4; }
+  .nota-modal-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .nota-input-modal { width: 100%; padding: 12px 16px; border: 2px solid var(--border); border-radius: 12px; font-size: 15px; outline: none; color: var(--text); margin-bottom: 12px; flex-shrink: 0; }
+  .nota-input-modal:focus { border-color: var(--prox); }
+
+  /* Botón notas en header */
+  .btn-notas-open { background: var(--bg); border: 2px solid var(--border); color: var(--muted); padding: 6px 16px; border-radius: 99px; font-size: 13px; font-weight: 700; cursor: pointer; transition: .15s; margin-top: 10px; }
+  .btn-notas-open:hover { border-color: var(--manana); color: var(--manana); }
+  .btn-notas-open.tiene-notas { border-color: var(--manana); color: var(--manana); background: var(--man-bg); }
+
+  @keyframes slideUp { from { transform: translateY(60px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 </style>
 </head>
 <body>
 
 <div id="loader"><div class="spinner"></div><div style="font-size:16px;font-weight:700;color:#64748b;">Cargando...</div></div>
 
-<!-- LOGIN -->
-<div id="loginScreen">
-  <div style="font-size:56px;">🧾</div>
-  <div style="font-size:28px;font-weight:900;">Facturación ML</div>
-  <div style="font-size:15px;color:#64748b;margin-bottom:12px;">Identificate para continuar</div>
-  <button class="login-btn a" onclick="login('A')">Soy A</button>
-  <button class="login-btn c" style="margin-top:10px;" onclick="login('C')">Soy C</button>
-</div>
-
 <!-- APP -->
-<div id="app">
+<div id="app" style="display:flex;flex-direction:column;height:100vh;">
   <!-- Topbar -->
   <div class="topbar">
     <div class="conn-dot" id="connDot"></div>
     <div class="topbar-title">🧾 Facturación ML</div>
-    <div id="iaChip" style="display:none;font-size:12px;font-weight:700;color:var(--manana);">⏳ IA...</div>
-    <div id="userChip" class="user-chip">A</div>
+    <div id="userChip" class="user-chip" onclick="cambiarNombre()" title="Cambiar nombre" style="cursor:pointer;">—</div>
   </div>
 
   <div class="body">
@@ -386,26 +393,16 @@
           <div class="ped-entrega" id="phEntrega">—</div>
           <div class="ped-meta"    id="phMeta">—</div>
           <div class="ped-chips"   id="phChips"></div>
+          <button class="btn-notas-open" id="btnNotas" onclick="abrirModalNotas()" style="display:none;">📝 Notas</button>
         </div>
 
         <div class="ia-bar">
-          <button class="btn-ia" onclick="iaVerificar()" title="Analizar pedido con IA">🧠 Verificar con IA</button>
           <button class="btn-ia" onclick="marcarTodos()" title="Marcar todos los items como facturados">✅ Todos OK</button>
           <button class="btn-ia" onclick="desmarcarTodos()" style="margin-left:auto;" title="Desmarcar todos los items">↩ Desmarcar</button>
         </div>
 
         <div id="itemsPanel"></div>
 
-        <!-- Notas del cliente -->
-        <div class="notas-section" id="notasSection" style="display:none;">
-          <button class="notas-toggle" onclick="toggleNotas()">📝 <span id="notasToggleLabel">Notas del cliente</span></button>
-          <div id="notasList"></div>
-          <div class="notas-input-row">
-            <input id="notaInput" placeholder="Escribir nota..." maxlength="300"
-              onkeydown="if(event.key==='Enter')guardarNota()" />
-            <button class="btn-nota-save" onclick="guardarNota()" title="Guardar nota">Guardar</button>
-          </div>
-        </div>
 
         <div class="ped-footer">
           <div class="footer-stats">
@@ -422,14 +419,33 @@
         </div>
       </div>
 
-      <!-- Panel IA flotante -->
-      <div id="iaPanel">
-        <div class="ia-head">
-          <span>🧠 Análisis IA</span>
-          <button class="btn-close" onclick="cerrarIA()">✕</button>
-        </div>
-        <div class="ia-body" id="iaBody">Analizando...</div>
-      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: nombre de usuario -->
+<div class="modal-over" id="modalNombre" style="display:flex;">
+  <div class="modal-box">
+    <div class="modal-title">👋 ¿Cómo te llamás?</div>
+    <div class="modal-sub">Tu nombre queda guardado para registrar las facturas.</div>
+    <input class="modal-input" id="modalNombreInput" type="text" placeholder="Tu nombre..."
+      maxlength="40" onkeydown="if(event.key==='Enter')confirmarNombre()"/>
+    <div class="modal-btns solo">
+      <button class="modal-btn ok" onclick="confirmarNombre()">Entrar ✓</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: notas del cliente -->
+<div class="modal-over" id="modalNotas">
+  <div class="modal-box notas-box">
+    <div class="modal-title">📝 Notas — <span id="notasModalCliente" style="font-size:16px;font-weight:700;color:var(--muted);"></span></div>
+    <div id="notasModalList" class="notas-lista-modal"></div>
+    <input class="nota-input-modal" id="notaInputModal" type="text" placeholder="Escribir nota..."
+      maxlength="300" onkeydown="if(event.key==='Enter')guardarNota()"/>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="cerrarModalNotas()">Cerrar</button>
+      <button class="modal-btn ok"     onclick="guardarNota()">Guardar</button>
     </div>
   </div>
 </div>
@@ -530,18 +546,6 @@ function conectarRealtime() {
   ws.onerror = () => setConn("offline");
 }
 function setConn(s) { const d=document.getElementById("connDot"); if(d) d.className="conn-dot "+s; }
-
-// ── LOGIN ──
-function login(user) {
-  currentUser = user;
-  localStorage.setItem("factUser", user);
-  document.getElementById("loginScreen").style.display = "none";
-  document.getElementById("app").style.display = "flex";
-  document.getElementById("app").style.flexDirection = "column";
-  document.getElementById("app").style.height = "100vh";
-  document.getElementById("userChip").textContent = user;
-  iniciarApp();
-}
 
 // ── CARGA PEDIDOS ──
 async function cargarPedidos() {
@@ -771,33 +775,6 @@ function enviarWA() {
   window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
 }
 
-// ── IA ──
-async function iaVerificar() {
-  if (!pedidoActivo || !itemsActivos.length) return;
-  document.getElementById("iaChip").style.display = "block";
-  const panel = document.getElementById("iaPanel");
-  document.getElementById("iaBody").textContent = "Analizando...";
-  panel.style.display = "flex";
-  panel.style.flexDirection = "column";
-
-  const lista = itemsActivos.map(i => `${i.cantidad} ${i.descripcion}`).join("\n");
-  try {
-    const r = await fetch(WORKER_URL, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt: `Revisá esta lista de pedido de ${pedidoActivo.cliente_nombre}:\n\n${lista}\n\n¿Hay cantidades inusuales, errores de tipeo, o algo raro?`,
-        sys: "Sos un asistente de control de facturación. Revisá listas de productos y detectá errores, cantidades inusuales o inconsistencias. Respondé en español, conciso y directo. Usá emojis para señalar problemas."
-      })
-    });
-    const d = await r.json();
-    document.getElementById("iaBody").textContent = d.text || "No se pudo analizar.";
-  } catch(e) {
-    document.getElementById("iaBody").textContent = "Error al conectar con la IA.";
-  }
-  document.getElementById("iaChip").style.display = "none";
-}
-
-function cerrarIA() { document.getElementById("iaPanel").style.display = "none"; }
 
 // ── LEFT TABS ──
 function setLeftTab(tab) {
@@ -829,47 +806,56 @@ async function buscarHistorial() {
 }
 
 // ── NOTAS CLIENTE ──
-let notasAbiertas  = true;
 let notasClienteId = null;
 let notasCache     = [];
 
 async function cargarNotas(clienteId) {
-  if (!clienteId) { document.getElementById("notasSection").style.display = "none"; return; }
-  notasClienteId = clienteId;
-  const sec = document.getElementById("notasSection");
-  sec.style.display = "flex";
-  sec.style.flexDirection = "column";
+  notasClienteId = clienteId || null;
+  const btn = document.getElementById("btnNotas");
+  if (!clienteId) { btn.style.display = "none"; return; }
   notasCache = await sbGet("notas_cliente",
     `cliente_id=eq.${encodeURIComponent(clienteId)}&order=created_at.desc&limit=30`);
-  renderNotas();
+  btn.style.display = "inline-block";
+  btn.textContent = notasCache.length
+    ? `📝 Notas (${notasCache.length})`
+    : "📝 Notas";
+  btn.className = "btn-notas-open" + (notasCache.length ? " tiene-notas" : "");
 }
 
-function renderNotas() {
-  document.getElementById("notasToggleLabel").textContent = `Notas del cliente (${notasCache.length})`;
-  const box = document.getElementById("notasList");
+function abrirModalNotas() {
+  if (!notasClienteId) return;
+  document.getElementById("notasModalCliente").textContent =
+    pedidoActivo?.cliente_nombre || "N° " + notasClienteId;
+  renderNotasModal();
+  document.getElementById("modalNotas").style.display = "flex";
+  setTimeout(() => document.getElementById("notaInputModal").focus(), 150);
+}
+
+function cerrarModalNotas() {
+  document.getElementById("modalNotas").style.display = "none";
+  document.getElementById("notaInputModal").value = "";
+}
+
+function renderNotasModal() {
+  const box = document.getElementById("notasModalList");
   if (!notasCache.length) {
-    box.innerHTML = `<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px;">Sin notas.</div>`;
+    box.innerHTML = `<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px;">Sin notas todavía.</div>`;
     return;
   }
   box.innerHTML = notasCache.map(n => `
-    <div class="nota-item">
-      <div class="nota-txt">${escHtml(n.nota)}</div>
-      <div class="nota-meta">${n.created_by||"—"} · ${fmtNotaFecha(n.created_at)}</div>
+    <div class="nota-modal-item">
+      <div class="nota-modal-txt">${escHtml(n.nota)}</div>
+      <div class="nota-modal-meta">${n.created_by||"—"} · ${fmtNotaFecha(n.created_at)}</div>
     </div>`).join("");
 }
 
-function toggleNotas() {
-  notasAbiertas = !notasAbiertas;
-  document.getElementById("notasList").style.display        = notasAbiertas ? "flex" : "none";
-  document.querySelector(".notas-input-row").style.display  = notasAbiertas ? "flex" : "none";
-}
-
 async function guardarNota() {
-  const txt = document.getElementById("notaInput").value.trim();
+  const txt = document.getElementById("notaInputModal").value.trim();
   if (!txt || !notasClienteId) return;
-  document.getElementById("notaInput").value = "";
+  document.getElementById("notaInputModal").value = "";
   await sbInsert("notas_cliente", { cliente_id: notasClienteId, nota: txt, created_by: currentUser });
   await cargarNotas(notasClienteId);
+  renderNotasModal();
   toast("Nota guardada ✓", "ok");
 }
 
@@ -900,6 +886,23 @@ function toast(msg, tipo="") {
   tt = setTimeout(() => el.remove(), 2800);
 }
 
+// ── NOMBRE USUARIO ──
+function confirmarNombre() {
+  const nombre = document.getElementById("modalNombreInput").value.trim();
+  if (!nombre) { document.getElementById("modalNombreInput").focus(); return; }
+  currentUser = nombre;
+  localStorage.setItem("factUser", nombre);
+  document.getElementById("userChip").textContent = nombre;
+  document.getElementById("modalNombre").style.display = "none";
+  iniciarApp();
+}
+
+function cambiarNombre() {
+  document.getElementById("modalNombreInput").value = currentUser || "";
+  document.getElementById("modalNombre").style.display = "flex";
+  setTimeout(() => document.getElementById("modalNombreInput").select(), 100);
+}
+
 // ── INIT ──
 function iniciarApp() {
   cargarPedidos().then(() => renderLista());
@@ -910,8 +913,13 @@ function iniciarApp() {
 window.onload = () => {
   hideLoader();
   const saved = localStorage.getItem("factUser");
-  if (saved) login(saved);
-  else document.getElementById("loginScreen").style.display = "flex";
+  if (saved) {
+    currentUser = saved;
+    document.getElementById("userChip").textContent = saved;
+    document.getElementById("modalNombre").style.display = "none";
+    iniciarApp();
+  }
+  // Si no hay nombre guardado, el modal ya está visible (display:flex en HTML)
 };
 </script>
 </body>

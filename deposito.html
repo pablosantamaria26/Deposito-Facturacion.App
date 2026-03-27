@@ -32,7 +32,7 @@
   .conn-dot.syncing{background:var(--mod);animation:pulse 1s infinite}
 
   /* ── TABS ── */
-  .tabs{display:grid;grid-template-columns:1fr 1fr 1fr;background:#fff;border-bottom:2px solid var(--border)}
+  .tabs{display:grid;grid-template-columns:1fr 1fr;background:#fff;border-bottom:2px solid var(--border)}
   .tab-btn{
     padding:16px 10px;font-size:15px;font-weight:800;border:none;
     background:transparent;cursor:pointer;color:var(--muted);
@@ -40,7 +40,6 @@
   }
   .tab-btn.hoy.active {color:var(--hoy);border-bottom-color:var(--hoy);background:var(--hoy-bg)}
   .tab-btn.pend.active{color:var(--pend);border-bottom-color:var(--pend);background:var(--pend-bg)}
-  .tab-btn.arm.active {color:var(--ok);border-bottom-color:var(--ok);background:var(--ok-bg)}
 
   /* ── LISTA ── */
   #listaPedidos{padding:14px 16px;display:flex;flex-direction:column;gap:12px;flex:1}
@@ -258,8 +257,7 @@
     </div>
     <div class="tabs">
       <button class="tab-btn hoy active" id="tabHoy"  onclick="setTab('hoy')">🔴 HOY<br><span style="font-size:12px;font-weight:600">Esta semana</span></button>
-      <button class="tab-btn pend"       id="tabPend" onclick="setTab('pend')">🔵 PENDIENTES<br><span style="font-size:12px;font-weight:600">Próxima semana+</span></button>
-      <button class="tab-btn arm"        id="tabArm"  onclick="setTab('arm')">✅ ARMADOS<br><span style="font-size:12px;font-weight:600">Listos</span></button>
+      <button class="tab-btn pend"       id="tabPend" onclick="setTab('pend')">🔵 PRÓXIMA SEMANA<br><span style="font-size:12px;font-weight:600">Pedidos a preparar</span></button>
     </div>
     <div id="listaPedidos"></div>
   </div>
@@ -394,7 +392,6 @@ function setTab(t) {
   tabActual = t;
   document.getElementById("tabHoy").classList.toggle("active",  t==="hoy");
   document.getElementById("tabPend").classList.toggle("active", t==="pend");
-  document.getElementById("tabArm").classList.toggle("active",  t==="arm");
   renderLista();
 }
 
@@ -410,21 +407,18 @@ async function cargarPedidos() {
 }
 
 function renderLista() {
-  const filtrados = pedidosCache.filter(p => {
-    if (tabActual === "arm")  return p.estado === "armado";
-    if (tabActual === "hoy")  return p.estado !== "armado" &&  esUrgente(p.fecha_entrega);
-    return                           p.estado !== "armado" && !esUrgente(p.fecha_entrega);
-  });
+  const filtrados = pedidosCache.filter(p =>
+    tabActual === "hoy"
+      ? p.estado !== "armado" &&  esUrgente(p.fecha_entrega)
+      : p.estado !== "armado" && !esUrgente(p.fecha_entrega)
+  );
 
   const cHoy  = pedidosCache.filter(p => p.estado !== "armado" &&  esUrgente(p.fecha_entrega)).length;
   const cPend = pedidosCache.filter(p => p.estado !== "armado" && !esUrgente(p.fecha_entrega)).length;
-  const cArm  = pedidosCache.filter(p => p.estado === "armado").length;
   document.getElementById("tabHoy").innerHTML  =
     `🔴 HOY<br><span style="font-size:12px;font-weight:600">Esta semana (${cHoy})</span>`;
   document.getElementById("tabPend").innerHTML =
-    `🔵 PENDIENTES<br><span style="font-size:12px;font-weight:600">Próxima semana+ (${cPend})</span>`;
-  document.getElementById("tabArm").innerHTML =
-    `✅ ARMADOS<br><span style="font-size:12px;font-weight:600">Listos (${cArm})</span>`;
+    `🔵 PRÓXIMA SEMANA<br><span style="font-size:12px;font-weight:600">Pedidos a preparar (${cPend})</span>`;
 
   const box = document.getElementById("listaPedidos");
   if (!filtrados.length) {
