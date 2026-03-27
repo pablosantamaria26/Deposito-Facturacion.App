@@ -202,6 +202,29 @@
   }
   .btn-completar:not(:disabled):active { transform: scale(0.98); }
 
+  /* MODAL CONFIRMACIÓN DESTILDAR */
+  .confirm-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 6000; backdrop-filter: blur(4px);
+  }
+  .confirm-box {
+    background: #1e293b; border: 1px solid var(--border);
+    border-radius: 20px; padding: 24px; width: 88%; max-width: 320px;
+    text-align: center; box-shadow: var(--shadow);
+    animation: popIn 0.18s cubic-bezier(0.175,0.885,0.32,1.275);
+  }
+  @keyframes popIn { from { transform: scale(0.88); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .confirm-box h3 { font-size: 17px; font-weight: 800; margin-bottom: 8px; }
+  .confirm-box p { font-size: 13px; color: var(--muted); margin-bottom: 20px; line-height: 1.4; }
+  .confirm-btns { display: flex; gap: 10px; }
+  .confirm-btn {
+    flex: 1; padding: 14px; border-radius: 12px; font-size: 15px;
+    font-weight: 800; border: none; cursor: pointer; transition: 0.15s;
+  }
+  .confirm-btn.yes { background: var(--danger); color: white; }
+  .confirm-btn.no  { background: rgba(255,255,255,0.08); border: 1px solid var(--border); color: var(--muted); }
+
   /* EMPTY STATE */
   .empty {
     text-align: center; padding: 60px 20px; color: var(--muted);
@@ -291,6 +314,19 @@
       <button class="btn-completar" id="btnCompletar" disabled onclick="completarPedido()">
         ✅ MARCAR COMO ARMADO
       </button>
+    </div>
+  </div>
+
+  <!-- MODAL CONFIRMACIÓN DESTILDAR -->
+  <div id="confirmOverlay" class="confirm-overlay" style="display:none;">
+    <div class="confirm-box">
+      <h3>¿Destildar este artículo?</h3>
+      <p id="confirmItemNombre" style="color:var(--text); font-weight:600;"></p>
+      <p>Va a quedar como <strong style="color:var(--danger)">faltante</strong> en facturación.</p>
+      <div class="confirm-btns">
+        <button class="confirm-btn no"  onclick="cerrarConfirm()">Cancelar</button>
+        <button class="confirm-btn yes" onclick="confirmarDestildar()">Sí, destildar</button>
+      </div>
     </div>
   </div>
 </div>
@@ -521,8 +557,35 @@
     actualizarProgreso();
   }
 
+  // Estado del modal de confirmación destildar
+  let confirmPendiente = null; // { itemId, idx }
+
   async function toggleItem(itemId, idx, nuevoEstado) {
-    // UI optimista
+    // Si está tildado y quiere destildar → pedir confirmación
+    if (!nuevoEstado && itemsActivos[idx].armado) {
+      confirmPendiente = { itemId, idx };
+      document.getElementById("confirmItemNombre").textContent =
+        itemsActivos[idx].descripcion;
+      document.getElementById("confirmOverlay").style.display = "flex";
+      return;
+    }
+    // Si está destildado y quiere tildar → directo
+    await aplicarToggle(itemId, idx, true);
+  }
+
+  function cerrarConfirm() {
+    confirmPendiente = null;
+    document.getElementById("confirmOverlay").style.display = "none";
+  }
+
+  async function confirmarDestildar() {
+    if (!confirmPendiente) return;
+    const { itemId, idx } = confirmPendiente;
+    cerrarConfirm();
+    await aplicarToggle(itemId, idx, false);
+  }
+
+  async function aplicarToggle(itemId, idx, nuevoEstado) {
     itemsActivos[idx].armado = nuevoEstado;
     const row = document.getElementById(`item-row-${itemId}`);
     const btn = row.querySelector(".item-check-btn");
@@ -539,12 +602,11 @@
     }
     actualizarProgreso();
 
-    // Persistir
     try {
       const now = new Date().toISOString();
       await sbPatch("items_pedido", `id=eq.${itemId}`, {
         armado: nuevoEstado,
-        armado_por: currentUser,
+        armado_por: nuevoEstado ? currentUser : null,
         armado_at: nuevoEstado ? now : null,
       });
       await auditoria(pedidoActivo.id, nuevoEstado ? "item_armado" : "item_desarmado",
@@ -555,13 +617,26 @@
   }
 
   function actualizarProgreso() {
-    const total = itemsActivos.length;
+    const total   = itemsActivos.length;
     const armados = itemsActivos.filter(i => i.armado).length;
-    document.getElementById("progresoTexto").textContent = `${armados} / ${total} items armados`;
+    const faltantes = total - armados;
+
+    let texto = `${armados} / ${total} items armados`;
+    if (faltantes > 0) texto += ` · ${faltantes} irán como faltantes`;
+    document.getElementById("progresoTexto").textContent = texto;
+
     const btn = document.getElementById("btnCompletar");
-    btn.disabled = armados < total || pedidoActivo?.estado === "armado";
+    // Activo con 1 o más items tildados, o si el pedido ya está armado
     if (pedidoActivo?.estado === "armado") {
+      btn.disabled = true;
       btn.textContent = "✅ YA ESTÁ ARMADO";
+    } else {
+      btn.disabled = armados === 0;
+      if (faltantes > 0 && armados > 0) {
+        btn.textContent = `✅ ARMAR (${faltantes} faltante${faltantes > 1 ? "s" : ""})`;
+      } else {
+        btn.textContent = "✅ MARCAR COMO ARMADO";
+      }
     }
   }
 
@@ -569,15 +644,31 @@
     if (!pedidoActivo) return;
     showLoader();
     try {
+      const now = new Date().toISOString();
+
+      // Marcar items sin tildar como faltantes en Supabase
+      const faltantes = itemsActivos.filter(i => !i.armado);
+      await Promise.all(faltantes.map(item =>
+        sbPatch("items_pedido", `id=eq.${item.id}`, { es_faltante: true })
+      ));
+
       await sbPatch("pedidos", `id=eq.${pedidoActivo.id}`, { estado: "armado" });
-      await auditoria(pedidoActivo.id, "pedido_armado", { armado_por: currentUser });
+      await auditoria(pedidoActivo.id, "pedido_armado", {
+        armado_por: currentUser,
+        items_armados: itemsActivos.filter(i => i.armado).length,
+        items_faltantes: faltantes.length,
+      });
+
       pedidoActivo.estado = "armado";
       document.getElementById("detalleBadge").textContent = "✅ Armado";
       document.getElementById("detalleBadge").className = "estado-badge badge-armado";
-      document.getElementById("btnCompletar").disabled = true;
-      document.getElementById("btnCompletar").textContent = "✅ YA ESTÁ ARMADO";
-      toast("¡Pedido marcado como armado!");
-      setTimeout(volverALista, 1000);
+      actualizarProgreso();
+
+      const msg = faltantes.length > 0
+        ? `¡Armado! ${faltantes.length} faltante${faltantes.length > 1 ? "s" : ""} enviado${faltantes.length > 1 ? "s" : ""} a facturación.`
+        : "¡Pedido armado completo!";
+      toast(msg);
+      setTimeout(volverALista, 1500);
     } catch(e) {
       toast("Error al completar", true);
     } finally {
