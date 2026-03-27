@@ -79,7 +79,7 @@ Realtime is via a raw WebSocket to Supabase's realtime endpoint. On any change t
 
 ### Service Worker
 
-Cache version is hardcoded (`pedidos-ml-v23`). **Increment `CACHE_NAME` when deploying changes** so users get the new version. Only caches same-origin GET requests; all Supabase/Worker/Gemini calls bypass cache.
+Cache version is hardcoded (`pedidos-ml-v25`). **Increment `CACHE_NAME` when deploying changes** so users get the new version. Only caches same-origin GET requests; all Supabase/Worker/Gemini calls bypass cache.
 
 ## Credentials (embedded in source)
 

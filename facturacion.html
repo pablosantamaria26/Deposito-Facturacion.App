@@ -359,7 +359,63 @@
   .pend-armar-fecha.man-c  { color: var(--manana); font-weight: 800; font-size: 12px; }
   .pend-armar-fecha.prox-c { color: var(--prox);   font-weight: 700; font-size: 12px; }
 
-  @keyframes slideUp { from { transform: translateY(60px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes slideUp  { from { transform: translateY(60px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── TRANSICIONES ── */
+  .pedido-item { transition: background .12s, border-color .12s; }
+  .item-f      { transition: background .15s, border-color .15s, box-shadow .15s; }
+  .item-f:hover{ box-shadow: 0 4px 16px rgba(0,0,0,.1); }
+  .ltab        { transition: color .15s, border-color .15s, background .15s; }
+  .btn-facturar{ transition: background .15s, transform .1s, box-shadow .15s, opacity .15s; }
+  .chk-f       { transition: background .12s, border-color .12s, transform .1s; }
+  .btn-notas-open { transition: border-color .15s, color .15s, background .15s; }
+
+  /* ── DARK MODE ── */
+  @media(prefers-color-scheme:dark){
+    :root{
+      --hoy:       #f87171; --hoy-bg:  #2d1414; --hoy-brd:  #7f1d1d;
+      --manana:    #fbbf24; --man-bg:  #292008; --man-brd:  #78350f;
+      --prox:      #60a5fa; --prox-bg: #1b2d4a; --prox-brd: #1e3a6e;
+      --success:   #4ade80; --succ-bg: #14271a;
+      --bg:        #12151c; --card:    #1e2330;
+      --text:      #eef2f7; --muted:   #8090a8; --border:   #2d3a4e;
+      --shadow:    0 2px 14px rgba(0,0,0,.4);
+      --left-w:    340px;
+    }
+    html,body { background:var(--bg); color:var(--text); }
+    .topbar,.panel-left,.ped-header,.ia-bar,.ped-footer { background:var(--card); border-color:var(--border); }
+    .panel-right { background:var(--bg); }
+    .pedido-item:hover { background:#1a2030; }
+    .pedido-item.selected { background:#1e2d4a; }
+    .pedido-item.grp-hoy.selected { background:#2d1414; }
+    .pedido-item.grp-man.selected { background:#292008; }
+    .item-f   { background:var(--card); border-color:var(--border); }
+    .item-f.ok{ background:#14271a; border-color:#14532d; }
+    .item-f.faltante { background:#2d1414; border-color:#7f1d1d; }
+    .chk-f:not(.ok):not(.faltante) { background:var(--card); border-color:var(--border); }
+    .qty-in   { background:var(--bg); color:var(--text); border-color:var(--border); }
+    .qty-in:focus { background:var(--card); }
+    .btn-wa   { background:var(--card); border-color:var(--border); color:var(--muted); }
+    .modal-box { background:#1e2330; color:var(--text); }
+    .modal-input,.nota-input-modal { background:#12151c; color:var(--text); border-color:var(--border); }
+    .modal-btn.cancel { background:#12151c; border-color:var(--border); color:var(--muted); }
+    .nota-modal-item { background:#12151c; border-color:var(--border); }
+    .btn-notas-open { background:var(--card); border-color:var(--border); color:var(--muted); }
+    .btn-notas-open.tiene-notas { background:#292008; border-color:var(--manana); color:var(--manana); }
+    .btn-ia   { background:var(--bg); border-color:var(--border); color:var(--muted); }
+    .btn-ia:hover { border-color:var(--prox); color:var(--prox); }
+    .left-search input { background:var(--bg); color:var(--text); border-color:var(--border); }
+    .faltantes-previos-sec { background:#2a1e04; border-color:#a16207; }
+    .user-chip { background:var(--hoy); }
+    .grupo-header { background:inherit; }
+    .grupo-header.hoy  { background:var(--hoy-bg);  color:var(--hoy); border-color:var(--hoy); }
+    .grupo-header.man  { background:var(--man-bg);  color:var(--manana); border-color:var(--manana); }
+    .grupo-header.prox { background:var(--prox-bg); color:var(--prox); border-color:var(--prox); }
+    .hist-item:hover { background:#1a2030; }
+    .pend-armar-item { border-color:var(--border); }
+    #noSel { color:var(--muted); }
+  }
 </style>
 </head>
 <body>
@@ -618,7 +674,7 @@ function renderLista() {
       const facClass = p.estado === "facturado" ? "facturado" : "";
       const fechaC   = g === "hoy" ? "hoy-c" : g === "man" ? "man-c" : "prox-c";
       html += `
-        <div class="pedido-item grp-${key} ${selClass} ${facClass}" onclick="seleccionar('${p.id}')">
+        <div class="pedido-item grp-${key} ${selClass} ${facClass}" onclick="seleccionar('${p.id}')" style="animation:fadeInUp .2s ease both">
           <div class="pi-nombre">${p.cliente_nombre || "Cliente " + (p.cliente_id||"—")}</div>
           <div class="pi-fecha ${fechaC}">${icon} ${fmtFecha(p.fecha_entrega).toUpperCase()}</div>
           <div class="pi-meta">${p.vendedor||"—"} ${p.estado === "facturado" ? "· ✅ FACTURADO" : ""}</div>
@@ -707,7 +763,7 @@ function renderItemsF() {
     const qtyMod = item.cantidad_real != null && item.cantidad_real !== item.cantidad ? "mod" : "";
 
     return `
-      <div class="item-f ${rowCls}" id="ifrow-${item.id}">
+      <div class="item-f ${rowCls}" id="ifrow-${item.id}" style="animation:fadeInUp .18s ease ${i*35}ms both">
         <button class="chk-f ${chkCls}" onclick="toggleFacturado('${item.id}',${i})">${chkTxt}</button>
         <div>
           <div class="item-f-desc ${descCls}" id="ifdesc-${item.id}">${item.descripcion}</div>

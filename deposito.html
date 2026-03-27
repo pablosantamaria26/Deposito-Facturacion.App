@@ -82,8 +82,8 @@
   .det-title{font-size:18px;font-weight:900;flex:1}
 
   .det-info{background:#fff;border-bottom:2px solid var(--border);padding:16px 20px}
-  .det-num   {font-size:13px;font-weight:700;color:var(--muted)}
-  .det-nombre{font-size:30px;font-weight:900;color:var(--text);line-height:1.1;margin-top:2px}
+  .det-num   {font-size:34px;font-weight:900;color:var(--pend);line-height:1;letter-spacing:-1px}
+  .det-nombre{font-size:26px;font-weight:900;color:var(--text);line-height:1.15;margin-top:4px}
   .det-entrega{font-size:18px;font-weight:800;margin-top:8px}
   .det-entrega.urg {color:var(--hoy)}
   .det-entrega.norm{color:var(--pend)}
@@ -167,6 +167,7 @@
     position:sticky;bottom:0;background:#fff;border-top:2px solid var(--border);
     padding:14px 18px;box-shadow:0 -2px 12px rgba(0,0,0,.05)
   }
+  #msgMotDep{font-size:13px;color:var(--muted);text-align:center;padding:2px 0 4px;font-style:italic;min-height:18px}
   .progreso{font-size:15px;font-weight:700;color:var(--muted);text-align:center;margin-bottom:12px}
   .btn-armar{
     width:100%;padding:20px;border-radius:var(--radius);border:none;
@@ -237,10 +238,44 @@
     .item-main{grid-template-columns:58px 1fr auto auto}
   }
 
-  @keyframes spin   {to{transform:rotate(360deg)}}
-  @keyframes pulse  {0%,100%{opacity:1}50%{opacity:.4}}
-  @keyframes slideUp{from{transform:translateY(60px);opacity:0}to{transform:translateY(0);opacity:1}}
-  @keyframes fadeUp {from{opacity:0;transform:translate(-50%,16px)}to{opacity:1;transform:translate(-50%,0)}}
+  @keyframes spin     {to{transform:rotate(360deg)}}
+  @keyframes pulse    {0%,100%{opacity:1}50%{opacity:.4}}
+  @keyframes slideUp  {from{transform:translateY(60px);opacity:0}to{transform:translateY(0);opacity:1}}
+  @keyframes fadeUp   {from{opacity:0;transform:translate(-50%,16px)}to{opacity:1;transform:translate(-50%,0)}}
+  @keyframes fadeInUp {from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+  /* ── TRANSICIONES ── */
+  .pedido-card{transition:transform .12s,box-shadow .12s,border-color .12s}
+  .pedido-card:hover{box-shadow:0 4px 20px rgba(0,0,0,.12);transform:translateY(-1px)}
+  .item-row{transition:background .15s,border-color .15s}
+  .tab-btn{transition:color .15s,border-color .15s,background .15s}
+  .btn-armar{transition:background .15s,transform .1s,box-shadow .15s,opacity .15s}
+  .check-btn{transition:background .12s,border-color .12s,transform .1s}
+
+  /* ── DARK MODE ── */
+  @media(prefers-color-scheme:dark){
+    :root{
+      --hoy:#f87171; --hoy-bg:#2d1414; --hoy-brd:#7f1d1d;
+      --pend:#60a5fa; --pend-bg:#1b2d4a; --pend-brd:#1e3a6e;
+      --ok:#4ade80;  --ok-bg:#14271a;  --ok-brd:#14532d;
+      --mod:#fbbf24; --mod-bg:#292008;
+      --bg:#12151c; --card:#1e2330; --text:#eef2f7; --muted:#8090a8; --border:#2d3a4e;
+      --shadow:0 2px 14px rgba(0,0,0,.4);
+    }
+    .header,.det-header,.det-info,.det-footer,.tabs{background:var(--card);border-color:var(--border)}
+    .modal-box{background:#1e2330;color:var(--text)}
+    .modal-input{background:#12151c;color:var(--text);border-color:var(--border)}
+    .check-btn:not(.on){background:var(--card);border-color:var(--border)}
+    .item-edit-bar{background:#2a1e04}
+    .edit-input,.edit-qty{background:#12151c;color:var(--text);border-color:var(--border)}
+    .armador-chip{background:#1e2330;border-color:var(--border)}
+    .btn-back{background:#1e2330;border-color:var(--border);color:var(--text)}
+    .item-qty-badge{background:var(--bg);border-color:var(--border);color:var(--text)}
+    .btn-edit-cancel{background:#1e2330;border-color:var(--border);color:var(--muted)}
+    .btn-edit-toggle{color:var(--muted)}
+    #detFaltantesPrevios{background:#2a1e04;border-color:#a16207}
+    html,body{background:var(--bg);color:var(--text)}
+  }
 </style>
 </head>
 <body>
@@ -285,6 +320,7 @@
 
     <div id="listaItems"></div>
     <div class="det-footer">
+      <div id="msgMotDep"></div>
       <div class="progreso" id="progresoTxt">0 / 0 items</div>
       <button class="btn-armar" id="btnArmar" disabled onclick="completarPedido()">✅ MARCAR COMO ARMADO</button>
     </div>
@@ -432,14 +468,14 @@ function renderLista() {
     box.innerHTML=`<div class="empty"><div class="icon">${tabActual==="hoy"?"📭":tabActual==="arm"?"🎉":"🗓️"}</div><p>Sin pedidos.</p></div>`;
     return;
   }
-  box.innerHTML = filtrados.map(p => {
+  box.innerHTML = filtrados.map((p, idx) => {
     const urg = esUrgente(p.fecha_entrega);
     const cc  = p.estado==="armado" ? "armado-ok" : urg ? "urgente" : "pendiente";
     const ec  = urg ? "urg" : "pend";
     const icon= urg ? "🔴" : "🔵";
     const fe  = fmtFechaLarga(p.fecha_entrega);
     return `
-      <div class="pedido-card ${cc}" onclick="pedidoClick('${p.id}')">
+      <div class="pedido-card ${cc}" onclick="pedidoClick('${p.id}')" style="animation:fadeInUp .2s ease ${idx*40}ms both">
         <div class="card-num">N° ${p.cliente_id||"—"}</div>
         <div class="card-nombre">${p.cliente_nombre||"Cliente "+p.cliente_id||"—"}</div>
         <div class="card-entrega ${ec}">${icon} SE ENTREGA: ${fe}</div>
@@ -644,6 +680,14 @@ async function aplicarToggle(itemId, idx, nuevoEstado) {
 }
 
 // ── PROGRESO ──
+const MSGS_MOT_DEP = [
+  "Buen ritmo, seguí así 💪",
+  "Cada artículo cuenta, tomá tu tiempo",
+  "Vas bien, ya falta poco",
+  "Revisá bien cada item antes de marcar",
+  "¡Excelente! Casi terminás",
+  "Sin apuros, el orden es lo que importa",
+];
 function actualizarProgreso() {
   const total    = itemsActivos.length;
   const armados  = itemsActivos.filter(i => i.armado).length;
@@ -652,6 +696,26 @@ function actualizarProgreso() {
   let txt = `${armados} / ${total} items armados`;
   if (faltantes > 0 && armados > 0) txt += ` · ${faltantes} irán como faltante${faltantes>1?"s":""}`;
   document.getElementById("progresoTxt").textContent = txt;
+
+  // Mensaje motivacional según progreso
+  const mot = document.getElementById("msgMotDep");
+  if (mot) {
+    if (total === 0 || pedidoActivo?.estado === "armado") {
+      mot.textContent = "";
+    } else if (armados === total) {
+      mot.textContent = "🎉 ¡Todo listo para entregar!";
+      mot.style.color = "var(--ok)";
+    } else if (armados === 0) {
+      mot.textContent = "Empezá marcando los artículos a medida que los armás";
+      mot.style.color = "";
+    } else {
+      const pct = armados / total;
+      const idx = Math.min(Math.floor(pct * MSGS_MOT_DEP.length), MSGS_MOT_DEP.length - 1);
+      mot.textContent = MSGS_MOT_DEP[idx];
+      mot.style.color = "";
+    }
+  }
+
   if (pedidoActivo?.estado === "armado") {
     btn.disabled = true; btn.textContent = "✅ YA ESTÁ ARMADO";
   } else {
@@ -784,7 +848,7 @@ window.onload = async () => {
   // Restaurar pedido activo si se recargó la página
   const activoId = localStorage.getItem("depositoActivePedido");
   if (activoId) {
-    const p = pedidosAll.find(p => p.id === activoId);
+    const p = pedidosCache.find(p => p.id === activoId);
     if (p) abrirPedido(activoId);
   }
 };
