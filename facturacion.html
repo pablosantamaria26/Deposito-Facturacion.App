@@ -291,6 +291,32 @@
   @keyframes spin   { to { transform: rotate(360deg); } }
   @keyframes pulse  { 0%,100%{ opacity:1; } 50%{ opacity:0.4; } }
   @keyframes fadeUp { from{ opacity:0; transform:translate(-50%,16px); } to{ opacity:1; transform:translate(-50%,0); } }
+
+  /* ── LEFT TABS ── */
+  .left-tabs-bar { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 2px solid var(--border); flex-shrink: 0; }
+  .ltab { padding: 12px 8px; font-size: 13px; font-weight: 800; border: none; background: transparent; cursor: pointer; color: var(--muted); border-bottom: 3px solid transparent; transition: .15s; }
+  .ltab.active { color: var(--prox); border-bottom-color: var(--prox); background: var(--prox-bg); }
+  #pedidosView, #historialView { flex-direction: column; flex: 1; overflow: hidden; }
+  #historialList { flex: 1; overflow-y: auto; }
+  #historialList::-webkit-scrollbar { width: 4px; }
+  #historialList::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .hist-item { padding: 12px 16px; border-bottom: 1px solid var(--border); cursor: pointer; transition: 0.12s; }
+  .hist-item:hover { background: var(--bg); }
+  .hist-nombre { font-size: 14px; font-weight: 800; color: var(--text); }
+  .hist-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* ── NOTAS CLIENTE ── */
+  .notas-section { flex-shrink: 0; border-top: 2px solid var(--border); background: #fff; max-height: 220px; flex-direction: column; overflow: hidden; }
+  .notas-toggle { padding: 10px 24px; font-size: 13px; font-weight: 800; color: var(--muted); display: flex; align-items: center; gap: 8px; cursor: pointer; background: #f8fafc; border: none; width: 100%; text-align: left; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .notas-toggle:hover { background: #f1f5f9; }
+  #notasList { flex: 1; overflow-y: auto; padding: 8px 16px; display: flex; flex-direction: column; gap: 6px; }
+  .nota-item { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+  .nota-txt { font-size: 13px; color: var(--text); line-height: 1.4; }
+  .nota-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .notas-input-row { padding: 8px 16px; display: flex; gap: 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
+  .notas-input-row input { flex: 1; padding: 8px 14px; border: 2px solid var(--border); border-radius: 99px; font-size: 13px; outline: none; color: var(--text); background: var(--bg); }
+  .notas-input-row input:focus { border-color: var(--prox); background: #fff; }
+  .btn-nota-save { padding: 8px 18px; background: var(--prox); color: #fff; border: none; border-radius: 99px; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -320,10 +346,26 @@
 
     <!-- PANEL IZQUIERDO -->
     <div class="panel-left">
-      <div class="left-search">
-        <input id="searchInput" placeholder="🔍 Buscar cliente..." oninput="filtrar()" />
+      <div class="left-tabs-bar">
+        <button class="ltab active" id="ltabPedidos"   onclick="setLeftTab('pedidos')">Pedidos</button>
+        <button class="ltab"        id="ltabHistorial" onclick="setLeftTab('historial')">Historial</button>
       </div>
-      <div id="pedidosList"></div>
+      <!-- Vista Pedidos -->
+      <div id="pedidosView" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+        <div class="left-search">
+          <input id="searchInput" placeholder="🔍 Buscar cliente..." oninput="filtrar()" />
+        </div>
+        <div id="pedidosList"></div>
+      </div>
+      <!-- Vista Historial -->
+      <div id="historialView" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+        <div class="left-search">
+          <input id="histSearch" placeholder="🔍 Nº cliente..." oninput="buscarHistorial()" />
+        </div>
+        <div id="historialList">
+          <div style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">Ingresá un Nº de cliente.</div>
+        </div>
+      </div>
     </div>
 
     <!-- PANEL DERECHO -->
@@ -346,12 +388,23 @@
         </div>
 
         <div class="ia-bar">
-          <button class="btn-ia" onclick="iaVerificar()">🧠 Verificar con IA</button>
-          <button class="btn-ia" onclick="marcarTodos()">✅ Todos OK</button>
-          <button class="btn-ia" onclick="desmarcarTodos()" style="margin-left:auto;">↩ Desmarcar</button>
+          <button class="btn-ia" onclick="iaVerificar()" title="Analizar pedido con IA">🧠 Verificar con IA</button>
+          <button class="btn-ia" onclick="marcarTodos()" title="Marcar todos los items como facturados">✅ Todos OK</button>
+          <button class="btn-ia" onclick="desmarcarTodos()" style="margin-left:auto;" title="Desmarcar todos los items">↩ Desmarcar</button>
         </div>
 
         <div id="itemsPanel"></div>
+
+        <!-- Notas del cliente -->
+        <div class="notas-section" id="notasSection" style="display:none;">
+          <button class="notas-toggle" onclick="toggleNotas()">📝 <span id="notasToggleLabel">Notas del cliente</span></button>
+          <div id="notasList"></div>
+          <div class="notas-input-row">
+            <input id="notaInput" placeholder="Escribir nota..." maxlength="300"
+              onkeydown="if(event.key==='Enter')guardarNota()" />
+            <button class="btn-nota-save" onclick="guardarNota()" title="Guardar nota">Guardar</button>
+          </div>
+        </div>
 
         <div class="ped-footer">
           <div class="footer-stats">
@@ -456,7 +509,15 @@ function conectarRealtime() {
     try {
       const msg = JSON.parse(e.data);
       const t = msg.payload?.data?.table;
-      if (t === "pedidos") { await cargarPedidos(); renderLista(); }
+      if (t === "pedidos") {
+        const idsAntes = new Set(pedidosAll.map(p => p.id));
+        await cargarPedidos();
+        renderLista();
+        const nuevos = pedidosAll.filter(p => !idsAntes.has(p.id) && p.estado === "armado");
+        if (nuevos.length) {
+          toast(`📦 Nuevo armado: ${nuevos[0].cliente_nombre || "N° "+nuevos[0].cliente_id}`, "ok");
+        }
+      }
       if (t === "items_pedido" && pedidoActivo) await recargarItems();
     } catch(_) {}
   };
@@ -482,7 +543,7 @@ async function cargarPedidos() {
   setConn("syncing");
   try {
     pedidosAll = await sbGet("pedidos",
-      "estado=in.(armado,en_facturacion,facturado)&order=fecha_entrega.asc,created_at.asc&limit=200");
+      "estado=in.(armado,en_facturacion)&order=fecha_entrega.asc,created_at.asc&limit=200");
     setConn("online");
   } catch(e) { setConn("offline"); }
 }
@@ -545,6 +606,7 @@ async function seleccionar(id) {
 
     renderHeader();
     renderItemsF();
+    cargarNotas(pedidoActivo.cliente_id);
 
     document.getElementById("noSel").style.display = "none";
     const pp = document.getElementById("pedidoPanel");
@@ -573,6 +635,7 @@ function renderHeader() {
     `Vendedor: ${pedidoActivo.vendedor||"—"} · ${pedidoActivo.observaciones||"Sin observaciones"}`;
   document.getElementById("phChips").innerHTML = `
     <div class="chip">N° ${pedidoActivo.cliente_id||"—"}</div>
+    ${pedidoActivo.armado_por ? `<div class="chip" style="color:var(--prox);border-color:#93c5fd;" title="Armado por">🧑‍🏭 ${pedidoActivo.armado_por}</div>` : ""}
     ${pedidoActivo.estado==="facturado" ? `<div class="chip" style="color:var(--success);border-color:#86efac;">✅ FACTURADO</div>` : ""}
   `;
 }
@@ -730,6 +793,89 @@ async function iaVerificar() {
 }
 
 function cerrarIA() { document.getElementById("iaPanel").style.display = "none"; }
+
+// ── LEFT TABS ──
+function setLeftTab(tab) {
+  document.getElementById("ltabPedidos").classList.toggle("active",   tab==="pedidos");
+  document.getElementById("ltabHistorial").classList.toggle("active", tab==="historial");
+  document.getElementById("pedidosView").style.display   = tab==="pedidos"   ? "flex" : "none";
+  document.getElementById("historialView").style.display = tab==="historial" ? "flex" : "none";
+}
+
+// ── HISTORIAL ──
+async function buscarHistorial() {
+  const q   = document.getElementById("histSearch").value.trim();
+  const box = document.getElementById("historialList");
+  if (!q) {
+    box.innerHTML = `<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">Ingresá un Nº de cliente.</div>`;
+    return;
+  }
+  const results = await sbGet("pedidos",
+    `cliente_id=eq.${encodeURIComponent(q)}&estado=eq.facturado&order=fecha_entrega.desc&limit=50`);
+  if (!results.length) {
+    box.innerHTML = `<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">Sin pedidos facturados para ese cliente.</div>`;
+    return;
+  }
+  box.innerHTML = results.map(p => `
+    <div class="hist-item" onclick="seleccionar('${p.id}');setLeftTab('pedidos')">
+      <div class="hist-nombre">${p.cliente_nombre||"Cliente "+p.cliente_id}</div>
+      <div class="hist-meta">N° ${p.cliente_id||"—"} · ${fmtFecha(p.fecha_entrega)} · ✅ FACTURADO</div>
+    </div>`).join("");
+}
+
+// ── NOTAS CLIENTE ──
+let notasAbiertas  = true;
+let notasClienteId = null;
+let notasCache     = [];
+
+async function cargarNotas(clienteId) {
+  if (!clienteId) { document.getElementById("notasSection").style.display = "none"; return; }
+  notasClienteId = clienteId;
+  const sec = document.getElementById("notasSection");
+  sec.style.display = "flex";
+  sec.style.flexDirection = "column";
+  notasCache = await sbGet("notas_cliente",
+    `cliente_id=eq.${encodeURIComponent(clienteId)}&order=created_at.desc&limit=30`);
+  renderNotas();
+}
+
+function renderNotas() {
+  document.getElementById("notasToggleLabel").textContent = `Notas del cliente (${notasCache.length})`;
+  const box = document.getElementById("notasList");
+  if (!notasCache.length) {
+    box.innerHTML = `<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px;">Sin notas.</div>`;
+    return;
+  }
+  box.innerHTML = notasCache.map(n => `
+    <div class="nota-item">
+      <div class="nota-txt">${escHtml(n.nota)}</div>
+      <div class="nota-meta">${n.created_by||"—"} · ${fmtNotaFecha(n.created_at)}</div>
+    </div>`).join("");
+}
+
+function toggleNotas() {
+  notasAbiertas = !notasAbiertas;
+  document.getElementById("notasList").style.display        = notasAbiertas ? "flex" : "none";
+  document.querySelector(".notas-input-row").style.display  = notasAbiertas ? "flex" : "none";
+}
+
+async function guardarNota() {
+  const txt = document.getElementById("notaInput").value.trim();
+  if (!txt || !notasClienteId) return;
+  document.getElementById("notaInput").value = "";
+  await sbInsert("notas_cliente", { cliente_id: notasClienteId, nota: txt, created_by: currentUser });
+  await cargarNotas(notasClienteId);
+  toast("Nota guardada ✓", "ok");
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function fmtNotaFecha(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString("es-AR", { day:"2-digit", month:"2-digit", year:"2-digit", hour:"2-digit", minute:"2-digit" });
+}
 
 // ── UTILS ──
 function fmtTime(iso) {
