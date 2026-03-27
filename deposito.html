@@ -4,23 +4,28 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Depósito ML</title>
-  <meta name="theme-color" content="#0f172a" />
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <meta name="theme-color" content="#ffffff" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
 
 <style>
   :root {
-    --primary: #f59e0b;
-    --primary-dark: #d97706;
-    --primary-dim: rgba(245, 158, 11, 0.15);
-    --bg: #0f172a;
-    --bg-card: rgba(30, 41, 59, 0.9);
-    --text: #f8fafc;
-    --muted: #94a3b8;
-    --border: rgba(148, 163, 184, 0.15);
-    --success: #10b981;
-    --danger: #ef4444;
-    --radius: 14px;
-    --shadow: 0 8px 32px rgba(0,0,0,0.4);
+    --hoy:      #dc2626;
+    --hoy-bg:   #fef2f2;
+    --hoy-brd:  #fca5a5;
+    --pend:     #2563eb;
+    --pend-bg:  #eff6ff;
+    --pend-brd: #93c5fd;
+    --success:  #16a34a;
+    --succ-bg:  #f0fdf4;
+    --danger:   #dc2626;
+    --warn:     #d97706;
+    --bg:       #f8fafc;
+    --card:     #ffffff;
+    --text:     #0f172a;
+    --muted:    #64748b;
+    --border:   #e2e8f0;
+    --radius:   16px;
+    --shadow:   0 2px 12px rgba(0,0,0,0.08);
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
@@ -33,712 +38,663 @@
     overscroll-behavior: none;
   }
 
-  /* LOGIN */
+  /* ── LOGIN ── */
   #loginScreen {
-    display: flex; align-items: center; justify-content: center;
-    min-height: 100vh; flex-direction: column; gap: 20px;
-    background: radial-gradient(circle at center, #1e293b, #0f172a);
-    padding: 20px;
+    display: none; align-items: center; justify-content: center;
+    min-height: 100vh; flex-direction: column; gap: 24px;
+    background: #fff; padding: 32px;
   }
-  #loginScreen h1 { font-size: 28px; font-weight: 900; color: var(--primary); }
-  #loginScreen p { color: var(--muted); font-size: 14px; text-align: center; }
+  .login-icon { font-size: 64px; }
+  .login-title { font-size: 32px; font-weight: 900; color: var(--text); }
+  .login-sub   { font-size: 16px; color: var(--muted); }
   .btn-login {
-    background: var(--primary); color: #000; border: none;
-    padding: 18px 40px; border-radius: var(--radius); font-size: 20px;
-    font-weight: 900; cursor: pointer; width: 200px; transition: 0.2s;
+    width: 240px; padding: 20px; border-radius: var(--radius);
+    border: none; font-size: 22px; font-weight: 900; cursor: pointer;
+    transition: 0.15s; box-shadow: var(--shadow);
   }
+  .btn-login.a { background: var(--warn); color: #fff; }
+  .btn-login.c { background: var(--pend); color: #fff; margin-top: 8px; }
   .btn-login:active { transform: scale(0.97); }
 
-  /* APP */
+  /* ── APP ── */
   #app { display: none; flex-direction: column; min-height: 100vh; }
 
-  /* HEADER */
+  /* ── HEADER ── */
   .header {
     position: sticky; top: 0; z-index: 100;
-    background: rgba(15,23,42,0.97); backdrop-filter: blur(10px);
-    border-bottom: 1px solid var(--border);
-    padding: 12px 16px;
+    background: #fff; border-bottom: 2px solid var(--border);
+    padding: 14px 18px;
     display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
   }
-  .header-title { font-size: 18px; font-weight: 900; flex: 1; }
-  .header-user {
-    background: var(--primary); color: #000;
-    padding: 6px 14px; border-radius: 99px; font-weight: 900; font-size: 14px;
+  .header-title { font-size: 22px; font-weight: 900; flex: 1; color: var(--text); }
+  .user-badge {
+    background: var(--warn); color: #fff;
+    padding: 8px 18px; border-radius: 99px;
+    font-size: 16px; font-weight: 900;
   }
-  .conn-dot {
-    width: 10px; height: 10px; border-radius: 50%;
-    background: var(--danger); transition: 0.3s; flex-shrink: 0;
-  }
-  .conn-dot.online { background: var(--success); box-shadow: 0 0 8px rgba(16,185,129,0.5); }
-  .conn-dot.syncing { background: var(--primary); animation: pulse 1s infinite; }
+  .conn-dot { width: 12px; height: 12px; border-radius: 50%; background: #dc2626; flex-shrink: 0; }
+  .conn-dot.online  { background: var(--success); box-shadow: 0 0 0 3px #bbf7d0; }
+  .conn-dot.syncing { background: var(--warn); animation: pulse 1s infinite; }
 
-  /* FILTROS */
-  .filters {
-    display: flex; gap: 8px; padding: 12px 16px; overflow-x: auto;
-    scrollbar-width: none; background: rgba(15,23,42,0.5);
-    border-bottom: 1px solid var(--border);
+  /* ── TABS ── */
+  .tabs {
+    display: grid; grid-template-columns: 1fr 1fr;
+    background: #fff; border-bottom: 2px solid var(--border);
   }
-  .filters::-webkit-scrollbar { display: none; }
-  .filter-btn {
-    background: var(--bg-card); border: 1px solid var(--border);
-    color: var(--muted); padding: 8px 16px; border-radius: 99px;
-    font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer;
-    flex-shrink: 0; transition: 0.2s;
+  .tab-btn {
+    padding: 18px 10px; font-size: 16px; font-weight: 800;
+    border: none; background: transparent; cursor: pointer;
+    color: var(--muted); border-bottom: 4px solid transparent;
+    transition: 0.15s; text-align: center; line-height: 1.2;
   }
-  .filter-btn.active {
-    background: var(--primary-dim); border-color: var(--primary); color: var(--primary);
+  .tab-btn.hoy.active   { color: var(--hoy); border-bottom-color: var(--hoy); background: var(--hoy-bg); }
+  .tab-btn.pend.active  { color: var(--pend); border-bottom-color: var(--pend); background: var(--pend-bg); }
+  .tab-count {
+    display: inline-block; margin-left: 6px;
+    background: currentColor; color: #fff;
+    border-radius: 99px; font-size: 12px; font-weight: 900;
+    padding: 2px 8px; vertical-align: middle;
+    opacity: 0.9;
   }
 
-  /* LISTA PEDIDOS */
-  #listaPedidos {
-    padding: 12px 16px; display: flex; flex-direction: column; gap: 10px;
-    flex: 1;
-  }
+  /* ── LISTA ── */
+  #listaPedidos { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
 
   .pedido-card {
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 14px 16px;
-    cursor: pointer; transition: 0.15s; position: relative;
-    border-left: 4px solid var(--border);
+    background: var(--card); border-radius: var(--radius);
+    border: 2px solid var(--border); box-shadow: var(--shadow);
+    padding: 18px 20px; cursor: pointer; transition: 0.15s;
+    position: relative; overflow: hidden;
   }
   .pedido-card:active { transform: scale(0.99); }
-  .pedido-card.estado-pendiente  { border-left-color: var(--muted); }
-  .pedido-card.estado-armado     { border-left-color: var(--success); }
-  .pedido-card.activo            { border-color: var(--primary); background: rgba(245,158,11,0.08); }
+  .pedido-card.urgente {
+    border-color: var(--hoy-brd); background: var(--hoy-bg);
+    border-left: 6px solid var(--hoy);
+  }
+  .pedido-card.pendiente-card {
+    border-color: var(--pend-brd); background: var(--pend-bg);
+    border-left: 6px solid var(--pend);
+  }
+  .pedido-card.armado {
+    border-color: #86efac; background: var(--succ-bg);
+    border-left: 6px solid var(--success); opacity: 0.75;
+  }
 
-  .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-  .card-nombre { font-size: 16px; font-weight: 700; }
-  .card-num { font-size: 11px; color: var(--muted); margin-top: 2px; }
-  .estado-badge {
-    font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 99px;
-    white-space: nowrap; flex-shrink: 0;
+  .card-cliente { font-size: 22px; font-weight: 900; color: var(--text); line-height: 1.2; }
+  .card-entrega {
+    font-size: 16px; font-weight: 700; margin-top: 6px;
+    display: flex; align-items: center; gap: 8px;
   }
-  .badge-pendiente  { background: rgba(148,163,184,0.15); color: var(--muted); }
-  .badge-armado     { background: rgba(16,185,129,0.15); color: var(--success); }
-  .badge-facturado  { background: rgba(59,130,246,0.15); color: #60a5fa; }
-  .card-meta {
-    margin-top: 8px; display: flex; gap: 12px; font-size: 11px; color: var(--muted);
-  }
-  .progress-bar {
-    margin-top: 8px; height: 4px; background: rgba(255,255,255,0.08);
-    border-radius: 2px; overflow: hidden;
-  }
-  .progress-fill { height: 100%; background: var(--primary); transition: width 0.4s; }
+  .card-entrega.hoy-label  { color: var(--hoy); }
+  .card-entrega.pend-label { color: var(--pend); }
+  .card-meta { font-size: 14px; color: var(--muted); margin-top: 6px; }
+  .card-progress { margin-top: 10px; height: 6px; background: rgba(0,0,0,0.08); border-radius: 3px; overflow: hidden; }
+  .card-progress-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
 
-  /* PANEL DETALLE */
-  #detalle {
-    display: none; flex-direction: column;
-    background: var(--bg); min-height: 100vh;
+  .badge-armado {
+    position: absolute; top: 16px; right: 16px;
+    background: var(--success); color: #fff;
+    padding: 4px 12px; border-radius: 99px;
+    font-size: 13px; font-weight: 800;
   }
-  .detalle-header {
+
+  /* ── DETALLE ── */
+  #vistaDetalle {
+    display: none; flex-direction: column; min-height: 100vh;
+    background: var(--bg);
+  }
+  .det-header {
     position: sticky; top: 0; z-index: 100;
-    background: rgba(15,23,42,0.97); backdrop-filter: blur(10px);
-    border-bottom: 1px solid var(--border);
-    padding: 12px 16px; display: flex; align-items: center; gap: 12px;
+    background: #fff; border-bottom: 2px solid var(--border);
+    padding: 14px 18px; display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
   }
   .btn-back {
-    background: var(--bg-card); border: 1px solid var(--border);
-    color: var(--text); padding: 8px 14px; border-radius: 99px;
-    font-size: 14px; font-weight: 700; cursor: pointer;
+    background: var(--bg); border: 2px solid var(--border);
+    color: var(--text); padding: 10px 18px; border-radius: 99px;
+    font-size: 16px; font-weight: 700; cursor: pointer;
   }
-  .detalle-title { font-size: 16px; font-weight: 900; flex: 1; }
-  .detalle-info {
-    padding: 14px 16px; background: rgba(30,41,59,0.5);
-    border-bottom: 1px solid var(--border);
-    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-  }
-  .info-item { font-size: 12px; }
-  .info-item span { color: var(--muted); display: block; }
-  .info-item strong { color: var(--text); font-size: 14px; }
+  .det-title { font-size: 20px; font-weight: 900; flex: 1; }
 
-  #listaItems { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .det-info {
+    background: #fff; border-bottom: 2px solid var(--border);
+    padding: 18px 20px;
+  }
+  .det-cliente { font-size: 28px; font-weight: 900; color: var(--text); }
+  .det-entrega {
+    font-size: 20px; font-weight: 800; margin-top: 6px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .det-entrega.urgente { color: var(--hoy); }
+  .det-entrega.normal  { color: var(--pend); }
+  .det-sub { font-size: 15px; color: var(--muted); margin-top: 4px; }
+
+  /* ── ITEMS ── */
+  #listaItems { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
 
   .item-row {
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 12px; padding: 14px;
-    display: grid; grid-template-columns: 44px 1fr auto;
-    align-items: center; gap: 10px; transition: 0.2s;
+    background: #fff; border: 2px solid var(--border);
+    border-radius: var(--radius); padding: 16px 18px;
+    display: grid; grid-template-columns: 60px 1fr auto;
+    align-items: center; gap: 14px; transition: 0.15s;
+    box-shadow: var(--shadow);
   }
   .item-row.armado {
-    border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.06);
+    border-color: #86efac; background: var(--succ-bg);
   }
 
-  .item-check-btn {
-    width: 44px; height: 44px; border-radius: 12px;
-    border: 2px solid var(--border); background: transparent;
-    font-size: 20px; cursor: pointer; display: flex;
-    align-items: center; justify-content: center; transition: 0.2s; flex-shrink: 0;
+  .check-btn {
+    width: 54px; height: 54px; border-radius: 14px;
+    border: 3px solid var(--border); background: #fff;
+    font-size: 26px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: 0.15s; flex-shrink: 0;
   }
-  .item-check-btn.checked {
-    background: var(--success); border-color: var(--success); color: white;
+  .check-btn.on {
+    background: var(--success); border-color: var(--success); color: #fff;
   }
-  .item-check-btn:active { transform: scale(0.9); }
+  .check-btn:active { transform: scale(0.88); }
 
-  .item-desc { font-size: 15px; font-weight: 500; line-height: 1.3; }
+  .item-desc { font-size: 19px; font-weight: 700; color: var(--text); line-height: 1.3; }
   .item-desc.tachado { text-decoration: line-through; color: var(--muted); }
   .item-qty {
-    background: rgba(0,0,0,0.3); border: 1px solid var(--border);
-    border-radius: 8px; padding: 6px 10px;
-    font-size: 16px; font-weight: 900; color: var(--primary);
-    text-align: center; min-width: 50px; flex-shrink: 0;
+    background: var(--bg); border: 2px solid var(--border);
+    border-radius: 10px; padding: 8px 14px;
+    font-size: 22px; font-weight: 900; color: var(--text);
+    text-align: center; min-width: 60px;
   }
 
-  .detalle-footer {
-    position: sticky; bottom: 0;
-    background: rgba(15,23,42,0.97); backdrop-filter: blur(10px);
-    border-top: 1px solid var(--border); padding: 14px 16px;
+  /* ── FOOTER ── */
+  .det-footer {
+    position: sticky; bottom: 0; background: #fff;
+    border-top: 2px solid var(--border);
+    padding: 16px 18px; box-shadow: 0 -2px 12px rgba(0,0,0,0.06);
   }
-  .progreso-texto {
-    font-size: 12px; color: var(--muted); text-align: center; margin-bottom: 10px;
+  .progreso {
+    font-size: 15px; font-weight: 700; color: var(--muted);
+    text-align: center; margin-bottom: 12px;
   }
-  .btn-completar {
-    width: 100%; padding: 18px; border-radius: var(--radius);
-    border: none; font-size: 17px; font-weight: 900;
-    background: var(--success); color: white; cursor: pointer;
-    transition: 0.2s; letter-spacing: 0.5px;
+  .btn-armar {
+    width: 100%; padding: 20px; border-radius: var(--radius);
+    border: none; font-size: 20px; font-weight: 900;
+    background: var(--success); color: #fff; cursor: pointer;
+    transition: 0.15s; letter-spacing: 0.3px; box-shadow: 0 4px 12px rgba(22,163,74,0.35);
   }
-  .btn-completar:disabled {
-    background: rgba(16,185,129,0.3); color: rgba(255,255,255,0.4); cursor: not-allowed;
+  .btn-armar:disabled {
+    background: #d1fae5; color: #6ee7b7; cursor: not-allowed;
+    box-shadow: none;
   }
-  .btn-completar:not(:disabled):active { transform: scale(0.98); }
+  .btn-armar:not(:disabled):active { transform: scale(0.98); }
 
-  /* MODAL CONFIRMACIÓN DESTILDAR */
-  .confirm-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 6000; backdrop-filter: blur(4px);
+  /* ── MODAL CONFIRMAR DESTILDAR ── */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    display: none; align-items: flex-end; justify-content: center;
+    z-index: 8000; backdrop-filter: blur(2px);
   }
-  .confirm-box {
-    background: #1e293b; border: 1px solid var(--border);
-    border-radius: 20px; padding: 24px; width: 88%; max-width: 320px;
-    text-align: center; box-shadow: var(--shadow);
-    animation: popIn 0.18s cubic-bezier(0.175,0.885,0.32,1.275);
+  .modal-box {
+    background: #fff; border-radius: 24px 24px 0 0;
+    padding: 28px 24px 36px; width: 100%; max-width: 480px;
+    animation: slideUp 0.2s ease;
   }
-  @keyframes popIn { from { transform: scale(0.88); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-  .confirm-box h3 { font-size: 17px; font-weight: 800; margin-bottom: 8px; }
-  .confirm-box p { font-size: 13px; color: var(--muted); margin-bottom: 20px; line-height: 1.4; }
-  .confirm-btns { display: flex; gap: 10px; }
-  .confirm-btn {
-    flex: 1; padding: 14px; border-radius: 12px; font-size: 15px;
+  @keyframes slideUp { from { transform: translateY(60px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .modal-title { font-size: 22px; font-weight: 900; color: var(--text); margin-bottom: 8px; }
+  .modal-item  { font-size: 18px; font-weight: 700; color: var(--danger); margin-bottom: 6px; }
+  .modal-sub   { font-size: 15px; color: var(--muted); margin-bottom: 24px; line-height: 1.4; }
+  .modal-btns  { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-btn {
+    padding: 18px; border-radius: var(--radius); font-size: 17px;
     font-weight: 800; border: none; cursor: pointer; transition: 0.15s;
   }
-  .confirm-btn.yes { background: var(--danger); color: white; }
-  .confirm-btn.no  { background: rgba(255,255,255,0.08); border: 1px solid var(--border); color: var(--muted); }
+  .modal-btn.cancel { background: var(--bg); border: 2px solid var(--border); color: var(--muted); }
+  .modal-btn.confirm { background: var(--danger); color: #fff; }
+  .modal-btn:active { transform: scale(0.97); }
 
-  /* EMPTY STATE */
-  .empty {
-    text-align: center; padding: 60px 20px; color: var(--muted);
-    display: flex; flex-direction: column; align-items: center; gap: 12px;
-  }
-  .empty .icon { font-size: 48px; }
-
-  /* LOADER */
+  /* ── LOADER / TOAST ── */
   #loader {
-    position: fixed; inset: 0; background: rgba(15,23,42,0.9);
-    display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 16px; z-index: 9999;
-    color: var(--primary); font-weight: 700;
+    position: fixed; inset: 0; background: rgba(255,255,255,0.85);
+    display: none; align-items: center; justify-content: center;
+    z-index: 9999; flex-direction: column; gap: 16px;
   }
-  .spinner {
-    width: 44px; height: 44px; border: 4px solid rgba(245,158,11,0.2);
-    border-top-color: var(--primary); border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
+  .spinner { width: 48px; height: 48px; border: 5px solid #e2e8f0; border-top-color: var(--warn); border-radius: 50%; animation: spin 0.7s linear infinite; }
 
-  /* TOAST */
   .toast {
-    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
-    background: #1e293b; color: white; padding: 12px 24px;
-    border-radius: 99px; font-size: 14px; font-weight: 600;
-    box-shadow: var(--shadow); border: 1px solid var(--border);
-    z-index: 5000; white-space: nowrap; animation: slideUp2 0.3s forwards;
+    position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+    background: var(--text); color: #fff; padding: 14px 28px;
+    border-radius: 99px; font-size: 16px; font-weight: 700;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2); z-index: 7000;
+    white-space: nowrap; animation: fadeUp 0.3s ease;
   }
+  .toast.error { background: var(--danger); }
+  .toast.ok    { background: var(--success); }
 
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-  @keyframes slideUp2 { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty .icon { font-size: 56px; margin-bottom: 12px; }
+  .empty p { font-size: 18px; font-weight: 600; }
+
+  @keyframes spin    { to { transform: rotate(360deg); } }
+  @keyframes pulse   { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  @keyframes fadeUp  { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
 </style>
 </head>
 <body>
 
-<div id="loader">
-  <div class="spinner"></div>
-  <div>Cargando...</div>
-</div>
+<div id="loader"><div class="spinner"></div><div style="font-size:17px;font-weight:700;color:#64748b;">Cargando...</div></div>
 
 <!-- LOGIN -->
-<div id="loginScreen" style="display:none;">
-  <div style="font-size:48px;">📦</div>
-  <h1>Depósito ML</h1>
-  <p>Identificate para continuar</p>
-  <button class="btn-login" onclick="login('A')">Soy A</button>
-  <button class="btn-login" style="background:#64748b;" onclick="login('C')">Soy C</button>
+<div id="loginScreen">
+  <div class="login-icon">📦</div>
+  <div class="login-title">Depósito ML</div>
+  <div class="login-sub">Identificate para continuar</div>
+  <button class="btn-login a" onclick="login('A')">Soy A</button>
+  <button class="btn-login c" onclick="login('C')">Soy C</button>
 </div>
 
-<!-- APP PRINCIPAL -->
+<!-- APP -->
 <div id="app">
-  <div id="vistaLista" style="display:flex; flex-direction:column; min-height:100vh;">
 
-    <!-- Header -->
+  <!-- Vista: Lista de pedidos -->
+  <div id="vistaLista" style="display:flex;flex-direction:column;min-height:100vh;">
     <div class="header">
       <div class="conn-dot" id="connDot"></div>
       <div class="header-title">📦 Depósito</div>
-      <div id="userBadge" class="header-user">A</div>
+      <div id="userBadge" class="user-badge">A</div>
     </div>
 
-    <!-- Filtros -->
-    <div class="filters">
-      <button class="filter-btn active" data-estado="pendiente" onclick="setFiltro('pendiente', this)">Pendientes</button>
-      <button class="filter-btn" data-estado="armado" onclick="setFiltro('armado', this)">Armados</button>
-      <button class="filter-btn" data-estado="todos" onclick="setFiltro('todos', this)">Todos hoy</button>
+    <div class="tabs">
+      <button class="tab-btn hoy active" id="tabHoy" onclick="setTab('hoy')">
+        🔴 HOY<br><span style="font-size:13px;font-weight:600;">Para esta semana</span>
+      </button>
+      <button class="tab-btn pend" id="tabPend" onclick="setTab('pendientes')">
+        🔵 PENDIENTES<br><span style="font-size:13px;font-weight:600;">Próxima semana+</span>
+      </button>
     </div>
 
-    <!-- Lista -->
-    <div id="listaPedidos">
-      <div class="empty"><div class="icon">📭</div><div>Cargando pedidos...</div></div>
-    </div>
+    <div id="listaPedidos"></div>
   </div>
 
-  <!-- Detalle pedido -->
-  <div id="detalle">
-    <div class="detalle-header">
+  <!-- Vista: Detalle del pedido -->
+  <div id="vistaDetalle">
+    <div class="det-header">
       <button class="btn-back" onclick="volverALista()">← Volver</button>
-      <div class="detalle-title" id="detalleTitle">Pedido</div>
-      <div id="detalleBadge" class="estado-badge badge-pendiente">—</div>
+      <div class="det-title" id="detTitle">Pedido</div>
+      <div id="detBadge" style="font-size:14px;font-weight:800;color:var(--muted);"></div>
     </div>
-    <div class="detalle-info" id="detalleInfo"></div>
+    <div class="det-info">
+      <div class="det-cliente" id="detCliente">—</div>
+      <div class="det-entrega" id="detEntrega">—</div>
+      <div class="det-sub" id="detSub">—</div>
+    </div>
     <div id="listaItems"></div>
-    <div class="detalle-footer">
-      <div class="progreso-texto" id="progresoTexto">0 / 0 items armados</div>
-      <button class="btn-completar" id="btnCompletar" disabled onclick="completarPedido()">
+    <div class="det-footer">
+      <div class="progreso" id="progresoTexto">0 / 0 items</div>
+      <button class="btn-armar" id="btnArmar" disabled onclick="completarPedido()">
         ✅ MARCAR COMO ARMADO
       </button>
     </div>
   </div>
+</div>
 
-  <!-- MODAL CONFIRMACIÓN DESTILDAR -->
-  <div id="confirmOverlay" class="confirm-overlay" style="display:none;">
-    <div class="confirm-box">
-      <h3>¿Destildar este artículo?</h3>
-      <p id="confirmItemNombre" style="color:var(--text); font-weight:600;"></p>
-      <p>Va a quedar como <strong style="color:var(--danger)">faltante</strong> en facturación.</p>
-      <div class="confirm-btns">
-        <button class="confirm-btn no"  onclick="cerrarConfirm()">Cancelar</button>
-        <button class="confirm-btn yes" onclick="confirmarDestildar()">Sí, destildar</button>
-      </div>
+<!-- MODAL DESTILDAR -->
+<div class="modal-overlay" id="modalDestildar">
+  <div class="modal-box">
+    <div class="modal-title">⚠️ ¿Destildar este artículo?</div>
+    <div class="modal-item" id="modalItemNombre"></div>
+    <div class="modal-sub">Va a quedar marcado como <strong style="color:var(--danger)">faltante</strong> en facturación.</div>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="cerrarModal()">Cancelar</button>
+      <button class="modal-btn confirm" onclick="confirmarDestildar()">Sí, destildar</button>
     </div>
   </div>
 </div>
 
 <script>
-  // ========================================
-  // CONFIG
-  // ========================================
-  const SUPABASE_URL = "https://gjeyvbidomxzofcdycya.supabase.co";
-  const SUPABASE_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
-  const WORKER_URL    = "https://frosty-term-20ea.santamariapablodaniel.workers.dev";
+// ── CONFIG ──
+const SUPABASE_URL  = "https://gjeyvbidomxzofcdycya.supabase.co";
+const SUPABASE_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
 
-  let currentUser = null;
-  let pedidoActivo = null;
-  let itemsActivos = [];
-  let filtroActual = "pendiente";
-  let realtimeSub  = null;
-  let pedidosCache = [];
+let currentUser    = null;
+let tabActual      = "hoy";
+let pedidoActivo   = null;
+let itemsActivos   = [];
+let pedidosCache   = [];
+let confirmPending = null;
 
-  // ========================================
-  // SUPABASE CLIENT (REST + REALTIME)
-  // ========================================
-  async function sbGet(table, params = "") {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
-      headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` }
-    });
-    return r.ok ? r.json() : [];
-  }
+// ── FECHA VIERNES DE ESTA SEMANA ──
+function viernesEstaSemana() {
+  const hoy = new Date();
+  const diff = 5 - hoy.getDay(); // días hasta viernes
+  const v = new Date(hoy);
+  v.setDate(hoy.getDate() + (diff >= 0 ? diff : diff + 7));
+  v.setHours(23, 59, 59, 999);
+  return v;
+}
 
-  async function sbPatch(table, match, data) {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${match}`, {
-      method: "PATCH",
-      headers: {
-        apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}`,
-        "Content-Type": "application/json", Prefer: "return=representation"
-      },
-      body: JSON.stringify(data)
-    });
-    return r.ok ? r.json() : null;
-  }
+function esUrgente(fechaEntregaISO) {
+  if (!fechaEntregaISO) return true;
+  const fe = new Date(fechaEntregaISO + "T23:59:59");
+  return fe <= viernesEstaSemana();
+}
 
-  async function sbInsert(table, data) {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}`,
-        "Content-Type": "application/json", Prefer: "return=representation"
-      },
-      body: JSON.stringify(data)
-    });
-    return r.ok ? r.json() : null;
-  }
+// ── SUPABASE ──
+async function sbGet(table, params = "") {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
+    headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` }
+  });
+  return r.ok ? r.json() : [];
+}
+async function sbPatch(table, match, data) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${match}`, {
+    method: "PATCH",
+    headers: {
+      apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}`,
+      "Content-Type": "application/json", Prefer: "return=representation"
+    },
+    body: JSON.stringify(data)
+  });
+  return r.ok ? r.json() : null;
+}
+async function sbInsert(table, data) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}`,
+      "Content-Type": "application/json", Prefer: "return=minimal"
+    },
+    body: JSON.stringify(data)
+  });
+  return r.ok;
+}
 
-  // ========================================
-  // REALTIME (Supabase Websocket)
-  // ========================================
-  function conectarRealtime() {
-    const wsUrl = `${SUPABASE_URL.replace("https://","wss://")}/realtime/v1/websocket?apikey=${SUPABASE_ANON}&vsn=1.0.0`;
-    const ws = new WebSocket(wsUrl);
-    let heartbeat;
-
-    ws.onopen = () => {
-      setConn("online");
-      // Suscribir a cambios en pedidos
-      ws.send(JSON.stringify({
-        topic: "realtime:public:pedidos",
-        event: "phx_join",
-        payload: { config: { broadcast: { self: true }, presence: { key: "" }, postgres_changes: [{ event: "*", schema: "public", table: "pedidos" }] } },
-        ref: "1"
-      }));
-      heartbeat = setInterval(() => ws.readyState === 1 && ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: "hb" })), 20000);
-    };
-
-    ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        if (msg.event === "postgres_changes" || (msg.payload && msg.payload.data)) {
-          cargarPedidos(); // Recargar lista cuando hay cambios
-        }
-      } catch(_) {}
-    };
-
-    ws.onclose = () => {
-      setConn("offline"); clearInterval(heartbeat);
-      setTimeout(conectarRealtime, 3000); // Reconectar
-    };
-
-    ws.onerror = () => setConn("offline");
-  }
-
-  function setConn(estado) {
-    const dot = document.getElementById("connDot");
-    if (dot) dot.className = "conn-dot " + estado;
-  }
-
-  // ========================================
-  // LOGIN
-  // ========================================
-  function login(user) {
-    currentUser = user;
-    localStorage.setItem("depositoUser", user);
-    document.getElementById("loginScreen").style.display = "none";
-    document.getElementById("app").style.display = "flex";
-    document.getElementById("userBadge").textContent = user;
-    iniciarApp();
-  }
-
-  // ========================================
-  // CARGA DE PEDIDOS
-  // ========================================
-  async function cargarPedidos() {
-    setConn("syncing");
+// ── REALTIME ──
+function conectarRealtime() {
+  const ws = new WebSocket(
+    `${SUPABASE_URL.replace("https://","wss://")}/realtime/v1/websocket?apikey=${SUPABASE_ANON}&vsn=1.0.0`
+  );
+  let hb;
+  ws.onopen = () => {
+    setConn("online");
+    ws.send(JSON.stringify({ topic:"realtime:public:pedidos", event:"phx_join",
+      payload:{ config:{ postgres_changes:[{ event:"*", schema:"public", table:"pedidos" }] } }, ref:"1" }));
+    hb = setInterval(() => ws.readyState===1 && ws.send(JSON.stringify({ topic:"phoenix", event:"heartbeat", payload:{}, ref:"hb" })), 20000);
+  };
+  ws.onmessage = (e) => {
     try {
-      const hoy = new Date().toISOString().split("T")[0];
-      let params = `order=created_at.asc&limit=100`;
+      const msg = JSON.parse(e.data);
+      if (msg.payload?.data?.table === "pedidos") cargarPedidos();
+    } catch(_) {}
+  };
+  ws.onclose = () => { setConn("offline"); clearInterval(hb); setTimeout(conectarRealtime, 3000); };
+  ws.onerror = () => setConn("offline");
+}
+function setConn(s) {
+  const d = document.getElementById("connDot");
+  if (d) d.className = "conn-dot " + s;
+}
 
-      if (filtroActual === "pendiente") params += `&estado=eq.pendiente`;
-      else if (filtroActual === "armado") params += `&estado=eq.armado`;
-      else params += `&created_at=gte.${hoy}T00:00:00`;
+// ── LOGIN ──
+function login(user) {
+  currentUser = user;
+  localStorage.setItem("depositoUser", user);
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("app").style.display = "flex";
+  document.getElementById("userBadge").textContent = user;
+  iniciarApp();
+}
 
-      pedidosCache = await sbGet("pedidos", params);
-      renderLista();
-      setConn("online");
-    } catch(e) {
-      setConn("offline");
-    }
+// ── CARGA ──
+async function cargarPedidos() {
+  setConn("syncing");
+  try {
+    pedidosCache = await sbGet("pedidos",
+      "estado=in.(pendiente,armado)&order=fecha_entrega.asc,created_at.asc&limit=200");
+    renderLista();
+    setConn("online");
+  } catch(e) { setConn("offline"); }
+}
+
+// ── TABS ──
+function setTab(tab) {
+  tabActual = tab;
+  document.getElementById("tabHoy").classList.toggle("active", tab === "hoy");
+  document.getElementById("tabPend").classList.toggle("active", tab === "pendientes");
+  renderLista();
+}
+
+// ── RENDER LISTA ──
+function renderLista() {
+  const viernes = viernesEstaSemana();
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+
+  const filtrados = pedidosCache.filter(p => {
+    const fe = p.fecha_entrega ? new Date(p.fecha_entrega + "T23:59:59") : new Date();
+    return tabActual === "hoy" ? fe <= viernes : fe > viernes;
+  });
+
+  // Contadores para tabs
+  const countHoy  = pedidosCache.filter(p => { const fe = p.fecha_entrega ? new Date(p.fecha_entrega+"T23:59:59") : new Date(); return fe <= viernes; }).length;
+  const countPend = pedidosCache.filter(p => { const fe = p.fecha_entrega ? new Date(p.fecha_entrega+"T23:59:59") : new Date(); return fe > viernes; }).length;
+  document.getElementById("tabHoy").innerHTML  = `🔴 HOY<br><span style="font-size:13px;font-weight:600;">Esta semana (${countHoy})</span>`;
+  document.getElementById("tabPend").innerHTML = `🔵 PENDIENTES<br><span style="font-size:13px;font-weight:600;">Próxima semana+ (${countPend})</span>`;
+
+  const box = document.getElementById("listaPedidos");
+  if (!filtrados.length) {
+    box.innerHTML = `<div class="empty"><div class="icon">${tabActual==="hoy"?"📭":"🗓️"}</div><p>No hay pedidos ${tabActual==="hoy"?"para esta semana":"pendientes"}.</p></div>`;
+    return;
   }
 
-  function renderLista() {
-    const box = document.getElementById("listaPedidos");
-    if (!pedidosCache.length) {
-      box.innerHTML = `<div class="empty"><div class="icon">📭</div><div>No hay pedidos ${filtroActual === "pendiente" ? "pendientes" : ""}.</div></div>`;
-      return;
-    }
+  box.innerHTML = filtrados.map(p => {
+    const fe = p.fecha_entrega ? new Date(p.fecha_entrega + "T12:00:00") : null;
+    const feStr = fe ? fe.toLocaleDateString("es-AR", { weekday:"long", day:"2-digit", month:"2-digit", year:"numeric" }) : "—";
+    const urgente = esUrgente(p.fecha_entrega);
+    const cardClass = p.estado === "armado" ? "armado" : urgente ? "urgente" : "pendiente-card";
+    const labelClass = urgente ? "hoy-label" : "pend-label";
+    const icon = urgente ? "🔴" : "🔵";
 
-    box.innerHTML = pedidosCache.map(p => {
-      const pct = p.items_total ? Math.round((p.items_armados || 0) / p.items_total * 100) : 0;
-      const estadoClass = `estado-${p.estado}`;
-      const badgeClass = `badge-${p.estado}`;
-      const esActivo = pedidoActivo && pedidoActivo.id === p.id ? "activo" : "";
-      const hora = new Date(p.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-      const fe = p.fecha_entrega ? new Date(p.fecha_entrega + "T12:00:00").toLocaleDateString("es-AR", { day:"2-digit", month:"short"}) : "—";
+    return `
+      <div class="pedido-card ${cardClass}" onclick="abrirPedido('${p.id}')">
+        ${p.estado === "armado" ? `<div class="badge-armado">✅ ARMADO</div>` : ""}
+        <div class="card-cliente">${p.cliente_nombre || "Cliente " + (p.cliente_id || "—")}</div>
+        <div class="card-entrega ${labelClass}">${icon} SE ENTREGA: ${feStr.toUpperCase()}</div>
+        <div class="card-meta">Vendedor: ${p.vendedor || "—"} · ${p.observaciones || "Sin obs."}</div>
+      </div>`;
+  }).join("");
+}
 
-      return `
-        <div class="pedido-card ${estadoClass} ${esActivo}" onclick="abrirPedido('${p.id}')">
-          <div class="card-top">
-            <div>
-              <div class="card-nombre">${p.cliente_nombre || ("Cliente " + (p.cliente_id || "—"))}</div>
-              <div class="card-num">N° ${p.cliente_id || "—"} · ${p.vendedor || "—"}</div>
-            </div>
-            <div class="estado-badge ${badgeClass}">${estadoLabel(p.estado)}</div>
-          </div>
-          <div class="card-meta">
-            <span>⏰ ${hora}</span>
-            <span>📅 ${fe}</span>
-            ${p.items_total ? `<span>📦 ${p.items_armados||0}/${p.items_total}</span>` : ""}
-          </div>
-          ${p.items_total ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : ""}
-        </div>`;
-    }).join("");
-  }
+// ── DETALLE ──
+async function abrirPedido(id) {
+  showLoader();
+  try {
+    const [ps, items] = await Promise.all([
+      sbGet("pedidos", `id=eq.${id}`),
+      sbGet("items_pedido", `pedido_id=eq.${id}&order=id.asc`)
+    ]);
+    pedidoActivo = ps[0];
+    itemsActivos = items;
 
-  function estadoLabel(e) {
-    return { pendiente:"Pendiente", armado:"✅ Armado", en_facturacion:"Facturando", facturado:"Facturado" }[e] || e;
-  }
+    const fe = pedidoActivo.fecha_entrega;
+    const feDate = fe ? new Date(fe + "T12:00:00") : null;
+    const feStr = feDate ? feDate.toLocaleDateString("es-AR", { weekday:"long", day:"2-digit", month:"2-digit", year:"numeric" }) : "—";
+    const urgente = esUrgente(fe);
 
-  // ========================================
-  // DETALLE DE PEDIDO
-  // ========================================
-  async function abrirPedido(id) {
-    showLoader();
-    try {
-      const [pedidos, items] = await Promise.all([
-        sbGet("pedidos", `id=eq.${id}`),
-        sbGet("items_pedido", `pedido_id=eq.${id}&order=id.asc`)
-      ]);
+    document.getElementById("detTitle").textContent =
+      pedidoActivo.cliente_nombre || "Cliente " + (pedidoActivo.cliente_id || "—");
+    document.getElementById("detCliente").textContent =
+      pedidoActivo.cliente_nombre || "Cliente " + (pedidoActivo.cliente_id || "—");
+    document.getElementById("detEntrega").textContent = `${urgente ? "🔴" : "🔵"} SE ENTREGA: ${feStr.toUpperCase()}`;
+    document.getElementById("detEntrega").className = `det-entrega ${urgente ? "urgente" : "normal"}`;
+    document.getElementById("detSub").textContent =
+      `Vendedor: ${pedidoActivo.vendedor || "—"} · ${pedidoActivo.observaciones || "Sin observaciones"}`;
+    document.getElementById("detBadge").textContent =
+      pedidoActivo.estado === "armado" ? "✅ ARMADO" : "";
 
-      pedidoActivo = pedidos[0];
-      itemsActivos = items;
+    renderItems();
 
-      // Actualizar info header
-      document.getElementById("detalleTitle").textContent =
-        pedidoActivo.cliente_nombre || ("Cliente " + pedidoActivo.cliente_id);
-      const badge = document.getElementById("detalleBadge");
-      badge.textContent = estadoLabel(pedidoActivo.estado);
-      badge.className = `estado-badge badge-${pedidoActivo.estado}`;
+    document.getElementById("vistaLista").style.display = "none";
+    document.getElementById("vistaDetalle").style.display = "flex";
+    document.getElementById("vistaDetalle").style.flexDirection = "column";
+  } catch(e) { toast("Error al cargar pedido", "error"); }
+  finally { hideLoader(); }
+}
 
-      // Info
-      const fe = pedidoActivo.fecha_entrega
-        ? new Date(pedidoActivo.fecha_entrega + "T12:00:00").toLocaleDateString("es-AR")
-        : "—";
-      document.getElementById("detalleInfo").innerHTML = `
-        <div class="info-item"><span>Cliente</span><strong>${pedidoActivo.cliente_nombre || "—"}</strong></div>
-        <div class="info-item"><span>Vendedor</span><strong>${pedidoActivo.vendedor || "—"}</strong></div>
-        <div class="info-item"><span>Entrega</span><strong>${fe}</strong></div>
-        <div class="info-item"><span>Obs.</span><strong>${pedidoActivo.observaciones || "—"}</strong></div>
-      `;
-
-      renderItems();
-
-      // Mostrar panel detalle
-      document.getElementById("vistaLista").style.display = "none";
-      document.getElementById("detalle").style.display = "flex";
-      document.getElementById("detalle").style.flexDirection = "column";
-      document.getElementById("detalle").style.minHeight = "100vh";
-
-    } catch(e) {
-      toast("Error al cargar pedido", true);
-    } finally {
-      hideLoader();
-    }
-  }
-
-  function renderItems() {
-    const box = document.getElementById("listaItems");
-    box.innerHTML = itemsActivos.map((item, i) => `
-      <div class="item-row ${item.armado ? "armado" : ""}" id="item-row-${item.id}">
-        <button class="item-check-btn ${item.armado ? "checked" : ""}"
-          onclick="toggleItem('${item.id}', ${i}, ${!item.armado})">
-          ${item.armado ? "✓" : ""}
-        </button>
-        <div class="item-desc ${item.armado ? "tachado" : ""}" id="item-desc-${item.id}">
-          ${item.descripcion}
-        </div>
-        <div class="item-qty">${item.cantidad}</div>
+function renderItems() {
+  const box = document.getElementById("listaItems");
+  box.innerHTML = itemsActivos.map((item, i) => `
+    <div class="item-row ${item.armado ? "armado" : ""}" id="irow-${item.id}">
+      <button class="check-btn ${item.armado ? "on" : ""}"
+        onclick="toggleItem('${item.id}', ${i}, ${!item.armado})">
+        ${item.armado ? "✓" : ""}
+      </button>
+      <div class="item-desc ${item.armado ? "tachado" : ""}" id="idesc-${item.id}">
+        ${item.descripcion}
       </div>
-    `).join("");
-    actualizarProgreso();
+      <div class="item-qty">${item.cantidad}</div>
+    </div>
+  `).join("");
+  actualizarProgreso();
+}
+
+// ── TOGGLE ITEM ──
+async function toggleItem(itemId, idx, nuevoEstado) {
+  if (!nuevoEstado && itemsActivos[idx].armado) {
+    // Destildar → confirmar
+    confirmPending = { itemId, idx };
+    document.getElementById("modalItemNombre").textContent = itemsActivos[idx].descripcion;
+    document.getElementById("modalDestildar").style.display = "flex";
+    return;
   }
+  await aplicarToggle(itemId, idx, true);
+}
 
-  // Estado del modal de confirmación destildar
-  let confirmPendiente = null; // { itemId, idx }
+function cerrarModal() {
+  confirmPending = null;
+  document.getElementById("modalDestildar").style.display = "none";
+}
 
-  async function toggleItem(itemId, idx, nuevoEstado) {
-    // Si está tildado y quiere destildar → pedir confirmación
-    if (!nuevoEstado && itemsActivos[idx].armado) {
-      confirmPendiente = { itemId, idx };
-      document.getElementById("confirmItemNombre").textContent =
-        itemsActivos[idx].descripcion;
-      document.getElementById("confirmOverlay").style.display = "flex";
-      return;
-    }
-    // Si está destildado y quiere tildar → directo
-    await aplicarToggle(itemId, idx, true);
+async function confirmarDestildar() {
+  if (!confirmPending) return;
+  const { itemId, idx } = confirmPending;
+  cerrarModal();
+  await aplicarToggle(itemId, idx, false);
+}
+
+async function aplicarToggle(itemId, idx, nuevoEstado) {
+  itemsActivos[idx].armado = nuevoEstado;
+
+  const row  = document.getElementById(`irow-${itemId}`);
+  const btn  = row.querySelector(".check-btn");
+  const desc = document.getElementById(`idesc-${itemId}`);
+
+  if (nuevoEstado) {
+    row.classList.add("armado"); btn.classList.add("on"); btn.textContent = "✓"; desc.classList.add("tachado");
+  } else {
+    row.classList.remove("armado"); btn.classList.remove("on"); btn.textContent = ""; desc.classList.remove("tachado");
   }
+  actualizarProgreso();
 
-  function cerrarConfirm() {
-    confirmPendiente = null;
-    document.getElementById("confirmOverlay").style.display = "none";
+  try {
+    const now = new Date().toISOString();
+    await sbPatch("items_pedido", `id=eq.${itemId}`, {
+      armado: nuevoEstado,
+      armado_por: nuevoEstado ? currentUser : null,
+      armado_at:  nuevoEstado ? now : null,
+    });
+  } catch(e) { toast("Error al guardar", "error"); }
+}
+
+// ── PROGRESO ──
+function actualizarProgreso() {
+  const total    = itemsActivos.length;
+  const armados  = itemsActivos.filter(i => i.armado).length;
+  const faltantes = total - armados;
+  const btn = document.getElementById("btnArmar");
+
+  let txt = `${armados} / ${total} items armados`;
+  if (faltantes > 0 && armados > 0) txt += ` · ${faltantes} irán como faltante${faltantes > 1 ? "s" : ""}`;
+  document.getElementById("progresoTexto").textContent = txt;
+
+  if (pedidoActivo?.estado === "armado") {
+    btn.disabled = true;
+    btn.textContent = "✅ YA ESTÁ ARMADO";
+  } else {
+    btn.disabled = armados === 0;
+    btn.textContent = faltantes > 0 && armados > 0
+      ? `✅ ARMAR (${faltantes} faltante${faltantes > 1 ? "s" : ""})`
+      : "✅ MARCAR COMO ARMADO";
   }
+}
 
-  async function confirmarDestildar() {
-    if (!confirmPendiente) return;
-    const { itemId, idx } = confirmPendiente;
-    cerrarConfirm();
-    await aplicarToggle(itemId, idx, false);
-  }
+// ── COMPLETAR PEDIDO ──
+async function completarPedido() {
+  if (!pedidoActivo || pedidoActivo.estado === "armado") return;
+  showLoader();
+  try {
+    const faltantes = itemsActivos.filter(i => !i.armado);
 
-  async function aplicarToggle(itemId, idx, nuevoEstado) {
-    itemsActivos[idx].armado = nuevoEstado;
-    const row = document.getElementById(`item-row-${itemId}`);
-    const btn = row.querySelector(".item-check-btn");
-    const desc = document.getElementById(`item-desc-${itemId}`);
-
-    if (nuevoEstado) {
-      row.classList.add("armado");
-      btn.classList.add("checked"); btn.textContent = "✓";
-      desc.classList.add("tachado");
-    } else {
-      row.classList.remove("armado");
-      btn.classList.remove("checked"); btn.textContent = "";
-      desc.classList.remove("tachado");
-    }
-    actualizarProgreso();
-
-    try {
-      const now = new Date().toISOString();
-      await sbPatch("items_pedido", `id=eq.${itemId}`, {
-        armado: nuevoEstado,
-        armado_por: nuevoEstado ? currentUser : null,
-        armado_at: nuevoEstado ? now : null,
-      });
-      await auditoria(pedidoActivo.id, nuevoEstado ? "item_armado" : "item_desarmado",
-        { item_id: itemId, descripcion: itemsActivos[idx].descripcion });
-    } catch(e) {
-      toast("Error al guardar", true);
-    }
-  }
-
-  function actualizarProgreso() {
-    const total   = itemsActivos.length;
-    const armados = itemsActivos.filter(i => i.armado).length;
-    const faltantes = total - armados;
-
-    let texto = `${armados} / ${total} items armados`;
-    if (faltantes > 0) texto += ` · ${faltantes} irán como faltantes`;
-    document.getElementById("progresoTexto").textContent = texto;
-
-    const btn = document.getElementById("btnCompletar");
-    // Activo con 1 o más items tildados, o si el pedido ya está armado
-    if (pedidoActivo?.estado === "armado") {
-      btn.disabled = true;
-      btn.textContent = "✅ YA ESTÁ ARMADO";
-    } else {
-      btn.disabled = armados === 0;
-      if (faltantes > 0 && armados > 0) {
-        btn.textContent = `✅ ARMAR (${faltantes} faltante${faltantes > 1 ? "s" : ""})`;
-      } else {
-        btn.textContent = "✅ MARCAR COMO ARMADO";
-      }
-    }
-  }
-
-  async function completarPedido() {
-    if (!pedidoActivo) return;
-    showLoader();
-    try {
-      const now = new Date().toISOString();
-
-      // Marcar items sin tildar como faltantes en Supabase
-      const faltantes = itemsActivos.filter(i => !i.armado);
+    // Marcar faltantes en Supabase
+    if (faltantes.length) {
       await Promise.all(faltantes.map(item =>
         sbPatch("items_pedido", `id=eq.${item.id}`, { es_faltante: true })
       ));
-
-      await sbPatch("pedidos", `id=eq.${pedidoActivo.id}`, { estado: "armado" });
-      await auditoria(pedidoActivo.id, "pedido_armado", {
-        armado_por: currentUser,
-        items_armados: itemsActivos.filter(i => i.armado).length,
-        items_faltantes: faltantes.length,
-      });
-
-      pedidoActivo.estado = "armado";
-      document.getElementById("detalleBadge").textContent = "✅ Armado";
-      document.getElementById("detalleBadge").className = "estado-badge badge-armado";
-      actualizarProgreso();
-
-      const msg = faltantes.length > 0
-        ? `¡Armado! ${faltantes.length} faltante${faltantes.length > 1 ? "s" : ""} enviado${faltantes.length > 1 ? "s" : ""} a facturación.`
-        : "¡Pedido armado completo!";
-      toast(msg);
-      setTimeout(volverALista, 1500);
-    } catch(e) {
-      toast("Error al completar", true);
-    } finally {
-      hideLoader();
     }
-  }
 
-  // ========================================
-  // AUDITORÍA
-  // ========================================
-  async function auditoria(pedidoId, accion, detalle = {}) {
-    try {
-      await sbInsert("auditoria", {
-        pedido_id: pedidoId, accion,
-        usuario: currentUser, detalle,
-      });
-    } catch(_) {}
-  }
+    await sbPatch("pedidos", `id=eq.${pedidoActivo.id}`, { estado: "armado" });
+    await sbInsert("auditoria", {
+      pedido_id: pedidoActivo.id, accion: "pedido_armado", usuario: currentUser,
+      detalle: { armados: itemsActivos.filter(i => i.armado).length, faltantes: faltantes.length }
+    });
 
-  // ========================================
-  // NAV
-  // ========================================
-  function volverALista() {
-    pedidoActivo = null;
-    document.getElementById("detalle").style.display = "none";
-    document.getElementById("vistaLista").style.display = "flex";
-    document.getElementById("vistaLista").style.flexDirection = "column";
-    document.getElementById("vistaLista").style.minHeight = "100vh";
-    cargarPedidos();
-  }
+    pedidoActivo.estado = "armado";
+    actualizarProgreso();
 
-  function setFiltro(estado, btn) {
-    filtroActual = estado;
-    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    cargarPedidos();
-  }
+    const msg = faltantes.length
+      ? `✅ Armado con ${faltantes.length} faltante${faltantes.length>1?"s":""}!`
+      : "✅ ¡Pedido armado completo!";
+    toast(msg, "ok");
+    setTimeout(volverALista, 1400);
+  } catch(e) { toast("Error al guardar", "error"); }
+  finally { hideLoader(); }
+}
 
-  // ========================================
-  // HELPERS
-  // ========================================
-  function toast(msg, error = false) {
-    const el = document.createElement("div");
-    el.className = "toast";
-    el.textContent = (error ? "⚠️ " : "✅ ") + msg;
-    if (error) el.style.borderColor = "var(--danger)";
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 2500);
-  }
-  function showLoader() { document.getElementById("loader").style.display = "flex"; }
-  function hideLoader() { document.getElementById("loader").style.display = "none"; }
+// ── NAV ──
+function volverALista() {
+  pedidoActivo = null;
+  document.getElementById("vistaDetalle").style.display = "none";
+  document.getElementById("vistaLista").style.display  = "flex";
+  document.getElementById("vistaLista").style.flexDirection = "column";
+  document.getElementById("vistaLista").style.minHeight = "100vh";
+  cargarPedidos();
+}
 
-  // ========================================
-  // INIT
-  // ========================================
-  function iniciarApp() {
-    cargarPedidos();
-    conectarRealtime();
-    setInterval(cargarPedidos, 30000); // Polling de respaldo cada 30s
-  }
+// ── UTILS ──
+function showLoader() { document.getElementById("loader").style.display = "flex"; }
+function hideLoader() { document.getElementById("loader").style.display = "none"; }
 
-  window.onload = () => {
-    hideLoader();
-    const savedUser = localStorage.getItem("depositoUser");
-    if (savedUser) {
-      login(savedUser);
-    } else {
-      document.getElementById("loginScreen").style.display = "flex";
-    }
-  };
+let toastTimer;
+function toast(msg, tipo = "ok") {
+  const old = document.querySelector(".toast"); if (old) old.remove();
+  const el = document.createElement("div");
+  el.className = `toast ${tipo}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.remove(), 2800);
+}
+
+// ── INIT ──
+function iniciarApp() {
+  cargarPedidos();
+  conectarRealtime();
+  setInterval(cargarPedidos, 30000);
+}
+
+window.onload = () => {
+  hideLoader();
+  const saved = localStorage.getItem("depositoUser");
+  if (saved) { login(saved); }
+  else { document.getElementById("loginScreen").style.display = "flex"; }
+};
 </script>
 </body>
 </html>

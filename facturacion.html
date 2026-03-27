@@ -4,319 +4,306 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Facturación ML</title>
-  <meta name="theme-color" content="#0f172a" />
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <meta name="theme-color" content="#ffffff" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
 
 <style>
   :root {
-    --primary: #3b82f6;
-    --primary-dark: #1d4ed8;
-    --primary-dim: rgba(59,130,246,0.15);
-    --bg: #0f172a;
-    --bg-card: rgba(30,41,59,0.85);
-    --bg-panel: rgba(15,23,42,0.95);
-    --text: #f8fafc;
-    --muted: #94a3b8;
-    --border: rgba(148,163,184,0.15);
-    --success: #10b981;
-    --danger: #ef4444;
-    --warning: #f59e0b;
-    --radius: 12px;
-    --shadow: 0 8px 32px rgba(0,0,0,0.4);
-    --panel-w: 380px;
+    --hoy:       #dc2626;
+    --hoy-bg:    #fef2f2;
+    --hoy-brd:   #fca5a5;
+    --manana:    #d97706;
+    --man-bg:    #fffbeb;
+    --man-brd:   #fcd34d;
+    --prox:      #2563eb;
+    --prox-bg:   #eff6ff;
+    --prox-brd:  #93c5fd;
+    --success:   #16a34a;
+    --succ-bg:   #f0fdf4;
+    --danger:    #dc2626;
+    --bg:        #f1f5f9;
+    --card:      #ffffff;
+    --text:      #0f172a;
+    --muted:     #64748b;
+    --border:    #e2e8f0;
+    --radius:    14px;
+    --shadow:    0 2px 12px rgba(0,0,0,0.07);
+    --left-w:    340px;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100vh; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Roboto', sans-serif; }
 
-  html, body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Roboto', sans-serif;
-    height: 100vh; overflow: hidden;
-  }
-
-  /* ─────────────── LOGIN ─────────────── */
+  /* ── LOGIN ── */
   #loginScreen {
     display: flex; align-items: center; justify-content: center;
-    height: 100vh; flex-direction: column; gap: 20px;
-    background: radial-gradient(circle at center, #1e293b, #0f172a);
+    height: 100vh; flex-direction: column; gap: 20px; background: #fff;
   }
   .login-btn {
-    background: var(--primary); color: white; border: none;
-    padding: 16px 40px; border-radius: var(--radius); font-size: 18px;
-    font-weight: 900; cursor: pointer; min-width: 200px; transition: 0.2s;
+    width: 220px; padding: 18px; border-radius: var(--radius);
+    border: none; font-size: 20px; font-weight: 900; cursor: pointer; transition: 0.15s;
   }
-  .login-btn:hover { background: var(--primary-dark); }
-  .login-btn.secondary { background: #475569; }
-  .login-btn.secondary:hover { background: #64748b; }
+  .login-btn.a { background: var(--hoy);  color: #fff; }
+  .login-btn.c { background: var(--prox); color: #fff; }
+  .login-btn:active { transform: scale(0.97); }
 
-  /* ─────────────── LAYOUT SPLIT ─────────────── */
+  /* ── LAYOUT ── */
   #app { display: none; height: 100vh; flex-direction: column; }
 
   .topbar {
-    height: 52px; background: rgba(15,23,42,0.98);
-    backdrop-filter: blur(10px); border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 12px; padding: 0 16px;
-    flex-shrink: 0; z-index: 100;
+    height: 56px; background: #fff;
+    border-bottom: 2px solid var(--border);
+    display: flex; align-items: center; padding: 0 20px; gap: 14px;
+    flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
   }
-  .topbar-title { font-size: 16px; font-weight: 900; flex: 1; }
+  .topbar-title { font-size: 20px; font-weight: 900; flex: 1; }
+  .conn-dot { width: 10px; height: 10px; border-radius: 50%; background: #dc2626; }
+  .conn-dot.online  { background: var(--success); box-shadow: 0 0 0 3px #bbf7d0; }
+  .conn-dot.syncing { background: var(--manana); animation: pulse 1s infinite; }
   .user-chip {
-    background: var(--primary-dim); border: 1px solid var(--primary);
-    color: var(--primary); padding: 4px 12px; border-radius: 99px;
-    font-size: 13px; font-weight: 700;
+    background: var(--hoy); color: #fff;
+    padding: 6px 16px; border-radius: 99px; font-size: 14px; font-weight: 900;
   }
-  .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); transition: 0.3s; }
-  .conn-dot.online { background: var(--success); box-shadow: 0 0 6px rgba(16,185,129,0.5); }
-  .conn-dot.syncing { background: var(--warning); animation: pulse 1s infinite; }
 
-  .split { display: flex; flex: 1; overflow: hidden; }
+  .body { display: flex; flex: 1; overflow: hidden; }
 
-  /* ─────────────── PANEL IZQUIERDO ─────────────── */
+  /* ── PANEL IZQUIERDO ── */
   .panel-left {
-    width: var(--panel-w); flex-shrink: 0;
-    border-right: 1px solid var(--border);
+    width: var(--left-w); flex-shrink: 0;
+    background: var(--card); border-right: 2px solid var(--border);
     display: flex; flex-direction: column; overflow: hidden;
-    background: rgba(8,15,30,0.8);
   }
-  .panel-header {
-    padding: 12px 14px; border-bottom: 1px solid var(--border);
-    display: flex; gap: 8px; align-items: center;
-  }
-  .panel-header h3 { font-size: 14px; font-weight: 700; flex: 1; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 
-  .date-tabs {
-    display: flex; gap: 6px; padding: 10px 14px;
-    border-bottom: 1px solid var(--border); overflow-x: auto; flex-shrink: 0;
+  .left-search { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .left-search input {
+    width: 100%; padding: 10px 14px; border-radius: 99px;
+    border: 2px solid var(--border); font-size: 14px; outline: none;
+    background: var(--bg); color: var(--text);
   }
-  .date-tabs::-webkit-scrollbar { display: none; }
-  .date-tab {
-    background: var(--bg-card); border: 1px solid var(--border);
-    color: var(--muted); padding: 6px 14px; border-radius: 99px;
-    font-size: 11px; font-weight: 700; white-space: nowrap; cursor: pointer;
-    flex-shrink: 0; transition: 0.15s;
-  }
-  .date-tab.active { background: var(--primary-dim); border-color: var(--primary); color: var(--primary); }
+  .left-search input:focus { border-color: var(--prox); }
 
-  .search-box {
-    padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  .grupo { flex-shrink: 0; }
+  .grupo-header {
+    padding: 10px 14px 8px;
+    font-size: 12px; font-weight: 900; text-transform: uppercase;
+    letter-spacing: 0.8px; display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    z-index: 10; background: inherit;
   }
-  .search-box input {
-    width: 100%; background: var(--bg-card); border: 1px solid var(--border);
-    color: var(--text); padding: 8px 12px; border-radius: 8px; font-size: 13px;
-    outline: none;
+  .grupo-header.hoy   { background: var(--hoy-bg);  color: var(--hoy); border-left: 4px solid var(--hoy); }
+  .grupo-header.man   { background: var(--man-bg);  color: var(--manana); border-left: 4px solid var(--manana); }
+  .grupo-header.prox  { background: var(--prox-bg); color: var(--prox); border-left: 4px solid var(--prox); }
+  .grupo-count {
+    margin-left: auto; background: currentColor; color: #fff;
+    border-radius: 99px; font-size: 11px; padding: 1px 8px; opacity: 0.85;
   }
-  .search-box input:focus { border-color: var(--primary); }
 
-  #pedidosList { flex: 1; overflow-y: auto; padding: 8px; }
+  #pedidosList { flex: 1; overflow-y: auto; }
   #pedidosList::-webkit-scrollbar { width: 4px; }
   #pedidosList::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
   .pedido-item {
-    padding: 12px; border-radius: 10px; cursor: pointer;
-    border: 1px solid var(--border); margin-bottom: 6px;
-    transition: 0.15s; border-left: 3px solid var(--border);
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    cursor: pointer; transition: 0.12s;
+    border-left: 4px solid transparent;
   }
-  .pedido-item:hover { background: rgba(255,255,255,0.04); }
-  .pedido-item.selected { background: var(--primary-dim); border-color: var(--primary); border-left-color: var(--primary); }
-  .pedido-item.estado-armado { border-left-color: var(--warning); }
-  .pedido-item.estado-facturado { border-left-color: var(--success); opacity: 0.6; }
-  .pi-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
-  .pi-nombre { font-size: 13px; font-weight: 700; }
-  .pi-badge {
-    font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: 99px;
-    white-space: nowrap; flex-shrink: 0;
-  }
-  .pi-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
-  .pi-progress { height: 3px; background: rgba(255,255,255,0.08); border-radius: 2px; margin-top: 6px; overflow: hidden; }
-  .pi-progress-fill { height: 100%; background: var(--primary); }
+  .pedido-item:hover { background: var(--bg); }
+  .pedido-item.selected { background: #eff6ff; border-left-color: var(--prox); }
+  .pedido-item.grp-hoy.selected  { background: var(--hoy-bg); border-left-color: var(--hoy); }
+  .pedido-item.grp-man.selected  { background: var(--man-bg); border-left-color: var(--manana); }
+  .pedido-item.facturado         { opacity: 0.5; }
 
-  /* ─────────────── PANEL DERECHO ─────────────── */
-  .panel-right {
-    flex: 1; display: flex; flex-direction: column; overflow: hidden;
-  }
+  .pi-nombre { font-size: 15px; font-weight: 800; color: var(--text); }
+  .pi-fecha  { font-size: 13px; font-weight: 600; margin-top: 3px; }
+  .pi-fecha.hoy-c  { color: var(--hoy); }
+  .pi-fecha.man-c  { color: var(--manana); }
+  .pi-fecha.prox-c { color: var(--prox); }
+  .pi-meta   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .pi-prog   { height: 4px; background: rgba(0,0,0,0.07); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+  .pi-prog-fill { height: 100%; border-radius: 2px; transition: width 0.4s; }
 
-  .pedido-header {
-    padding: 14px 20px; border-bottom: 1px solid var(--border);
-    flex-shrink: 0; display: flex; align-items: center; gap: 12px;
+  /* ── PANEL DERECHO ── */
+  .panel-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+
+  .no-sel {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px; color: var(--muted);
   }
-  .pedido-header-info { flex: 1; }
-  .pedido-header-info h2 { font-size: 20px; font-weight: 900; }
-  .pedido-header-info p { font-size: 13px; color: var(--muted); margin-top: 2px; }
-  .pedido-meta-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .no-sel .icon { font-size: 64px; }
+  .no-sel p { font-size: 20px; font-weight: 700; }
+
+  #pedidoPanel { display: none; flex-direction: column; height: 100%; }
+
+  /* Header del pedido */
+  .ped-header {
+    background: #fff; border-bottom: 2px solid var(--border);
+    padding: 20px 24px; flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  }
+  .ped-cliente { font-size: 32px; font-weight: 900; color: var(--text); line-height: 1.1; }
+  .ped-entrega {
+    font-size: 20px; font-weight: 800; margin-top: 8px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .ped-entrega.hoy-e   { color: var(--hoy); }
+  .ped-entrega.man-e   { color: var(--manana); }
+  .ped-entrega.prox-e  { color: var(--prox); }
+  .ped-meta { font-size: 14px; color: var(--muted); margin-top: 6px; }
+  .ped-chips { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
   .chip {
-    background: var(--bg-card); border: 1px solid var(--border);
-    padding: 4px 10px; border-radius: 99px; font-size: 11px; color: var(--muted);
+    background: var(--bg); border: 2px solid var(--border);
+    padding: 5px 12px; border-radius: 99px; font-size: 13px;
+    font-weight: 600; color: var(--muted);
   }
 
-  .ia-toolbar {
-    display: flex; gap: 8px; padding: 10px 20px;
-    border-bottom: 1px solid var(--border); flex-shrink: 0;
-    background: rgba(8,15,30,0.5);
+  /* Toolbar IA */
+  .ia-bar {
+    background: #fff; border-bottom: 1px solid var(--border);
+    padding: 10px 24px; display: flex; gap: 8px; flex-shrink: 0;
   }
   .btn-ia {
-    background: var(--bg-card); border: 1px solid var(--border);
-    color: var(--muted); padding: 7px 14px; border-radius: 8px;
-    font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.15s;
-    display: flex; align-items: center; gap: 6px;
+    background: var(--bg); border: 2px solid var(--border);
+    color: var(--muted); padding: 8px 16px; border-radius: 99px;
+    font-size: 13px; font-weight: 700; cursor: pointer; transition: 0.12s;
   }
-  .btn-ia:hover { border-color: var(--primary); color: var(--primary); }
-  .btn-ia.active { background: var(--primary-dim); border-color: var(--primary); color: var(--primary); }
+  .btn-ia:hover { border-color: var(--prox); color: var(--prox); }
 
-  #itemsContainer {
-    flex: 1; overflow-y: auto; padding: 12px 20px;
-    display: flex; flex-direction: column; gap: 6px;
-  }
-  #itemsContainer::-webkit-scrollbar { width: 4px; }
-  #itemsContainer::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  /* Lista items */
+  #itemsPanel { flex: 1; overflow-y: auto; padding: 16px 24px; display: flex; flex-direction: column; gap: 10px; }
+  #itemsPanel::-webkit-scrollbar { width: 4px; }
+  #itemsPanel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-  .item-fact {
-    display: grid; grid-template-columns: 44px 1fr 80px 44px;
-    align-items: center; gap: 10px;
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 10px; padding: 12px 14px; transition: 0.15s;
+  .item-f {
+    background: #fff; border: 2px solid var(--border);
+    border-radius: var(--radius); padding: 16px 18px;
+    display: grid; grid-template-columns: 54px 1fr 90px 54px;
+    align-items: center; gap: 14px; box-shadow: var(--shadow);
+    transition: 0.12s;
   }
-  .item-fact.facturado {
-    border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.05);
-  }
-  .item-fact.faltante {
-    border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.05);
-  }
-  .item-fact:hover { border-color: var(--primary); }
+  .item-f.ok       { border-color: #86efac; background: var(--succ-bg); }
+  .item-f.faltante { border-color: var(--hoy-brd); background: var(--hoy-bg); }
+  .item-f:hover { border-color: #cbd5e1; }
 
-  .item-check-fact {
-    width: 36px; height: 36px; border-radius: 8px;
-    border: 2px solid var(--border); background: transparent;
-    font-size: 16px; cursor: pointer; display: flex;
-    align-items: center; justify-content: center; transition: 0.15s;
-    flex-shrink: 0;
+  .chk-f {
+    width: 50px; height: 50px; border-radius: 12px;
+    border: 3px solid var(--border); background: #fff;
+    font-size: 24px; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; transition: 0.12s; flex-shrink: 0;
   }
-  .item-check-fact.checked { background: var(--success); border-color: var(--success); color: white; }
-  .item-check-fact.faltante-check { background: rgba(239,68,68,0.15); border-color: var(--danger); }
-  .item-check-fact:active { transform: scale(0.9); }
+  .chk-f.ok       { background: var(--success); border-color: var(--success); color: #fff; }
+  .chk-f.faltante { background: var(--hoy-bg); border-color: var(--hoy); color: var(--hoy); }
+  .chk-f:active   { transform: scale(0.87); }
 
-  .item-fact-desc { font-size: 14px; font-weight: 500; line-height: 1.3; }
-  .item-fact-desc.tachado { text-decoration: line-through; color: var(--muted); }
-  .item-fact-who { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .item-f-desc { font-size: 17px; font-weight: 700; line-height: 1.3; color: var(--text); }
+  .item-f-desc.tachado { text-decoration: line-through; color: var(--muted); }
+  .item-f-who  { font-size: 11px; color: var(--muted); margin-top: 3px; }
 
-  .qty-input {
-    width: 70px; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
-    color: var(--text); border-radius: 8px; padding: 8px; font-size: 16px;
-    font-weight: 700; text-align: center; font-family: 'Roboto Mono', monospace;
-    transition: 0.15s;
+  .qty-in {
+    width: 80px; border: 2px solid var(--border); border-radius: 10px;
+    padding: 10px 8px; font-size: 20px; font-weight: 900;
+    text-align: center; background: var(--bg); color: var(--text); outline: none;
   }
-  .qty-input:focus { border-color: var(--primary); outline: none; background: rgba(59,130,246,0.1); }
-  .qty-input.modificado { border-color: var(--warning); color: var(--warning); }
+  .qty-in:focus { border-color: var(--prox); background: #fff; }
+  .qty-in.mod   { border-color: var(--manana); color: var(--manana); }
 
-  .btn-faltante {
-    width: 36px; height: 36px; border-radius: 8px;
-    border: 1px solid var(--border); background: transparent;
-    color: var(--muted); font-size: 14px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center; transition: 0.15s;
+  .btn-falt {
+    width: 46px; height: 46px; border-radius: 10px;
+    border: 2px solid var(--border); background: #fff;
+    font-size: 20px; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; transition: 0.12s; flex-shrink: 0;
   }
-  .btn-faltante:hover { border-color: var(--danger); color: var(--danger); background: rgba(239,68,68,0.1); }
-  .btn-faltante.activo { border-color: var(--danger); color: var(--danger); background: rgba(239,68,68,0.15); }
+  .btn-falt:hover { border-color: var(--hoy); background: var(--hoy-bg); }
+  .btn-falt.activo { border-color: var(--hoy); background: var(--hoy-bg); }
 
-  /* Footer acciones */
-  .pedido-footer {
-    padding: 14px 20px; border-top: 1px solid var(--border); flex-shrink: 0;
-    background: rgba(8,15,30,0.8);
+  /* Footer */
+  .ped-footer {
+    background: #fff; border-top: 2px solid var(--border);
+    padding: 16px 24px; flex-shrink: 0;
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.05);
   }
   .footer-stats {
-    display: flex; gap: 16px; margin-bottom: 12px; font-size: 12px; color: var(--muted);
+    display: flex; gap: 20px; margin-bottom: 12px;
+    font-size: 14px; font-weight: 700; color: var(--muted);
   }
-  .footer-stats span { display: flex; align-items: center; gap: 4px; }
-  .footer-actions { display: flex; gap: 10px; }
-  .btn-accion {
-    flex: 1; padding: 14px; border-radius: var(--radius); font-size: 14px;
-    font-weight: 800; border: none; cursor: pointer; transition: 0.2s;
-    letter-spacing: 0.3px;
-  }
-  .btn-accion.primary { background: var(--success); color: white; }
-  .btn-accion.primary:disabled { background: rgba(16,185,129,0.25); color: rgba(255,255,255,0.35); cursor: not-allowed; }
-  .btn-accion.secondary { background: var(--bg-card); border: 1px solid var(--border); color: var(--muted); max-width: 160px; }
-  .btn-accion:not(:disabled):active { transform: scale(0.98); }
+  .footer-stats .ok-count  { color: var(--success); }
+  .footer-stats .flt-count { color: var(--hoy); }
+  .footer-actions { display: flex; gap: 12px; }
 
-  /* ESTADO VACÍO */
-  .no-selection {
-    flex: 1; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 12px;
-    color: var(--muted); padding: 40px;
+  .btn-facturar {
+    flex: 1; padding: 18px; border-radius: var(--radius);
+    border: none; font-size: 18px; font-weight: 900;
+    background: var(--success); color: #fff; cursor: pointer;
+    transition: 0.15s; box-shadow: 0 4px 12px rgba(22,163,74,0.3);
   }
-  .no-selection .icon { font-size: 56px; }
+  .btn-facturar:disabled {
+    background: #d1fae5; color: #6ee7b7; cursor: not-allowed; box-shadow: none;
+  }
+  .btn-facturar:not(:disabled):active { transform: scale(0.98); }
 
-  /* PANEL IA */
+  .btn-wa {
+    padding: 18px 20px; border-radius: var(--radius);
+    border: 2px solid var(--border); background: #fff;
+    font-size: 18px; cursor: pointer; font-weight: 700; color: var(--muted);
+    transition: 0.15s;
+  }
+  .btn-wa:hover { border-color: #25D366; color: #25D366; }
+
+  /* Panel IA flotante */
   #iaPanel {
-    display: none; position: absolute; right: 20px; top: 120px;
-    width: 340px; background: #1e293b; border: 1px solid var(--border);
-    border-radius: var(--radius); box-shadow: var(--shadow); z-index: 200;
-    flex-direction: column; max-height: calc(100vh - 140px); overflow: hidden;
+    display: none; position: absolute;
+    right: 20px; top: 80px; width: 360px;
+    background: #fff; border: 2px solid var(--border);
+    border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    z-index: 200; flex-direction: column; max-height: calc(100vh - 120px);
   }
-  .ia-panel-header {
-    padding: 14px 16px; border-bottom: 1px solid var(--border);
+  .ia-head {
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
     display: flex; justify-content: space-between; align-items: center;
+    font-size: 15px; font-weight: 800;
   }
-  .ia-panel-content { padding: 16px; overflow-y: auto; flex: 1; }
-  .ia-msg { font-size: 13px; line-height: 1.6; color: #e2e8f0; white-space: pre-wrap; }
-  .btn-close-ia {
-    background: transparent; border: none; color: var(--muted);
-    font-size: 18px; cursor: pointer; padding: 4px;
-  }
+  .ia-body { padding: 18px; overflow-y: auto; font-size: 14px; line-height: 1.7; color: var(--text); white-space: pre-wrap; }
+  .btn-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--muted); }
 
-  /* AUDITORÍA PANEL */
-  #auditPanel {
-    display: none; position: absolute; left: var(--panel-w); right: 0; top: 52px; bottom: 0;
-    background: rgba(8,15,30,0.97); z-index: 150; flex-direction: column;
-    padding: 20px; overflow-y: auto;
+  /* LOADER / TOAST */
+  #loader {
+    position: fixed; inset: 0; background: rgba(255,255,255,0.85);
+    display: none; align-items: center; justify-content: center;
+    z-index: 9999; flex-direction: column; gap: 16px;
   }
-  .audit-entry {
-    display: flex; gap: 12px; padding: 10px 0;
-    border-bottom: 1px solid var(--border); font-size: 13px;
-  }
-  .audit-time { color: var(--muted); white-space: nowrap; font-size: 11px; min-width: 80px; }
+  .spinner { width: 48px; height: 48px; border: 5px solid #e2e8f0; border-top-color: var(--prox); border-radius: 50%; animation: spin 0.7s linear infinite; }
 
-  /* LOADER / SPINNER */
-  .spinner-small {
-    width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.2);
-    border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite;
-    display: inline-block;
-  }
-
-  /* TOAST */
   .toast {
     position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-    background: #1e293b; color: white; padding: 12px 24px;
-    border-radius: 99px; font-size: 14px; font-weight: 600;
-    box-shadow: var(--shadow); border: 1px solid var(--border);
-    z-index: 9000; white-space: nowrap;
-    animation: fadeUp 0.3s ease forwards;
+    background: var(--text); color: #fff; padding: 14px 28px;
+    border-radius: 99px; font-size: 15px; font-weight: 700;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 8000;
+    white-space: nowrap; animation: fadeUp 0.3s ease;
+  }
+  .toast.ok    { background: var(--success); }
+  .toast.error { background: var(--hoy); }
+
+  .empty-right {
+    flex:1; display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    gap:12px; color:var(--muted);
   }
 
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translate(-50%, 16px); }
-    to   { opacity: 1; transform: translate(-50%, 0); }
-  }
-
-  /* Responsive: en tablet/mobile apila los paneles */
-  @media (max-width: 768px) {
-    :root { --panel-w: 100vw; }
-    .panel-left { width: 100%; }
-    .panel-right { display: none; }
-    .panel-left.pedido-abierto { display: none; }
-    .panel-right.pedido-abierto { display: flex; width: 100%; }
-  }
+  @keyframes spin   { to { transform: rotate(360deg); } }
+  @keyframes pulse  { 0%,100%{ opacity:1; } 50%{ opacity:0.4; } }
+  @keyframes fadeUp { from{ opacity:0; transform:translate(-50%,16px); } to{ opacity:1; transform:translate(-50%,0); } }
 </style>
 </head>
 <body>
 
+<div id="loader"><div class="spinner"></div><div style="font-size:16px;font-weight:700;color:#64748b;">Cargando...</div></div>
+
 <!-- LOGIN -->
 <div id="loginScreen">
-  <div style="font-size:52px; margin-bottom:8px;">🧾</div>
-  <h1 style="font-size:26px; font-weight:900; color:#3b82f6;">Facturación ML</h1>
-  <p style="color:#94a3b8; font-size:14px; margin-bottom:20px;">Identificate para continuar</p>
-  <button class="login-btn" onclick="login('A')">Soy A</button>
-  <button class="login-btn secondary" style="margin-top:8px;" onclick="login('C')">Soy C</button>
+  <div style="font-size:56px;">🧾</div>
+  <div style="font-size:28px;font-weight:900;">Facturación ML</div>
+  <div style="font-size:15px;color:#64748b;margin-bottom:12px;">Identificate para continuar</div>
+  <button class="login-btn a" onclick="login('A')">Soy A</button>
+  <button class="login-btn c" style="margin-top:10px;" onclick="login('C')">Soy C</button>
 </div>
 
 <!-- APP -->
@@ -325,77 +312,57 @@
   <div class="topbar">
     <div class="conn-dot" id="connDot"></div>
     <div class="topbar-title">🧾 Facturación ML</div>
-    <div id="iaStatusChip" style="display:none; font-size:11px; color:var(--warning); font-weight:700;">IA activa</div>
+    <div id="iaChip" style="display:none;font-size:12px;font-weight:700;color:var(--manana);">⏳ IA...</div>
     <div id="userChip" class="user-chip">A</div>
-    <button class="btn-ia" onclick="toggleAudit()" style="font-size:11px; padding:5px 10px;">📋 Log</button>
   </div>
 
-  <!-- Split layout -->
-  <div class="split">
+  <div class="body">
 
-    <!-- PANEL IZQUIERDO: lista pedidos -->
-    <div class="panel-left" id="panelLeft">
-      <div class="panel-header">
-        <h3>📂 Pedidos</h3>
-        <span id="contadorPedidos" style="font-size:12px; color:var(--muted);"></span>
+    <!-- PANEL IZQUIERDO -->
+    <div class="panel-left">
+      <div class="left-search">
+        <input id="searchInput" placeholder="🔍 Buscar cliente..." oninput="filtrar()" />
       </div>
-
-      <!-- Tabs de fecha -->
-      <div class="date-tabs" id="dateTabs"></div>
-
-      <!-- Búsqueda -->
-      <div class="search-box">
-        <input id="searchInput" type="search" placeholder="Buscar cliente o N°..." oninput="filtrarPedidos()" />
-      </div>
-
-      <!-- Lista -->
       <div id="pedidosList"></div>
     </div>
 
-    <!-- PANEL DERECHO: detalle pedido -->
-    <div class="panel-right" id="panelRight">
-      <!-- Estado vacío -->
-      <div class="no-selection" id="noSelection">
+    <!-- PANEL DERECHO -->
+    <div class="panel-right" style="position:relative;">
+
+      <!-- Sin selección -->
+      <div class="no-sel" id="noSel">
         <div class="icon">👈</div>
-        <div style="font-size:16px; font-weight:700;">Seleccioná un pedido</div>
-        <div style="font-size:13px;">Aparecen los pedidos en estado <strong style="color:var(--warning)">armado</strong></div>
+        <p>Seleccioná un pedido</p>
+        <span style="font-size:14px;">Solo aparecen pedidos <strong>armados</strong></span>
       </div>
 
-      <!-- Contenido del pedido -->
-      <div id="pedidoContent" style="display:none; flex-direction:column; height:100%;">
-
-        <!-- Header del pedido -->
-        <div class="pedido-header">
-          <div class="pedido-header-info">
-            <h2 id="phNombre">—</h2>
-            <p id="phMeta">—</p>
-            <div class="pedido-meta-chips" id="phChips"></div>
-          </div>
-          <div id="phEstadoBadge" class="pi-badge" style="font-size:12px; padding:6px 14px;"></div>
+      <!-- Pedido abierto -->
+      <div id="pedidoPanel">
+        <div class="ped-header">
+          <div class="ped-cliente" id="phCliente">—</div>
+          <div class="ped-entrega" id="phEntrega">—</div>
+          <div class="ped-meta"    id="phMeta">—</div>
+          <div class="ped-chips"   id="phChips"></div>
         </div>
 
-        <!-- IA Toolbar -->
-        <div class="ia-toolbar">
-          <button class="btn-ia" id="btnIaVerificar" onclick="iaVerificarPedido()">🧠 Verificar con IA</button>
-          <button class="btn-ia" id="btnIaResumen" onclick="iaResumen()">📝 Resumen</button>
-          <button class="btn-ia" id="btnMarcarTodos" onclick="marcarTodos()">✅ Marcar todos</button>
-          <button class="btn-ia" id="btnDesmarcarTodos" onclick="desmarcarTodos()" style="margin-left:auto;">↩ Desmarcar</button>
+        <div class="ia-bar">
+          <button class="btn-ia" onclick="iaVerificar()">🧠 Verificar con IA</button>
+          <button class="btn-ia" onclick="marcarTodos()">✅ Todos OK</button>
+          <button class="btn-ia" onclick="desmarcarTodos()" style="margin-left:auto;">↩ Desmarcar</button>
         </div>
 
-        <!-- Items -->
-        <div id="itemsContainer"></div>
+        <div id="itemsPanel"></div>
 
-        <!-- Footer -->
-        <div class="pedido-footer">
+        <div class="ped-footer">
           <div class="footer-stats">
-            <span>📦 <span id="statsTotal">0</span> items</span>
-            <span>✅ <span id="statsFacturados">0</span> facturados</span>
-            <span>❌ <span id="statsFaltantes">0</span> faltantes</span>
+            <span>📦 <span id="stTotal">0</span> items</span>
+            <span class="ok-count">✅ <span id="stOk">0</span> facturados</span>
+            <span class="flt-count">❌ <span id="stFalt">0</span> faltantes</span>
           </div>
           <div class="footer-actions">
-            <button class="btn-accion secondary" onclick="pedidoContent_whatsapp()">💬 WA</button>
-            <button class="btn-accion primary" id="btnFacturar" disabled onclick="facturarPedido()">
-              ✅ MARCAR FACTURADO
+            <button class="btn-wa" onclick="enviarWA()" title="WhatsApp faltantes">💬</button>
+            <button class="btn-facturar" id="btnFacturar" disabled onclick="facturarPedido()">
+              ✅ FACTURADO COMPLETO
             </button>
           </div>
         </div>
@@ -403,589 +370,397 @@
 
       <!-- Panel IA flotante -->
       <div id="iaPanel">
-        <div class="ia-panel-header">
-          <span style="font-size:13px; font-weight:700;">🧠 Análisis IA</span>
-          <button class="btn-close-ia" onclick="cerrarIaPanel()">✕</button>
+        <div class="ia-head">
+          <span>🧠 Análisis IA</span>
+          <button class="btn-close" onclick="cerrarIA()">✕</button>
         </div>
-        <div class="ia-panel-content">
-          <div class="ia-msg" id="iaMsgContent">Analizando...</div>
-        </div>
-      </div>
-
-      <!-- Panel auditoría -->
-      <div id="auditPanel">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-          <h3 style="font-size:16px; font-weight:700;">📋 Auditoría del pedido</h3>
-          <button onclick="toggleAudit()" style="background:transparent; border:none; color:var(--muted); font-size:18px; cursor:pointer;">✕</button>
-        </div>
-        <div id="auditContent"></div>
+        <div class="ia-body" id="iaBody">Analizando...</div>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-// ============================================================
-// CONFIG
-// ============================================================
+// ── CONFIG ──
 const SUPABASE_URL  = "https://gjeyvbidomxzofcdycya.supabase.co";
 const SUPABASE_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
 const WORKER_URL    = "https://frosty-term-20ea.santamariapablodaniel.workers.dev";
 
-let currentUser   = null;
-let pedidoActivo  = null;
-let itemsActivos  = [];
-let pedidosAll    = [];
-let pedidosFiltrados = [];
-let fechaSeleccionada = "hoy";
-let auditVisible  = false;
+let currentUser  = null;
+let pedidosAll   = [];
+let pedidoActivo = null;
+let itemsActivos = [];
 
-// ============================================================
-// SUPABASE REST
-// ============================================================
-async function sbGet(table, params = "") {
+// ── FECHAS ──
+function hoyISO()    { return new Date().toISOString().split("T")[0]; }
+function mananaISO() { const d = new Date(); d.setDate(d.getDate()+1); return d.toISOString().split("T")[0]; }
+function viernesISO() {
+  const hoy = new Date(), diff = 5 - hoy.getDay();
+  const v = new Date(hoy); v.setDate(hoy.getDate() + (diff >= 0 ? diff : diff + 7));
+  return v.toISOString().split("T")[0];
+}
+
+function grupoFecha(fe) {
+  if (!fe) return "prox";
+  if (fe <= hoyISO())    return "hoy";
+  if (fe <= mananaISO()) return "man";
+  return "prox";
+}
+
+function fmtFecha(fe) {
+  if (!fe) return "—";
+  return new Date(fe + "T12:00:00").toLocaleDateString("es-AR", { weekday:"short", day:"2-digit", month:"2-digit" });
+}
+
+// ── SUPABASE ──
+async function sbGet(table, params="") {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
     headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` }
   });
   return r.ok ? r.json() : [];
 }
-
 async function sbPatch(table, match, data) {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${match}`, {
     method: "PATCH",
-    headers: {
-      apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}`,
-      "Content-Type": "application/json", Prefer: "return=representation"
-    },
+    headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}`,
+      "Content-Type": "application/json", Prefer: "return=representation" },
     body: JSON.stringify(data)
   });
   return r.ok ? r.json() : null;
 }
-
 async function sbInsert(table, data) {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: "POST",
-    headers: {
-      apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}`,
-      "Content-Type": "application/json", Prefer: "return=representation"
-    },
+    headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}`,
+      "Content-Type": "application/json", Prefer: "return=minimal" },
     body: JSON.stringify(data)
   });
-  return r.ok ? r.json() : null;
+  return r.ok;
 }
 
-// ============================================================
-// REALTIME WEBSOCKET
-// ============================================================
+// ── REALTIME ──
 function conectarRealtime() {
-  const wsUrl = `${SUPABASE_URL.replace("https://","wss://")}/realtime/v1/websocket?apikey=${SUPABASE_ANON}&vsn=1.0.0`;
-  const ws = new WebSocket(wsUrl);
+  const ws = new WebSocket(
+    `${SUPABASE_URL.replace("https://","wss://")}/realtime/v1/websocket?apikey=${SUPABASE_ANON}&vsn=1.0.0`
+  );
   let hb;
-
   ws.onopen = () => {
     setConn("online");
-    ws.send(JSON.stringify({
-      topic: "realtime:public:pedidos", event: "phx_join",
-      payload: { config: { postgres_changes: [{ event: "*", schema: "public", table: "pedidos" }] } },
-      ref: "1"
-    }));
-    ws.send(JSON.stringify({
-      topic: "realtime:public:items_pedido", event: "phx_join",
-      payload: { config: { postgres_changes: [{ event: "*", schema: "public", table: "items_pedido" }] } },
-      ref: "2"
-    }));
-    hb = setInterval(() => ws.readyState === 1 && ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: "hb" })), 20000);
+    ["pedidos","items_pedido"].forEach((t,i) => ws.send(JSON.stringify({
+      topic:`realtime:public:${t}`, event:"phx_join",
+      payload:{ config:{ postgres_changes:[{ event:"*", schema:"public", table:t }] } }, ref: String(i+1)
+    })));
+    hb = setInterval(() => ws.readyState===1 && ws.send(JSON.stringify({ topic:"phoenix", event:"heartbeat", payload:{}, ref:"hb" })), 20000);
   };
-
   ws.onmessage = async (e) => {
     try {
       const msg = JSON.parse(e.data);
-      const tableChanged = msg.payload?.data?.table;
-
-      if (tableChanged === "pedidos") {
-        await cargarPedidos();
-        // Si el pedido activo cambió, recargar items
-        if (pedidoActivo) {
-          const updated = pedidosAll.find(p => p.id === pedidoActivo.id);
-          if (updated) pedidoActivo = updated;
-          renderHeader();
-        }
-      }
-      if (tableChanged === "items_pedido" && pedidoActivo) {
-        await cargarItemsActivos(pedidoActivo.id);
-      }
+      const t = msg.payload?.data?.table;
+      if (t === "pedidos") { await cargarPedidos(); renderLista(); }
+      if (t === "items_pedido" && pedidoActivo) await recargarItems();
     } catch(_) {}
   };
-
-  ws.onclose = () => {
-    setConn("offline"); clearInterval(hb);
-    setTimeout(conectarRealtime, 3000);
-  };
+  ws.onclose = () => { setConn("offline"); clearInterval(hb); setTimeout(conectarRealtime, 3000); };
   ws.onerror = () => setConn("offline");
 }
+function setConn(s) { const d=document.getElementById("connDot"); if(d) d.className="conn-dot "+s; }
 
-function setConn(e) {
-  const d = document.getElementById("connDot");
-  if (d) d.className = "conn-dot " + e;
-}
-
-// ============================================================
-// LOGIN
-// ============================================================
+// ── LOGIN ──
 function login(user) {
   currentUser = user;
   localStorage.setItem("factUser", user);
   document.getElementById("loginScreen").style.display = "none";
   document.getElementById("app").style.display = "flex";
   document.getElementById("app").style.flexDirection = "column";
+  document.getElementById("app").style.height = "100vh";
   document.getElementById("userChip").textContent = user;
   iniciarApp();
 }
 
-// ============================================================
-// CARGA DE PEDIDOS
-// ============================================================
+// ── CARGA PEDIDOS ──
 async function cargarPedidos() {
   setConn("syncing");
   try {
-    const hoy = new Date().toISOString().split("T")[0];
+    pedidosAll = await sbGet("pedidos",
+      "estado=in.(armado,en_facturacion,facturado)&order=fecha_entrega.asc,created_at.asc&limit=200");
+    setConn("online");
+  } catch(e) { setConn("offline"); }
+}
 
-    // Calcular fechas para las tabs
-    const fechas = generarFechasTabs();
-    renderDateTabs(fechas);
+// ── RENDER LISTA ──
+function filtrar() { renderLista(); }
 
-    let params = `order=created_at.desc&limit=200`;
+function renderLista() {
+  const q = (document.getElementById("searchInput").value || "").toLowerCase();
+  const lista = pedidosAll.filter(p =>
+    !q || (p.cliente_nombre||"").toLowerCase().includes(q) || String(p.cliente_id||"").includes(q)
+  );
 
-    // Filtramos por fecha seleccionada
-    if (fechaSeleccionada === "hoy") {
-      params += `&created_at=gte.${hoy}T00:00:00`;
-    } else if (fechaSeleccionada !== "todos") {
-      params += `&created_at=gte.${fechaSeleccionada}T00:00:00&created_at=lt.${fechaSeleccionada}T23:59:59`;
+  const grupos = { hoy:[], man:[], prox:[] };
+  lista.forEach(p => grupos[grupoFecha(p.fecha_entrega)].push(p));
+
+  let html = "";
+
+  const renderGrupo = (key, icon, label, color) => {
+    if (!grupos[key].length) return "";
+    html += `<div class="grupo-header ${key}">${icon} ${label} <span class="grupo-count">${grupos[key].length}</span></div>`;
+    grupos[key].forEach(p => {
+      const g = grupoFecha(p.fecha_entrega);
+      const selClass = pedidoActivo?.id === p.id ? "selected" : "";
+      const facClass = p.estado === "facturado" ? "facturado" : "";
+      const fechaC   = g === "hoy" ? "hoy-c" : g === "man" ? "man-c" : "prox-c";
+      html += `
+        <div class="pedido-item grp-${key} ${selClass} ${facClass}" onclick="seleccionar('${p.id}')">
+          <div class="pi-nombre">${p.cliente_nombre || "Cliente " + (p.cliente_id||"—")}</div>
+          <div class="pi-fecha ${fechaC}">${icon} ${fmtFecha(p.fecha_entrega).toUpperCase()}</div>
+          <div class="pi-meta">${p.vendedor||"—"} ${p.estado === "facturado" ? "· ✅ FACTURADO" : ""}</div>
+        </div>`;
+    });
+  };
+
+  renderGrupo("hoy",  "🔴", "HOY",           "var(--hoy)");
+  renderGrupo("man",  "🟠", "MAÑANA",        "var(--manana)");
+  renderGrupo("prox", "⏳", "PRÓXIMA SEMANA", "var(--prox)");
+
+  document.getElementById("pedidosList").innerHTML = html || `<div style="padding:30px;text-align:center;color:var(--muted);font-size:14px;">Sin pedidos armados.</div>`;
+}
+
+// ── SELECCIONAR PEDIDO ──
+async function seleccionar(id) {
+  showLoader();
+  try {
+    const [ps, items] = await Promise.all([
+      sbGet("pedidos", `id=eq.${id}`),
+      sbGet("items_pedido", `pedido_id=eq.${id}&order=id.asc`)
+    ]);
+    pedidoActivo = ps[0];
+    itemsActivos = items;
+
+    // Pasar a en_facturacion si estaba armado
+    if (pedidoActivo.estado === "armado") {
+      await sbPatch("pedidos", `id=eq.${id}`, { estado: "en_facturacion" });
+      pedidoActivo.estado = "en_facturacion";
+      await cargarPedidos(); renderLista();
     }
 
-    pedidosAll = await sbGet("pedidos", params);
-    filtrarPedidos();
-    setConn("online");
-  } catch(e) {
-    setConn("offline");
-  }
-}
+    renderHeader();
+    renderItemsF();
 
-function generarFechasTabs() {
-  const fechas = [];
-  const hoy = new Date();
-  for (let i = 0; i < 5; i++) {
-    const d = new Date(hoy);
-    d.setDate(hoy.getDate() - i);
-    const iso = d.toISOString().split("T")[0];
-    const label = i === 0 ? "Hoy" : i === 1 ? "Ayer" : d.toLocaleDateString("es-AR", { weekday: "short", day: "numeric" });
-    fechas.push({ iso, label });
-  }
-  return fechas;
-}
-
-function renderDateTabs(fechas) {
-  const box = document.getElementById("dateTabs");
-  box.innerHTML = `
-    <div class="date-tab ${fechaSeleccionada === "todos" ? "active" : ""}" onclick="cambiarFecha('todos', this)">Todos</div>
-    ${fechas.map(f => `
-      <div class="date-tab ${fechaSeleccionada === f.iso || (f.iso === new Date().toISOString().split("T")[0] && fechaSeleccionada === "hoy") ? "active" : ""}"
-        onclick="cambiarFecha('${f.iso}', this)">${f.label}</div>
-    `).join("")}
-  `;
-}
-
-function cambiarFecha(fecha, btn) {
-  fechaSeleccionada = fecha;
-  document.querySelectorAll(".date-tab").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
-  cargarPedidos();
-}
-
-function filtrarPedidos() {
-  const q = (document.getElementById("searchInput").value || "").toLowerCase();
-  pedidosFiltrados = pedidosAll.filter(p => {
-    if (!q) return true;
-    return (p.cliente_nombre || "").toLowerCase().includes(q)
-      || String(p.cliente_id || "").includes(q)
-      || (p.vendedor || "").toLowerCase().includes(q);
-  });
-  renderPedidosList();
-}
-
-function renderPedidosList() {
-  const box = document.getElementById("pedidosList");
-  document.getElementById("contadorPedidos").textContent = `${pedidosFiltrados.length} pedidos`;
-
-  if (!pedidosFiltrados.length) {
-    box.innerHTML = `<div style="text-align:center; padding:40px; color:var(--muted); font-size:13px;">Sin pedidos para este filtro.</div>`;
-    return;
-  }
-
-  box.innerHTML = pedidosFiltrados.map(p => {
-    const esActivo = pedidoActivo?.id === p.id;
-    const pct = p.items_total ? Math.round((p.items_facturados || 0) / p.items_total * 100) : 0;
-    const hora = new Date(p.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-    const badgeColor = { pendiente: "#64748b", armado: "#f59e0b", en_facturacion: "#3b82f6", facturado: "#10b981" }[p.estado] || "#64748b";
-
-    return `
-      <div class="pedido-item estado-${p.estado} ${esActivo ? "selected" : ""}" onclick="seleccionarPedido('${p.id}')">
-        <div class="pi-top">
-          <div class="pi-nombre">${p.cliente_nombre || ("Cliente " + (p.cliente_id || "—"))}</div>
-          <div class="pi-badge" style="background:${badgeColor}22; color:${badgeColor}; border:1px solid ${badgeColor}44;">
-            ${estadoLabel(p.estado)}
-          </div>
-        </div>
-        <div class="pi-meta">
-          N° ${p.cliente_id || "—"} · ${p.vendedor || "—"} · ${hora}
-          ${p.fecha_entrega ? ` · 📅 ${fmtFecha(p.fecha_entrega)}` : ""}
-        </div>
-        ${p.items_total ? `<div class="pi-progress"><div class="pi-progress-fill" style="width:${pct}%; background:${badgeColor};"></div></div>` : ""}
-      </div>
-    `;
-  }).join("");
-}
-
-// ============================================================
-// SELECCIÓN Y DETALLE DE PEDIDO
-// ============================================================
-async function seleccionarPedido(id) {
-  pedidoActivo = pedidosAll.find(p => p.id === id);
-  if (!pedidoActivo) return;
-
-  // Marcar en lista
-  renderPedidosList();
-
-  // Mostrar panel derecho
-  document.getElementById("noSelection").style.display = "none";
-  const content = document.getElementById("pedidoContent");
-  content.style.display = "flex";
-  content.style.flexDirection = "column";
-  content.style.height = "100%";
-
-  // Actualizar estado en Supabase si está armado → en_facturacion
-  if (pedidoActivo.estado === "armado") {
-    await sbPatch("pedidos", `id=eq.${id}`, { estado: "en_facturacion" });
-    await auditoria(id, "abierto_facturacion", { usuario: currentUser });
-    pedidoActivo.estado = "en_facturacion";
-  }
-
-  renderHeader();
-  await cargarItemsActivos(id);
-  if (auditVisible) cargarAuditoria(id);
-
-  // Responsive mobile
-  document.getElementById("panelLeft").classList.remove("pedido-abierto");
-  document.getElementById("panelRight").classList.add("pedido-abierto");
+    document.getElementById("noSel").style.display = "none";
+    const pp = document.getElementById("pedidoPanel");
+    pp.style.display = "flex";
+    pp.style.flexDirection = "column";
+    pp.style.height = "100%";
+  } catch(e) { toast("Error al cargar", "error"); }
+  finally { hideLoader(); }
 }
 
 function renderHeader() {
   if (!pedidoActivo) return;
-  document.getElementById("phNombre").textContent =
-    pedidoActivo.cliente_nombre || ("Cliente " + (pedidoActivo.cliente_id || "—"));
+  const fe = pedidoActivo.fecha_entrega;
+  const g  = grupoFecha(fe);
+  const icon = g==="hoy" ? "🔴" : g==="man" ? "🟠" : "⏳";
+  const eClass = g==="hoy" ? "hoy-e" : g==="man" ? "man-e" : "prox-e";
+  const feStr = fe
+    ? new Date(fe+"T12:00:00").toLocaleDateString("es-AR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})
+    : "—";
+
+  document.getElementById("phCliente").textContent =
+    pedidoActivo.cliente_nombre || "Cliente " + (pedidoActivo.cliente_id||"—");
+  document.getElementById("phEntrega").textContent = `${icon} SE ENTREGA: ${feStr.toUpperCase()}`;
+  document.getElementById("phEntrega").className = `ped-entrega ${eClass}`;
   document.getElementById("phMeta").textContent =
-    `Vendedor: ${pedidoActivo.vendedor || "—"} · ${pedidoActivo.observaciones || "Sin observaciones"}`;
-
-  const fe = pedidoActivo.fecha_entrega ? fmtFecha(pedidoActivo.fecha_entrega) : "—";
+    `Vendedor: ${pedidoActivo.vendedor||"—"} · ${pedidoActivo.observaciones||"Sin observaciones"}`;
   document.getElementById("phChips").innerHTML = `
-    <div class="chip">📅 Entrega: ${fe}</div>
-    <div class="chip">🕐 ${new Date(pedidoActivo.created_at).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}</div>
-    ${pedidoActivo.sig ? `<div class="chip" style="font-family:monospace; font-size:10px;">${pedidoActivo.sig.slice(0,8)}</div>` : ""}
+    <div class="chip">N° ${pedidoActivo.cliente_id||"—"}</div>
+    ${pedidoActivo.estado==="facturado" ? `<div class="chip" style="color:var(--success);border-color:#86efac;">✅ FACTURADO</div>` : ""}
   `;
-
-  const badgeColor = { pendiente:"#64748b", armado:"#f59e0b", en_facturacion:"#3b82f6", facturado:"#10b981" }[pedidoActivo.estado];
-  const badge = document.getElementById("phEstadoBadge");
-  badge.textContent = estadoLabel(pedidoActivo.estado);
-  badge.style.background = badgeColor + "22";
-  badge.style.color = badgeColor;
-  badge.style.border = `1px solid ${badgeColor}44`;
 }
 
-async function cargarItemsActivos(pedidoId) {
-  itemsActivos = await sbGet("items_pedido", `pedido_id=eq.${pedidoId}&order=id.asc`);
-  renderItems();
+async function recargarItems() {
+  if (!pedidoActivo) return;
+  itemsActivos = await sbGet("items_pedido", `pedido_id=eq.${pedidoActivo.id}&order=id.asc`);
+  renderItemsF();
 }
 
-function renderItems() {
-  const box = document.getElementById("itemsContainer");
-  if (!itemsActivos.length) {
-    box.innerHTML = `<div style="text-align:center; padding:40px; color:var(--muted);">Sin items registrados.</div>`;
-    return;
-  }
-
+function renderItemsF() {
+  const box = document.getElementById("itemsPanel");
   box.innerHTML = itemsActivos.map((item, i) => {
-    const clases = `item-fact ${item.facturado ? "facturado" : ""} ${item.es_faltante ? "faltante" : ""}`;
-    const checkClase = item.facturado ? "checked" : item.es_faltante ? "faltante-check" : "";
-    const faltanteActivo = item.es_faltante ? "activo" : "";
+    const isFact = item.facturado;
+    const isFalt = item.es_faltante;
+    const rowCls = isFact ? "ok" : isFalt ? "faltante" : "";
+    const chkCls = isFact ? "ok" : isFalt ? "faltante" : "";
+    const chkTxt = isFact ? "✓" : isFalt ? "✕" : "";
+    const descCls = isFact ? "tachado" : "";
+    const qty = item.cantidad_real ?? item.cantidad;
+    const qtyMod = item.cantidad_real != null && item.cantidad_real !== item.cantidad ? "mod" : "";
 
     return `
-      <div class="${clases}" id="irow-${item.id}">
-        <button class="item-check-fact ${checkClase}" onclick="toggleFacturado('${item.id}', ${i})">
-          ${item.facturado ? "✓" : item.es_faltante ? "✕" : ""}
-        </button>
+      <div class="item-f ${rowCls}" id="ifrow-${item.id}">
+        <button class="chk-f ${chkCls}" onclick="toggleFacturado('${item.id}',${i})">${chkTxt}</button>
         <div>
-          <div class="item-fact-desc ${item.facturado ? "tachado" : ""}" id="idesc-${item.id}">
-            ${item.descripcion}
-          </div>
-          ${item.facturado_por ? `<div class="item-fact-who">✓ ${item.facturado_por} · ${fmtTime(item.facturado_at)}</div>` : ""}
+          <div class="item-f-desc ${descCls}" id="ifdesc-${item.id}">${item.descripcion}</div>
+          ${item.facturado_por ? `<div class="item-f-who">✓ ${item.facturado_por} · ${fmtTime(item.facturado_at)}</div>` : ""}
         </div>
-        <input class="qty-input ${item.cantidad_real != null && item.cantidad_real !== item.cantidad ? "modificado" : ""}"
-          type="number" min="0" value="${item.cantidad_real ?? item.cantidad}"
-          onchange="cambiarCantidad('${item.id}', ${i}, this.value)"
-          id="qty-${item.id}" />
-        <button class="btn-faltante ${faltanteActivo}" onclick="toggleFaltante('${item.id}', ${i})" title="Marcar faltante">
-          ${item.es_faltante ? "🔴" : "○"}
-        </button>
-      </div>
-    `;
+        <input class="qty-in ${qtyMod}" type="number" min="0" value="${qty}"
+          id="qty-${item.id}" onchange="cambiarCantidad('${item.id}',${i},this.value)" />
+        <button class="btn-falt ${isFalt?"activo":""}" onclick="toggleFaltante('${item.id}',${i})"
+          title="Marcar faltante">⚠️</button>
+      </div>`;
   }).join("");
-
   actualizarStats();
 }
 
+// ── ACCIONES ITEMS ──
 async function toggleFacturado(itemId, idx) {
-  const nuevoEstado = !itemsActivos[idx].facturado;
-  itemsActivos[idx].facturado = nuevoEstado;
-  if (nuevoEstado) itemsActivos[idx].es_faltante = false; // Si facturo, quito faltante
-
-  // UI inmediata
-  renderItems();
-
+  const nuevo = !itemsActivos[idx].facturado;
+  itemsActivos[idx].facturado = nuevo;
+  if (nuevo) itemsActivos[idx].es_faltante = false;
+  renderItemsF();
   const now = new Date().toISOString();
   await sbPatch("items_pedido", `id=eq.${itemId}`, {
-    facturado: nuevoEstado,
-    facturado_por: nuevoEstado ? currentUser : null,
-    facturado_at: nuevoEstado ? now : null,
+    facturado: nuevo, facturado_por: nuevo ? currentUser : null,
+    facturado_at: nuevo ? now : null, es_faltante: false
   });
 }
 
 async function toggleFaltante(itemId, idx) {
-  const nuevoEstado = !itemsActivos[idx].es_faltante;
-  itemsActivos[idx].es_faltante = nuevoEstado;
-  if (nuevoEstado) itemsActivos[idx].facturado = false;
-  renderItems();
-
-  await sbPatch("items_pedido", `id=eq.${itemId}`, { es_faltante: nuevoEstado, facturado: false });
+  const nuevo = !itemsActivos[idx].es_faltante;
+  itemsActivos[idx].es_faltante = nuevo;
+  if (nuevo) itemsActivos[idx].facturado = false;
+  renderItemsF();
+  await sbPatch("items_pedido", `id=eq.${itemId}`, { es_faltante: nuevo, facturado: false });
 }
 
-async function cambiarCantidad(itemId, idx, valor) {
-  const qty = parseFloat(valor);
+async function cambiarCantidad(itemId, idx, val) {
+  const qty = parseFloat(val);
   if (isNaN(qty) || qty < 0) return;
   itemsActivos[idx].cantidad_real = qty;
-
   const input = document.getElementById(`qty-${itemId}`);
-  if (qty !== itemsActivos[idx].cantidad) {
-    input.classList.add("modificado");
-  } else {
-    input.classList.remove("modificado");
-  }
-
+  input.classList.toggle("mod", qty !== itemsActivos[idx].cantidad);
   await sbPatch("items_pedido", `id=eq.${itemId}`, { cantidad_real: qty });
 }
 
 function marcarTodos() {
-  itemsActivos.forEach((item, i) => { item.facturado = true; item.es_faltante = false; });
-  renderItems();
   const now = new Date().toISOString();
-  Promise.all(itemsActivos.map(item =>
-    sbPatch("items_pedido", `id=eq.${item.id}`, {
-      facturado: true, facturado_por: currentUser, facturado_at: now, es_faltante: false
-    })
-  ));
+  itemsActivos.forEach(i => { i.facturado = true; i.es_faltante = false; });
+  renderItemsF();
+  Promise.all(itemsActivos.map(i => sbPatch("items_pedido", `id=eq.${i.id}`, {
+    facturado: true, facturado_por: currentUser, facturado_at: now, es_faltante: false
+  })));
 }
 
 function desmarcarTodos() {
-  itemsActivos.forEach(item => { item.facturado = false; });
-  renderItems();
-  Promise.all(itemsActivos.map(item =>
-    sbPatch("items_pedido", `id=eq.${item.id}`, { facturado: false, facturado_por: null, facturado_at: null })
-  ));
+  itemsActivos.forEach(i => { i.facturado = false; });
+  renderItemsF();
+  Promise.all(itemsActivos.map(i => sbPatch("items_pedido", `id=eq.${i.id}`, { facturado: false })));
 }
 
 function actualizarStats() {
   const total = itemsActivos.length;
-  const facturados = itemsActivos.filter(i => i.facturado).length;
-  const faltantes = itemsActivos.filter(i => i.es_faltante).length;
-  document.getElementById("statsTotal").textContent = total;
-  document.getElementById("statsFacturados").textContent = facturados;
-  document.getElementById("statsFaltantes").textContent = faltantes;
+  const ok    = itemsActivos.filter(i => i.facturado).length;
+  const falt  = itemsActivos.filter(i => i.es_faltante).length;
+  document.getElementById("stTotal").textContent = total;
+  document.getElementById("stOk").textContent    = ok;
+  document.getElementById("stFalt").textContent  = falt;
 
   const btn = document.getElementById("btnFacturar");
-  const listos = facturados + faltantes;
-  btn.disabled = listos < total || pedidoActivo?.estado === "facturado";
-  if (pedidoActivo?.estado === "facturado") btn.textContent = "✅ YA FACTURADO";
+  const listos = ok + falt;
+  if (pedidoActivo?.estado === "facturado") {
+    btn.disabled = true; btn.textContent = "✅ YA FACTURADO";
+  } else {
+    btn.disabled = listos < total;
+    btn.textContent = falt > 0
+      ? `✅ FACTURADO (${falt} faltante${falt>1?"s":""})`
+      : "✅ FACTURADO COMPLETO";
+  }
 }
 
+// ── FACTURAR ──
 async function facturarPedido() {
   if (!pedidoActivo) return;
-  showToast("Procesando...", false, true);
-  await sbPatch("pedidos", `id=eq.${pedidoActivo.id}`, { estado: "facturado" });
-  await auditoria(pedidoActivo.id, "pedido_facturado", {
-    usuario: currentUser,
-    facturados: itemsActivos.filter(i => i.facturado).length,
-    faltantes: itemsActivos.filter(i => i.es_faltante).length,
-  });
-  pedidoActivo.estado = "facturado";
-  renderHeader();
-  actualizarStats();
-  toast("¡Pedido facturado! ✅");
-  setTimeout(() => cargarPedidos(), 500);
+  showLoader();
+  try {
+    await sbPatch("pedidos", `id=eq.${pedidoActivo.id}`, { estado: "facturado" });
+    await sbInsert("auditoria", {
+      pedido_id: pedidoActivo.id, accion: "pedido_facturado", usuario: currentUser,
+      detalle: { ok: itemsActivos.filter(i=>i.facturado).length, faltantes: itemsActivos.filter(i=>i.es_faltante).length }
+    });
+    pedidoActivo.estado = "facturado";
+    renderHeader(); actualizarStats();
+    await cargarPedidos(); renderLista();
+    toast("¡Pedido facturado! ✅", "ok");
+  } catch(e) { toast("Error al facturar", "error"); }
+  finally { hideLoader(); }
 }
 
-// ============================================================
-// WHATSAPP
-// ============================================================
-function pedidoContent_whatsapp() {
-  if (!pedidoActivo || !itemsActivos.length) return;
-  const faltantes = itemsActivos.filter(i => i.es_faltante).map(i => `- ${i.cantidad} ${i.descripcion}`).join("\n");
-  if (!faltantes) return showToast("No hay faltantes marcados.");
-
-  const msg = `Hola! Pedido de ${pedidoActivo.cliente_nombre || pedidoActivo.cliente_id}:\n\n*Faltantes:*\n${faltantes}\n\nSe entregan en el próximo reparto.`;
+// ── WHATSAPP ──
+function enviarWA() {
+  const faltantes = itemsActivos.filter(i => i.es_faltante);
+  if (!faltantes.length) { toast("No hay faltantes marcados."); return; }
+  const lineas = faltantes.map(i => `• ${i.cantidad_real ?? i.cantidad} ${i.descripcion}`).join("\n");
+  const msg = `Pedido de *${pedidoActivo.cliente_nombre || pedidoActivo.cliente_id}*:\n\n*Faltantes para próximo reparto:*\n${lineas}`;
   window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
 }
 
-// ============================================================
-// IA (via Worker → Gemini)
-// ============================================================
-async function callIA(prompt, sys) {
-  const r = await fetch(WORKER_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, sys })
-  });
-  if (!r.ok) return null;
-  const d = await r.json();
-  return d.text;
-}
-
-async function iaVerificarPedido() {
+// ── IA ──
+async function iaVerificar() {
   if (!pedidoActivo || !itemsActivos.length) return;
-  document.getElementById("iaStatusChip").style.display = "block";
-  abrirIaPanel("Analizando pedido...");
-
-  const lista = itemsActivos.map(i => `${i.cantidad} ${i.descripcion}`).join("\n");
-  const sys = `Sos un asistente de control de calidad para un depósito/facturación.
-Tu tarea es revisar listas de pedidos y detectar posibles errores, cantidades inusuales, nombres mal escritos, o inconsistencias.
-Respondé en español, de forma breve y directa. Usa emojis para señalar problemas.`;
-
-  const resp = await callIA(
-    `Revisá esta lista de items del pedido de ${pedidoActivo.cliente_nombre || "cliente"}:\n\n${lista}\n\n¿Hay algo raro, cantidades inusuales, o items que probablemente sean errores de tipeo?`,
-    sys
-  );
-
-  document.getElementById("iaMsgContent").textContent = resp || "No se pudo analizar.";
-  document.getElementById("iaStatusChip").style.display = "none";
-}
-
-async function iaResumen() {
-  if (!pedidoActivo || !itemsActivos.length) return;
-  document.getElementById("iaStatusChip").style.display = "block";
-  abrirIaPanel("Generando resumen...");
-
-  const facturados = itemsActivos.filter(i => i.facturado).map(i => `${i.cantidad_real ?? i.cantidad} ${i.descripcion}`);
-  const faltantes = itemsActivos.filter(i => i.es_faltante).map(i => `${i.cantidad} ${i.descripcion}`);
-
-  const sys = `Sos un asistente de logística. Generá resúmenes claros y concisos de pedidos. Usá formato legible.`;
-  const prompt = `Generá un resumen de facturación para ${pedidoActivo.cliente_nombre}:
-\nFACTURADOS (${facturados.length}):\n${facturados.join("\n") || "ninguno"}
-\nFALTANTES (${faltantes.length}):\n${faltantes.join("\n") || "ninguno"}
-
-Hacé un resumen ejecutivo de 2-3 líneas.`;
-
-  const resp = await callIA(prompt, sys);
-  document.getElementById("iaMsgContent").textContent = resp || "No se pudo generar resumen.";
-  document.getElementById("iaStatusChip").style.display = "none";
-}
-
-function abrirIaPanel(msg = "") {
+  document.getElementById("iaChip").style.display = "block";
   const panel = document.getElementById("iaPanel");
-  document.getElementById("iaMsgContent").textContent = msg;
+  document.getElementById("iaBody").textContent = "Analizando...";
   panel.style.display = "flex";
   panel.style.flexDirection = "column";
-}
 
-function cerrarIaPanel() {
-  document.getElementById("iaPanel").style.display = "none";
-  document.getElementById("iaStatusChip").style.display = "none";
-}
-
-// ============================================================
-// AUDITORÍA
-// ============================================================
-async function toggleAudit() {
-  auditVisible = !auditVisible;
-  const panel = document.getElementById("auditPanel");
-  panel.style.display = auditVisible ? "flex" : "none";
-  if (auditVisible) panel.style.flexDirection = "column";
-  if (auditVisible && pedidoActivo) cargarAuditoria(pedidoActivo.id);
-}
-
-async function cargarAuditoria(pedidoId) {
-  const logs = await sbGet("auditoria", `pedido_id=eq.${pedidoId}&order=created_at.asc`);
-  const box = document.getElementById("auditContent");
-  if (!logs.length) { box.innerHTML = `<div style="color:var(--muted); font-size:13px;">Sin registros aún.</div>`; return; }
-  box.innerHTML = logs.map(l => `
-    <div class="audit-entry">
-      <div class="audit-time">${fmtTime(l.created_at)}</div>
-      <div>
-        <strong style="color:var(--primary);">${l.usuario || "sistema"}</strong>
-        · ${l.accion}
-        ${l.detalle && Object.keys(l.detalle).length ? `<span style="color:var(--muted); font-size:11px;"> · ${JSON.stringify(l.detalle)}</span>` : ""}
-      </div>
-    </div>
-  `).join("");
-}
-
-async function auditoria(pedidoId, accion, detalle = {}) {
+  const lista = itemsActivos.map(i => `${i.cantidad} ${i.descripcion}`).join("\n");
   try {
-    await sbInsert("auditoria", { pedido_id: pedidoId, accion, usuario: currentUser, detalle });
-  } catch(_) {}
+    const r = await fetch(WORKER_URL, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: `Revisá esta lista de pedido de ${pedidoActivo.cliente_nombre}:\n\n${lista}\n\n¿Hay cantidades inusuales, errores de tipeo, o algo raro?`,
+        sys: "Sos un asistente de control de facturación. Revisá listas de productos y detectá errores, cantidades inusuales o inconsistencias. Respondé en español, conciso y directo. Usá emojis para señalar problemas."
+      })
+    });
+    const d = await r.json();
+    document.getElementById("iaBody").textContent = d.text || "No se pudo analizar.";
+  } catch(e) {
+    document.getElementById("iaBody").textContent = "Error al conectar con la IA.";
+  }
+  document.getElementById("iaChip").style.display = "none";
 }
 
-// ============================================================
-// UTILS
-// ============================================================
-function estadoLabel(e) {
-  return { pendiente:"Pendiente", armado:"Armado", en_facturacion:"Facturando…", facturado:"✅ Facturado" }[e] || e;
-}
-function fmtFecha(iso) {
-  return new Date(iso + "T12:00:00").toLocaleDateString("es-AR", { day:"2-digit", month:"short" });
-}
+function cerrarIA() { document.getElementById("iaPanel").style.display = "none"; }
+
+// ── UTILS ──
 function fmtTime(iso) {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("es-AR", { hour:"2-digit", minute:"2-digit" });
 }
-
-let toastTimer;
-function toast(msg, error = false) {
-  const existing = document.querySelector(".toast");
-  if (existing) existing.remove();
+function showLoader() { document.getElementById("loader").style.display = "flex"; }
+function hideLoader() { document.getElementById("loader").style.display = "none"; }
+let tt;
+function toast(msg, tipo="") {
+  const old = document.querySelector(".toast"); if(old) old.remove();
   const el = document.createElement("div");
-  el.className = "toast";
+  el.className = `toast ${tipo}`;
   el.textContent = msg;
-  if (error) el.style.borderColor = "var(--danger)";
   document.body.appendChild(el);
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.remove(), 2500);
+  clearTimeout(tt);
+  tt = setTimeout(() => el.remove(), 2800);
 }
-function showToast(msg) { toast(msg); }
 
-// ============================================================
-// INIT
-// ============================================================
+// ── INIT ──
 function iniciarApp() {
-  cargarPedidos();
+  cargarPedidos().then(() => renderLista());
   conectarRealtime();
-  setInterval(cargarPedidos, 30000);
+  setInterval(() => cargarPedidos().then(() => renderLista()), 30000);
 }
 
 window.onload = () => {
+  hideLoader();
   const saved = localStorage.getItem("factUser");
-  if (saved) {
-    login(saved);
-  } else {
-    document.getElementById("loginScreen").style.display = "flex";
-  }
+  if (saved) login(saved);
+  else document.getElementById("loginScreen").style.display = "flex";
 };
 </script>
 </body>
