@@ -666,12 +666,18 @@ async function completarPedido() {
   try {
     const faltantes = itemsActivos.filter(i => !i.armado);
     if (faltantes.length) {
-      await Promise.all(faltantes.map(i => sbPatch("items_pedido",`id=eq.${i.id}`,{es_faltante:true})));
+      // es_faltante es opcional — si la columna no existe, no bloquea
+      await Promise.all(faltantes.map(i =>
+        sbPatch("items_pedido",`id=eq.${i.id}`,{es_faltante:true}).catch(()=>{})
+      ));
     }
     const nowArmado = new Date().toISOString();
-    await sbPatch("pedidos",`id=eq.${pedidoActivo.id}`,{
-      estado:"armado", armado_por:armadorActual, armado_at:nowArmado
-    });
+    // CRÍTICO: cambiar estado a armado
+    await sbPatch("pedidos",`id=eq.${pedidoActivo.id}`,{estado:"armado"});
+    // OPCIONAL: guardar quién armó (requiere columnas armado_por/armado_at en pedidos)
+    sbPatch("pedidos",`id=eq.${pedidoActivo.id}`,{
+      armado_por:armadorActual, armado_at:nowArmado
+    }).catch(()=>{});
     await sbInsert("auditoria",{
       pedido_id:pedidoActivo.id, accion:"pedido_armado", usuario:armadorActual,
       detalle:{armados:itemsActivos.filter(i=>i.armado).length, faltantes:faltantes.length}
