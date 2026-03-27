@@ -22,9 +22,11 @@
   /* ── HEADER ── */
   .header{
     position:sticky;top:0;z-index:100;
-    background:#fff;border-bottom:2px solid var(--border);
+    background:rgba(255,255,255,0.88);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border-bottom:1px solid rgba(226,232,240,0.7);
     padding:12px 18px;display:flex;align-items:center;gap:12px;
-    box-shadow:0 2px 8px rgba(0,0,0,.05);
+    box-shadow:0 2px 16px rgba(0,0,0,.06);
   }
   .header-title{font-size:20px;font-weight:900;flex:1}
   .conn-dot{width:12px;height:12px;border-radius:50%;background:#dc2626;flex-shrink:0}
@@ -32,14 +34,16 @@
   .conn-dot.syncing{background:var(--mod);animation:pulse 1s infinite}
 
   /* ── TABS ── */
-  .tabs{display:grid;grid-template-columns:1fr 1fr;background:#fff;border-bottom:2px solid var(--border)}
+  .tabs{display:flex;padding:10px 16px;gap:10px;background:var(--bg);border-bottom:1px solid var(--border)}
   .tab-btn{
-    padding:16px 10px;font-size:15px;font-weight:800;border:none;
-    background:transparent;cursor:pointer;color:var(--muted);
-    border-bottom:4px solid transparent;transition:.15s;text-align:center;line-height:1.3
+    flex:1;padding:11px 8px;font-size:14px;font-weight:800;
+    border:2px solid var(--border);border-radius:99px;cursor:pointer;
+    background:var(--card);color:var(--muted);
+    box-shadow:0 1px 4px rgba(0,0,0,.06);
+    transition:.15s;text-align:center;line-height:1.3
   }
-  .tab-btn.hoy.active {color:var(--hoy);border-bottom-color:var(--hoy);background:var(--hoy-bg)}
-  .tab-btn.pend.active{color:var(--pend);border-bottom-color:var(--pend);background:var(--pend-bg)}
+  .tab-btn.hoy.active {color:#fff;border-color:var(--hoy);background:var(--hoy);box-shadow:0 3px 12px rgba(220,38,38,.3)}
+  .tab-btn.pend.active{color:#fff;border-color:var(--pend);background:var(--pend);box-shadow:0 3px 12px rgba(37,99,235,.3)}
 
   /* ── LISTA ── */
   #listaPedidos{padding:14px 16px;display:flex;flex-direction:column;gap:12px;flex:1}
@@ -54,12 +58,19 @@
   .pedido-card.pendiente {border-left-color:var(--pend);background:var(--pend-bg)}
   .pedido-card.armado-ok {border-left-color:var(--ok);background:var(--ok-bg);opacity:.75}
 
-  .card-num{font-size:13px;font-weight:700;color:var(--muted);margin-bottom:4px}
-  .card-nombre{font-size:26px;font-weight:900;color:var(--text);line-height:1.15}
-  .card-entrega{font-size:16px;font-weight:700;margin-top:8px}
-  .card-entrega.urg {color:var(--hoy)}
-  .card-entrega.pend{color:var(--pend)}
-  .card-meta{font-size:13px;color:var(--muted);margin-top:4px}
+  .card-num{
+    display:inline-block;background:var(--pend-bg);color:var(--pend);
+    border:1.5px solid var(--pend-brd);border-radius:99px;
+    padding:2px 10px;font-size:12px;font-weight:800;margin-bottom:6px
+  }
+  .card-nombre{font-size:24px;font-weight:900;color:var(--text);line-height:1.15}
+  .card-entrega{
+    display:inline-flex;align-items:center;gap:6px;margin-top:8px;
+    font-size:13px;font-weight:800;padding:4px 10px;border-radius:99px
+  }
+  .card-entrega.urg {color:var(--hoy);background:var(--hoy-bg);border:1.5px solid var(--hoy-brd)}
+  .card-entrega.pend{color:var(--pend);background:var(--pend-bg);border:1.5px solid var(--pend-brd)}
+  .card-meta{font-size:13px;color:var(--muted);margin-top:6px}
   .badge-armado{
     display:inline-block;margin-top:8px;
     background:var(--ok);color:#fff;
@@ -70,8 +81,10 @@
   #vistaDetalle{display:none;flex-direction:column;min-height:100vh;background:var(--bg)}
 
   .det-header{
-    position:sticky;top:0;z-index:100;background:#fff;
-    border-bottom:2px solid var(--border);padding:12px 18px;
+    position:sticky;top:0;z-index:100;
+    background:rgba(255,255,255,0.88);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border-bottom:1px solid rgba(226,232,240,0.7);padding:12px 18px;
     display:flex;align-items:center;gap:12px;
     box-shadow:0 2px 8px rgba(0,0,0,.05)
   }
@@ -164,17 +177,19 @@
 
   /* ── FOOTER ── */
   .det-footer{
-    position:sticky;bottom:0;background:#fff;border-top:2px solid var(--border);
-    padding:14px 18px;box-shadow:0 -2px 12px rgba(0,0,0,.05)
+    position:sticky;bottom:0;
+    background:rgba(255,255,255,0.95);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    border-top:1px solid rgba(226,232,240,0.7);
+    padding:14px 18px;box-shadow:0 -2px 16px rgba(0,0,0,.08)
   }
   #msgMotDep{font-size:13px;color:var(--muted);text-align:center;padding:2px 0 4px;font-style:italic;min-height:18px}
   .progreso{font-size:15px;font-weight:700;color:var(--muted);text-align:center;margin-bottom:12px}
   .btn-armar{
-    width:100%;padding:20px;border-radius:var(--radius);border:none;
-    font-size:20px;font-weight:900;background:var(--ok);color:#fff;cursor:pointer;
-    transition:.15s;box-shadow:0 4px 12px rgba(22,163,74,.3)
+    width:100%;padding:20px;border-radius:99px;border:none;
+    font-size:18px;font-weight:900;background:var(--ok);color:#fff;cursor:pointer;
+    transition:.15s;box-shadow:0 4px 16px rgba(22,163,74,.35)
   }
-  .btn-armar:disabled{background:#d1fae5;color:#6ee7b7;cursor:not-allowed;box-shadow:none}
+  .btn-armar:disabled{background:#d1fae5;color:#86efac;cursor:not-allowed;box-shadow:none}
   .btn-armar:not(:disabled):active{transform:scale(.98)}
 
   /* ── MODAL ARMADOR ── */
@@ -262,7 +277,9 @@
       --bg:#12151c; --card:#1e2330; --text:#eef2f7; --muted:#8090a8; --border:#2d3a4e;
       --shadow:0 2px 14px rgba(0,0,0,.4);
     }
-    .header,.det-header,.det-info,.det-footer,.tabs{background:var(--card);border-color:var(--border)}
+    .header,.det-header{background:rgba(30,35,48,.9);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-color:rgba(45,58,78,.8)}
+    .det-footer{background:rgba(18,21,28,.95);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-color:rgba(45,58,78,.7)}
+    .det-info,.tabs{background:var(--card);border-color:var(--border)}
     .modal-box{background:#1e2330;color:var(--text)}
     .modal-input{background:#12151c;color:var(--text);border-color:var(--border)}
     .check-btn:not(.on){background:var(--card);border-color:var(--border)}
@@ -422,8 +439,14 @@ function conectarRealtime() {
       ws.readyState===1 && ws.send(JSON.stringify({topic:"phoenix",event:"heartbeat",payload:{},ref:"hb"})),20000);
     flushSyncQueue();
   };
+  let _rtDebounce = null;
   ws.onmessage = e => {
-    try { if(JSON.parse(e.data).payload?.data?.table==="pedidos") cargarPedidos(); } catch(_){}
+    try {
+      if(JSON.parse(e.data).payload?.data?.table==="pedidos") {
+        clearTimeout(_rtDebounce);
+        _rtDebounce = setTimeout(cargarPedidos, 500);
+      }
+    } catch(_){}
   };
   ws.onclose = () => { setConn("offline"); clearInterval(hb); setTimeout(conectarRealtime,3000); };
   ws.onerror = () => setConn("offline");
@@ -439,13 +462,19 @@ function setTab(t) {
 }
 
 // ── CARGA ──
+let _pedidosHash = "";
 async function cargarPedidos() {
   setConn("syncing");
   try {
-    pedidosCache = await sbGet("pedidos",
+    const data = await sbGet("pedidos",
       "estado=in.(pendiente,armado)&order=fecha_entrega.asc,created_at.asc&limit=200");
-    renderLista();
     setConn("online");
+    const hash = JSON.stringify(data.map(p => p.id+"|"+p.estado+"|"+(p.armado_por||"")));
+    if (hash !== _pedidosHash) {
+      _pedidosHash = hash;
+      pedidosCache = data;
+      renderLista();
+    }
   } catch(e) { setConn("offline"); }
 }
 
@@ -700,8 +729,11 @@ function actualizarProgreso() {
   // Mensaje motivacional según progreso
   const mot = document.getElementById("msgMotDep");
   if (mot) {
-    if (total === 0 || pedidoActivo?.estado === "armado") {
+    if (pedidoActivo?.estado === "armado") {
       mot.textContent = "";
+    } else if (total === 0) {
+      mot.textContent = "Sin artículos cargados — podés enviar igualmente";
+      mot.style.color = "var(--pend)";
     } else if (armados === total) {
       mot.textContent = "🎉 ¡Todo listo para entregar!";
       mot.style.color = "var(--ok)";
@@ -719,10 +751,12 @@ function actualizarProgreso() {
   if (pedidoActivo?.estado === "armado") {
     btn.disabled = true; btn.textContent = "✅ YA ESTÁ ARMADO";
   } else {
-    btn.disabled = armados === 0;
-    btn.textContent = faltantes>0 && armados>0
-      ? `✅ ARMAR (${faltantes} faltante${faltantes>1?"s":""})`
-      : "✅ MARCAR COMO ARMADO";
+    // Permitir enviar aunque no haya items (pedido vacío = todos faltantes)
+    btn.disabled = total > 0 && armados === 0;
+    btn.textContent = total === 0 ? "✅ ENVIAR SIN ITEMS" :
+      (faltantes>0 && armados>0
+        ? `✅ ARMAR (${faltantes} faltante${faltantes>1?"s":""})`
+        : "✅ MARCAR COMO ARMADO");
   }
 }
 
