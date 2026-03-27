@@ -87,3 +87,26 @@ ALTER TABLE auditoria    ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "public_all_pedidos"      ON pedidos      FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "public_all_items"        ON items_pedido FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "public_all_auditoria"    ON auditoria    FOR ALL USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- NUEVAS COLUMNAS EN PEDIDOS (quién armó)
+-- ============================================================
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS armado_por  TEXT;
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS armado_at   TIMESTAMPTZ;
+
+-- ============================================================
+-- NOTAS POR CLIENTE (escribe/ve Laura en facturación)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS notas_cliente (
+  id         uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  cliente_id TEXT NOT NULL,
+  nota       TEXT NOT NULL,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notas_cliente_id  ON notas_cliente(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_notas_created_at  ON notas_cliente(created_at DESC);
+
+ALTER TABLE notas_cliente ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_all_notas" ON notas_cliente FOR ALL USING (true) WITH CHECK (true);

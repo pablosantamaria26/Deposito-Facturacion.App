@@ -277,6 +277,12 @@
         🧑‍🏭 Armando: <strong id="armadorNombre"></strong>
       </div>
     </div>
+    <!-- Faltantes de la semana pasada -->
+    <div id="detFaltantesPrevios" style="display:none;margin:12px 16px 0;background:#fffbeb;border-left:6px solid #f59e0b;border-radius:10px;padding:12px 16px;">
+      <div style="font-size:13px;font-weight:900;color:#92400e;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">⚠️ Faltantes semana pasada</div>
+      <div id="detFaltantesList"></div>
+    </div>
+
     <div id="listaItems"></div>
     <div class="det-footer">
       <div class="progreso" id="progresoTxt">0 / 0 items</div>
@@ -378,6 +384,7 @@ function conectarRealtime() {
       payload:{config:{postgres_changes:[{event:"*",schema:"public",table:"pedidos"}]}},ref:"1"}));
     hb = setInterval(() =>
       ws.readyState===1 && ws.send(JSON.stringify({topic:"phoenix",event:"heartbeat",payload:{},ref:"hb"})),20000);
+    flushSyncQueue();
   };
   ws.onmessage = e => {
     try { if(JSON.parse(e.data).payload?.data?.table==="pedidos") cargarPedidos(); } catch(_){}
@@ -494,6 +501,8 @@ async function abrirPedido(id) {
     document.getElementById("armadorNombre").textContent = armadorActual;
 
     renderItems();
+    cargarFaltantesPreviosDeposito(pedidoActivo.cliente_id, pedidoActivo.id);
+    localStorage.setItem("depositoActivePedido", id);  // persistencia
     document.getElementById("vistaLista").style.display = "none";
     const vd = document.getElementById("vistaDetalle");
     vd.style.display = "flex"; vd.style.flexDirection = "column"; vd.style.minHeight = "100vh";
@@ -686,9 +695,70 @@ async function completarPedido() {
   finally { hideLoader(); }
 }
 
+// ── FALTANTES PREVIOS (depósito) ──
+async function cargarFaltantesPreviosDeposito(clienteId, pedidoActualId) {
+  const sec = document.getElementById("detFaltantesPrevios");
+  sec.style.display = "none";
+  if (!clienteId) return;
+  try {
+    const hace15 = new Date();
+    hace15.setDate(hace15.getDate() - 15);
+    const previos = await sbGet("pedidos",
+      `cliente_id=eq.${encodeURIComponent(clienteId)}&estado=eq.facturado&created_at=gte.${hace15.toISOString()}&id=neq.${pedidoActualId}&order=created_at.desc&limit=3`);
+    if (!previos.length) return;
+    const faltantes = [];
+    for (const p of previos) {
+      const items = await sbGet("items_pedido", `pedido_id=eq.${p.id}&es_faltante=eq.true`);
+      faltantes.push(...items);
+    }
+    if (!faltantes.length) return;
+    const vistos = new Set();
+    const unicos = faltantes.filter(f => {
+      const k = f.descripcion.toLowerCase().trim();
+      if (vistos.has(k)) return false;
+      vistos.add(k); return true;
+    });
+    document.getElementById("detFaltantesList").innerHTML =
+      unicos.map(f => `<div style="font-size:14px;font-weight:700;padding:4px 0;border-bottom:1px solid #fde68a;display:flex;gap:10px;">
+        <span style="color:#d97706;font-weight:900;min-width:32px;">${f.cantidad}</span>
+        <span>${f.descripcion}</span>
+      </div>`).join("");
+    sec.style.display = "block";
+  } catch(_) {}
+}
+
+// ── OFFLINE QUEUE ──
+let syncQueue = JSON.parse(localStorage.getItem("depositoSyncQueue") || "[]");
+
+async function sbPatchQueued(t, match, data) {
+  try {
+    return await sbPatch(t, match, data);
+  } catch(e) {
+    syncQueue.push({ t, match, data, ts: Date.now() });
+    localStorage.setItem("depositoSyncQueue", JSON.stringify(syncQueue));
+    toast("Sin conexión — se guardará al reconectar", "mod");
+    return null;
+  }
+}
+
+async function flushSyncQueue() {
+  if (!syncQueue.length) return;
+  const pending = [...syncQueue];
+  syncQueue = [];
+  localStorage.setItem("depositoSyncQueue", JSON.stringify([]));
+  let fallidos = 0;
+  for (const op of pending) {
+    try { await sbPatch(op.t, op.match, op.data); }
+    catch(e) { syncQueue.push(op); fallidos++; }
+  }
+  if (syncQueue.length) localStorage.setItem("depositoSyncQueue", JSON.stringify(syncQueue));
+  if (pending.length - fallidos > 0) toast(`✅ ${pending.length - fallidos} cambios sincronizados`, "ok");
+}
+
 // ── NAV ──
 function volverALista() {
   pedidoActivo = null;
+  localStorage.removeItem("depositoActivePedido");
   document.getElementById("vistaDetalle").style.display = "none";
   const vl = document.getElementById("vistaLista");
   vl.style.display="flex"; vl.style.flexDirection="column"; vl.style.minHeight="100vh";
@@ -706,11 +776,17 @@ function toast(msg,tipo=""){
 }
 
 // ── INIT ──
-window.onload = () => {
+window.onload = async () => {
   hideLoader();
-  cargarPedidos();
+  await cargarPedidos();
   conectarRealtime();
   setInterval(cargarPedidos, 30000);
+  // Restaurar pedido activo si se recargó la página
+  const activoId = localStorage.getItem("depositoActivePedido");
+  if (activoId) {
+    const p = pedidosAll.find(p => p.id === activoId);
+    if (p) abrirPedido(activoId);
+  }
 };
 </script>
 </body>

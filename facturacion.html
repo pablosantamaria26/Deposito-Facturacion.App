@@ -334,6 +334,31 @@
   .btn-notas-open:hover { border-color: var(--manana); color: var(--manana); }
   .btn-notas-open.tiene-notas { border-color: var(--manana); color: var(--manana); background: var(--man-bg); }
 
+  /* N° cliente grande */
+  .ped-num-grande { font-size: 38px; font-weight: 900; color: var(--prox); line-height: 1; letter-spacing: -1px; }
+
+  /* Faltantes previos */
+  .faltantes-previos-sec { background: #fffbeb; border-left: 6px solid #f59e0b; border-radius: 0; padding: 12px 24px; flex-shrink: 0; }
+  .faltantes-previos-title { font-size: 13px; font-weight: 900; color: #92400e; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
+  .faltante-prev-item { font-size: 14px; font-weight: 700; color: var(--text); padding: 4px 0; border-bottom: 1px solid #fde68a; display: flex; gap: 10px; }
+  .faltante-prev-item:last-child { border-bottom: none; }
+  .faltante-prev-qty { color: var(--manana); min-width: 32px; font-weight: 900; }
+
+  /* Mensaje motivacional */
+  #msgMot { font-size: 13px; color: var(--muted); text-align: center; padding: 2px 0 6px; font-style: italic; min-height: 20px; }
+
+  /* Tab A armar */
+  #armarList { flex: 1; overflow-y: auto; }
+  #armarList::-webkit-scrollbar { width: 4px; }
+  #armarList::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .pend-armar-item { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .pend-armar-num { font-size: 18px; font-weight: 900; color: var(--prox); }
+  .pend-armar-nombre { font-size: 14px; font-weight: 700; color: var(--text); margin-top: 2px; }
+  .pend-armar-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .pend-armar-fecha.hoy-c  { color: var(--hoy);    font-weight: 800; font-size: 12px; }
+  .pend-armar-fecha.man-c  { color: var(--manana); font-weight: 800; font-size: 12px; }
+  .pend-armar-fecha.prox-c { color: var(--prox);   font-weight: 700; font-size: 12px; }
+
   @keyframes slideUp { from { transform: translateY(60px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 </style>
 </head>
@@ -354,8 +379,9 @@
 
     <!-- PANEL IZQUIERDO -->
     <div class="panel-left">
-      <div class="left-tabs-bar">
-        <button class="ltab active" id="ltabPedidos"   onclick="setLeftTab('pedidos')">Pedidos</button>
+      <div class="left-tabs-bar" style="grid-template-columns:1fr 1fr 1fr;">
+        <button class="ltab active" id="ltabPedidos"   onclick="setLeftTab('pedidos')">Facturar</button>
+        <button class="ltab"        id="ltabArmar"     onclick="setLeftTab('armar')">A armar</button>
         <button class="ltab"        id="ltabHistorial" onclick="setLeftTab('historial')">Historial</button>
       </div>
       <!-- Vista Pedidos -->
@@ -364,6 +390,11 @@
           <input id="searchInput" placeholder="🔍 Buscar cliente..." oninput="filtrar()" />
         </div>
         <div id="pedidosList"></div>
+      </div>
+      <!-- Vista A armar -->
+      <div id="armarView" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;flex-shrink:0;">Pendientes de armar</div>
+        <div id="armarList"></div>
       </div>
       <!-- Vista Historial -->
       <div id="historialView" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
@@ -389,8 +420,9 @@
       <!-- Pedido abierto -->
       <div id="pedidoPanel">
         <div class="ped-header">
-          <div class="ped-cliente" id="phCliente">—</div>
-          <div class="ped-entrega" id="phEntrega">—</div>
+          <div class="ped-num-grande" id="phNumGrande">—</div>
+          <div class="ped-cliente" id="phCliente" style="font-size:22px;margin-top:2px;">—</div>
+          <div class="ped-entrega" id="phEntrega" style="font-size:16px;margin-top:6px;">—</div>
           <div class="ped-meta"    id="phMeta">—</div>
           <div class="ped-chips"   id="phChips"></div>
           <button class="btn-notas-open" id="btnNotas" onclick="abrirModalNotas()" style="display:none;">📝 Notas</button>
@@ -401,14 +433,20 @@
           <button class="btn-ia" onclick="desmarcarTodos()" style="margin-left:auto;" title="Desmarcar todos los items">↩ Desmarcar</button>
         </div>
 
+        <!-- Faltantes de la semana pasada -->
+        <div class="faltantes-previos-sec" id="faltantesPreviosSec" style="display:none;">
+          <div class="faltantes-previos-title">⚠️ FALTANTES SEMANA PASADA</div>
+          <div id="faltantesPreviosList"></div>
+        </div>
+
         <div id="itemsPanel"></div>
 
 
         <div class="ped-footer">
+          <div id="msgMot"></div>
           <div class="footer-stats">
-            <span>📦 <span id="stTotal">0</span> items</span>
-            <span class="ok-count">✅ <span id="stOk">0</span> facturados</span>
-            <span class="flt-count">❌ <span id="stFalt">0</span> faltantes</span>
+            <span class="ok-count" style="font-size:17px;font-weight:900;"><span id="stOk">0</span>/<span id="stTotal">0</span> facturados</span>
+            <span class="flt-count" id="stFaltSpan" style="display:none;">❌ <span id="stFalt">0</span> faltantes</span>
           </div>
           <div class="footer-actions">
             <button class="btn-wa" onclick="enviarWA()" title="WhatsApp faltantes">💬</button>
@@ -616,6 +654,7 @@ async function seleccionar(id) {
     renderHeader();
     renderItemsF();
     cargarNotas(pedidoActivo.cliente_id);
+    cargarFaltantesPrevios(pedidoActivo.cliente_id, pedidoActivo.id);
 
     document.getElementById("noSel").style.display = "none";
     const pp = document.getElementById("pedidoPanel");
@@ -636,6 +675,7 @@ function renderHeader() {
     ? new Date(fe+"T12:00:00").toLocaleDateString("es-AR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})
     : "—";
 
+  document.getElementById("phNumGrande").textContent = `N° ${pedidoActivo.cliente_id||"—"}`;
   document.getElementById("phCliente").textContent =
     pedidoActivo.cliente_nombre || "Cliente " + (pedidoActivo.cliente_id||"—");
   document.getElementById("phEntrega").textContent = `${icon} SE ENTREGA: ${feStr.toUpperCase()}`;
@@ -643,8 +683,7 @@ function renderHeader() {
   document.getElementById("phMeta").textContent =
     `Vendedor: ${pedidoActivo.vendedor||"—"} · ${pedidoActivo.observaciones||"Sin observaciones"}`;
   document.getElementById("phChips").innerHTML = `
-    <div class="chip">N° ${pedidoActivo.cliente_id||"—"}</div>
-    ${pedidoActivo.armado_por ? `<div class="chip" style="color:var(--prox);border-color:#93c5fd;" title="Armado por">🧑‍🏭 ${pedidoActivo.armado_por}</div>` : ""}
+    ${pedidoActivo.armado_por ? `<div class="chip" style="color:var(--prox);border-color:#93c5fd;">🧑‍🏭 ${pedidoActivo.armado_por}</div>` : ""}
     ${pedidoActivo.estado==="facturado" ? `<div class="chip" style="color:var(--success);border-color:#86efac;">✅ FACTURADO</div>` : ""}
   `;
 }
@@ -728,6 +767,13 @@ function desmarcarTodos() {
   Promise.all(itemsActivos.map(i => sbPatch("items_pedido", `id=eq.${i.id}`, { facturado: false })));
 }
 
+const MSGS_MOT = [
+  "Tomá tu tiempo, revisá cada artículo",
+  "Revisa bien, sin apuros",
+  "Lee con cuidado, no te apresures",
+  "Presta atención a las cantidades",
+  "Un error ahora es un problema después",
+];
 function actualizarStats() {
   const total = itemsActivos.length;
   const ok    = itemsActivos.filter(i => i.facturado).length;
@@ -736,8 +782,21 @@ function actualizarStats() {
   document.getElementById("stOk").textContent    = ok;
   document.getElementById("stFalt").textContent  = falt;
 
-  const btn = document.getElementById("btnFacturar");
+  const faltSpan = document.getElementById("stFaltSpan");
+  faltSpan.style.display = falt > 0 ? "inline" : "none";
+
+  // Mensaje motivacional según progreso
+  const msgEl = document.getElementById("msgMot");
   const listos = ok + falt;
+  if (total === 0) {
+    msgEl.textContent = "";
+  } else if (listos === total) {
+    msgEl.textContent = ok === total ? "✓ Todo facturado — revisá una vez más antes de confirmar" : "";
+  } else {
+    msgEl.textContent = MSGS_MOT[ok % MSGS_MOT.length];
+  }
+
+  const btn = document.getElementById("btnFacturar");
   if (pedidoActivo?.estado === "facturado") {
     btn.disabled = true; btn.textContent = "✅ YA FACTURADO";
   } else {
@@ -779,9 +838,12 @@ function enviarWA() {
 // ── LEFT TABS ──
 function setLeftTab(tab) {
   document.getElementById("ltabPedidos").classList.toggle("active",   tab==="pedidos");
+  document.getElementById("ltabArmar").classList.toggle("active",     tab==="armar");
   document.getElementById("ltabHistorial").classList.toggle("active", tab==="historial");
   document.getElementById("pedidosView").style.display   = tab==="pedidos"   ? "flex" : "none";
+  document.getElementById("armarView").style.display     = tab==="armar"     ? "flex" : "none";
   document.getElementById("historialView").style.display = tab==="historial" ? "flex" : "none";
+  if (tab === "armar") cargarPendientesArmar();
 }
 
 // ── HISTORIAL ──
@@ -866,6 +928,82 @@ function escHtml(s) {
 function fmtNotaFecha(iso) {
   if (!iso) return "";
   return new Date(iso).toLocaleString("es-AR", { day:"2-digit", month:"2-digit", year:"2-digit", hour:"2-digit", minute:"2-digit" });
+}
+
+// ── FALTANTES PREVIOS ──
+async function cargarFaltantesPrevios(clienteId, pedidoActualId) {
+  const sec = document.getElementById("faltantesPreviosSec");
+  sec.style.display = "none";
+  if (!clienteId) return;
+
+  const hace15 = new Date();
+  hace15.setDate(hace15.getDate() - 15);
+  const hace15ISO = hace15.toISOString();
+
+  try {
+    // Buscar pedidos facturados del mismo cliente en últimos 15 días
+    const previos = await sbGet("pedidos",
+      `cliente_id=eq.${encodeURIComponent(clienteId)}&estado=eq.facturado&created_at=gte.${hace15ISO}&id=neq.${pedidoActualId}&order=created_at.desc&limit=3`);
+    if (!previos.length) return;
+
+    // Buscar items faltantes de esos pedidos
+    const faltantes = [];
+    for (const p of previos) {
+      const items = await sbGet("items_pedido",
+        `pedido_id=eq.${p.id}&es_faltante=eq.true`);
+      faltantes.push(...items);
+    }
+    if (!faltantes.length) return;
+
+    // Deduplicar por descripción
+    const vistos = new Set();
+    const unicos = faltantes.filter(f => {
+      const k = f.descripcion.toLowerCase().trim();
+      if (vistos.has(k)) return false;
+      vistos.add(k); return true;
+    });
+
+    document.getElementById("faltantesPreviosList").innerHTML =
+      unicos.map(f => `
+        <div class="faltante-prev-item">
+          <span class="faltante-prev-qty">${f.cantidad}</span>
+          <span>${escHtml(f.descripcion)}</span>
+        </div>`).join("");
+    sec.style.display = "block";
+  } catch(_) {}
+}
+
+// ── PENDIENTES DE ARMAR ──
+async function cargarPendientesArmar() {
+  const box = document.getElementById("armarList");
+  box.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Cargando...</div>`;
+  const pedidos = await sbGet("pedidos",
+    "estado=eq.pendiente&order=fecha_entrega.asc,created_at.asc&limit=100");
+  if (!pedidos.length) {
+    box.innerHTML = `<div style="padding:30px;text-align:center;color:var(--muted);font-size:14px;">🎉 No hay pedidos pendientes de armar</div>`;
+    return;
+  }
+  const grupos = { hoy:[], man:[], prox:[] };
+  pedidos.forEach(p => grupos[grupoFecha(p.fecha_entrega)].push(p));
+
+  let html = "";
+  const renderGrp = (key, icon, label) => {
+    if (!grupos[key].length) return;
+    html += `<div class="grupo-header ${key}">${icon} ${label} <span class="grupo-count">${grupos[key].length}</span></div>`;
+    grupos[key].forEach(p => {
+      const fechaC = key==="hoy" ? "hoy-c" : key==="man" ? "man-c" : "prox-c";
+      html += `<div class="pend-armar-item">
+        <div class="pend-armar-num">N° ${p.cliente_id||"—"}</div>
+        <div class="pend-armar-nombre">${p.cliente_nombre||"—"}</div>
+        <div class="pend-armar-fecha ${fechaC}">${icon} ${fmtFecha(p.fecha_entrega)}</div>
+        <div class="pend-armar-meta">Vendedor: ${p.vendedor||"—"}</div>
+      </div>`;
+    });
+  };
+  renderGrp("hoy",  "🔴", "HOY");
+  renderGrp("man",  "🟠", "MAÑANA");
+  renderGrp("prox", "⏳", "PRÓXIMA SEMANA");
+  box.innerHTML = html;
 }
 
 // ── UTILS ──
