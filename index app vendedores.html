@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Pedidos ML Pro</title>
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+
+<style>
+  /* ==========================================
+     VARIABLES — DARK (default)
+  ========================================== */
+  :root {
+    --primary: #3b82f6;
+    --primary-dark: #1d4ed8;
+    --primary-dim: rgba(59, 130, 246, 0.2);
+    --accent: #f59e0b;
+    --bg-overlay: rgba(15, 23, 42, 0.98);
+    --bg-nav: rgba(15, 23, 42, 0.98);
+    --bg-header: rgba(15, 23, 42, 0.9);
+    --bg-card: rgba(30, 41, 59, 0.7);
+    --bg-input: rgba(30, 41, 59, 0.7);
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --border: rgba(148, 163, 184, 0.15);
+    --input-color: #ffffff;
+    --success: #10b981;
+    --danger: #ef4444;
+    --radius: 16px;
+    --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    --input-height: 56px;
+    --top-nav-height: 100px;
+    --header-height: 55px;
+  }
+
+  /* ==========================================
+     VARIABLES — LIGHT
+  ========================================== */
+  :root.light {
+    --bg-overlay: rgba(255, 255, 255, 0.98);
+    --bg-nav: rgba(255, 255, 255, 0.97);
+    --bg-header: rgba(248, 250, 252, 0.97);
+    --bg-card: rgba(255, 255, 255, 0.95);
+    --bg-input: rgba(255, 255, 255, 0.9);
+    --text-main: #0f172a;
+    --text-muted: #475569;
+    --border: rgba(15, 23, 42, 0.12);
+    --input-color: #0f172a;
+    --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Transición suave al cambiar tema */
+  *, *::before, *::after {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  }
+  /* Excepciones que NO deben transicionar (animaciones propias) */
+  .spinner-magic, .dot, [class*="animation"], @keyframes { transition: none !important; }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    margin: 0; padding: 0; width: 100%; max-width: 100%;
+    overflow-x: hidden; overscroll-behavior: none;
+    font-family: 'Roboto', sans-serif;
+    background: radial-gradient(circle at top right, #1e293b, #0f172a);
+    background-attachment: fixed; color: var(--text-main); min-height: 100vh;
+  }
+
+  :root.light body {
+    background: linear-gradient(135deg, #f1f5f9, #e2e8f0) !important;
+    background-attachment: fixed !important;
+  }
+
+  body {
+    padding-top: calc(var(--top-nav-height) + var(--header-height) + 15px);
+    padding-bottom: 40px;
+  }
+
+  .hidden { display: none !important; }
+
+  /* ==========================================
+     TOP NAV
+  ========================================== */
+  .top-nav {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: var(--top-nav-height);
+    background: var(--bg-nav); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    display: grid; grid-template-columns: 1fr 1fr 2.5fr 1fr 1fr;
+    align-items: center; justify-items: center; padding: 0 8px;
+    z-index: 200; box-shadow: 0 4px 25px rgba(0,0,0,0.5);
+  }
+
+  /* ==========================================
+     FAT FINGER — todos los botones min 48px
+  ========================================== */
+  button {
+    min-height: 48px;
+    cursor: pointer;
+  }
+
+  .tab-btn {
+    background: transparent; border: none; color: #64748b;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 4px; border-radius: 8px; transition: color 0.2s; width: 100%;
+    min-height: 48px;
+  }
+  .tab-btn span:first-child { font-size: 20px; margin-bottom: 0; }
+  .tab-btn.active { color: var(--primary); }
+
+  @keyframes partyRGB {
+    0%   { border-color: #ef4444; box-shadow: 0 0 15px rgba(239,68,68,0.5), inset 0 0 10px rgba(239,68,68,0.2); }
+    25%  { border-color: #f59e0b; box-shadow: 0 0 15px rgba(245,158,11,0.5), inset 0 0 10px rgba(245,158,11,0.2); }
+    50%  { border-color: #10b981; box-shadow: 0 0 15px rgba(16,185,129,0.5), inset 0 0 10px rgba(16,185,129,0.2); }
+    75%  { border-color: #3b82f6; box-shadow: 0 0 15px rgba(59,130,246,0.5), inset 0 0 10px rgba(59,130,246,0.2); }
+    100% { border-color: #8b5cf6; box-shadow: 0 0 15px rgba(139,92,246,0.5), inset 0 0 10px rgba(139,92,246,0.2); }
+  }
+
+  #btnEnviar {
+    background: linear-gradient(145deg, #1e293b, #0f172a); color: white;
+    border: 2px solid var(--primary); border-radius: 14px;
+    height: 70px; width: 98%;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    font-size: 14px; font-weight: 900; line-height: 1.1;
+    text-transform: uppercase; letter-spacing: 1px;
+    animation: partyRGB 5s infinite alternate;
+    position: relative;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  }
+  #btnEnviar:active { transform: scale(0.95); }
+
+  /* ==========================================
+     HEADER
+  ========================================== */
+  header {
+    background: var(--bg-header); backdrop-filter: blur(5px);
+    border-bottom: 1px solid var(--border); padding: 0 16px;
+    height: var(--header-height);
+    position: fixed; top: var(--top-nav-height); left: 0; right: 0;
+    z-index: 100; display: flex; justify-content: space-between; align-items: center;
+  }
+
+  .app-title { font-size: 16px; font-weight: 900; letter-spacing: -0.5px; color: var(--text-main); display:flex; align-items:center; gap:8px; }
+  .counter-badge { background: var(--danger); font-size: 11px; padding: 2px 6px; border-radius: 99px; font-weight: bold; color: #fff; }
+
+  .header-right { display: flex; align-items: center; gap: 10px; }
+
+  /* Toggle modo claro/oscuro */
+  #btnToggleModo {
+    background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main);
+    border-radius: 99px; padding: 0 12px; height: 32px; min-height: 32px;
+    font-size: 16px; display: flex; align-items: center; gap: 6px;
+    font-weight: 700; font-size: 13px; white-space: nowrap;
+  }
+  #btnToggleModo:active { opacity: 0.7; }
+
+  .status-badge {
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 4px 8px; border-radius: 99px; background: rgba(0,0,0,0.15);
+    border: 1px solid var(--border); color: var(--text-muted);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+  .dot.online  { background: var(--success); box-shadow: 0 0 6px rgba(16,185,129,0.4); }
+  .dot.offline { background: var(--danger); }
+  .dot.syncing { background: var(--accent); animation: pulse 1s infinite; }
+
+  /* ==========================================
+     MAIN / LAYOUT
+  ========================================== */
+  main { padding: 10px 20px 20px 20px; max-width: 600px; margin: 0 auto; animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+  @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+
+  .theme-wrapper { margin-bottom: 20px; position: relative; }
+  .theme-select {
+    width: 100%; appearance: none; background: var(--bg-input); border: 1px solid var(--border);
+    color: var(--input-color); padding: 16px; padding-left: 50px; font-size: 16px; font-weight: 700;
+    border-radius: var(--radius); outline: none; cursor: pointer; box-shadow: var(--shadow);
+  }
+  .theme-icon  { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); font-size: 20px; pointer-events: none; }
+  .theme-chevron { position: absolute; right: 18px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5; }
+
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  @media (max-width: 480px) { .form-grid { grid-template-columns: 1fr; gap: 12px; } }
+
+  .input-group { display: flex; flex-direction: column; margin-bottom: 16px; position: relative; }
+  .input-group label { font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  input, textarea, select:not(.theme-select) {
+    background: var(--bg-input); border: 1px solid var(--border); color: var(--input-color);
+    border-radius: var(--radius); padding: 16px; font-size: 17px; font-family: inherit; width: 100%;
+    backdrop-filter: blur(5px);
+  }
+  input:focus, textarea:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 2px var(--primary-dim); }
+  #fechaEntrega { height: var(--input-height); font-size: 18px; font-weight: 700; color: var(--primary); text-align: center; padding-left: 4px; padding-right: 4px; }
+  #numeroCliente { font-size: 22px; font-weight: 800; height: var(--input-height); letter-spacing: 1.5px; color: var(--primary); text-align: center; }
+  #productos { min-height: 180px; line-height: 1.6; font-family: 'Roboto Mono', monospace; font-size: 15px; }
+
+  /* ==========================================
+     MAGIC TOOLBAR + COMBO — FAT FINGER
+  ========================================== */
+  .magic-toolbar { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; margin-top: -8px; }
+  .btn-magic {
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1);
+    color: var(--text-main); padding: 14px 4px; border-radius: 12px; font-size: 12px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    min-height: 52px; white-space: nowrap;
+  }
+  :root.light .btn-magic { background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.1); }
+  .btn-magic:active { background: var(--primary-dim); border-color: var(--primary); transform: scale(0.96); }
+  .btn-magic.rec { background: var(--danger) !important; color: white !important; border-color: var(--danger) !important; animation: pulseRed 1s infinite; }
+
+  /* Combo Inicial */
+  .btn-combo {
+    width: 100%; background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05));
+    border: 1px dashed rgba(245,158,11,0.5); color: var(--accent);
+    border-radius: 12px; font-size: 14px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 14px; min-height: 52px; margin-bottom: 16px;
+  }
+  .btn-combo:active { background: rgba(245,158,11,0.2); transform: scale(0.98); }
+
+  /* Re-pedir card */
+  .repedir-card {
+    background: var(--bg-card); border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 12px; padding: 12px 14px; margin-bottom: 16px;
+    animation: slideUp 0.3s ease;
+  }
+  .repedir-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .repedir-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--success); }
+  .repedir-date { font-size: 11px; color: var(--text-muted); }
+  .repedir-preview { font-family: 'Roboto Mono', monospace; font-size: 12px; color: var(--text-muted); white-space: pre-wrap; line-height: 1.5; max-height: 80px; overflow: hidden; margin-bottom: 10px; }
+  .btn-repedir {
+    background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4);
+    color: var(--success); border-radius: 8px; padding: 10px 16px;
+    font-size: 13px; font-weight: 700; width: 100%; min-height: 44px;
+  }
+  .btn-repedir:active { background: rgba(16,185,129,0.3); }
+
+  /* ==========================================
+     PEDIDO CARDS
+  ========================================== */
+  .pedido-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; margin-bottom: 12px;
+    box-shadow: var(--shadow); position: relative; backdrop-filter: blur(10px);
+  }
+  .card-header { display: flex; justify-content: space-between; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); align-items: center; }
+  .card-body { font-family: 'Roboto Mono', monospace; font-size: 13px; color: var(--text-muted); white-space: pre-wrap; line-height: 1.5; }
+
+  /* BADGES DE ESTADO */
+  .estado-badge {
+    font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 99px;
+    text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;
+  }
+  .estado-guardado  { background: rgba(100,116,139,0.3); color: #94a3b8; border: 1px solid #475569; }
+  .estado-enviando  { background: rgba(245,158,11,0.2);  color: #fbbf24; border: 1px solid #92400e; animation: pulse 1s infinite; }
+  .estado-pendiente { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid #78350f; }
+  .estado-enviado   { background: rgba(16,185,129,0.2);  color: #34d399; border: 1px solid #065f46; }
+  .estado-fallido   { background: rgba(239,68,68,0.2);   color: #f87171; border: 1px solid #7f1d1d; }
+
+  .card-footer { display: flex; gap: 8px; margin-top: 12px; }
+  .btn-retry {
+    background: var(--primary-dim); border: 1px solid var(--primary); color: var(--primary);
+    padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    flex: 1; min-height: 48px;
+  }
+  .btn-delete-pq {
+    background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #f87171;
+    padding: 10px 14px; border-radius: 8px; font-size: 13px; min-height: 48px;
+  }
+  .intentos-txt { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+  /* ==========================================
+     ESTADÍSTICAS
+  ========================================== */
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .stat-box { background: var(--bg-card); padding: 20px; border-radius: var(--radius); border: 1px solid var(--border); text-align: center; }
+  .stat-val { font-size: 32px; font-weight: 900; color: var(--text-main); display: block; }
+  .stat-lbl { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-top: 4px; display: block; }
+
+  /* ==========================================
+     MODALES
+  ========================================== */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 3000;
+    display: none; align-items: center; justify-content: center; backdrop-filter: blur(8px);
+  }
+  .modal-box {
+    background: var(--bg-overlay); border: 1px solid var(--border);
+    width: 90%; max-width: 360px; padding: 24px; border-radius: 20px;
+    text-align: center; color: var(--text-main); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
+    animation: modalPop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex; flex-direction: column; max-height: 85vh;
+  }
+  @keyframes modalPop { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+  .btn-modal { width: 100%; padding: 16px; border-radius: 12px; font-weight: 800; margin-top: 10px; border: none; font-size: 15px; min-height: 56px; }
+  .btn-yes { background: var(--success); color: white; }
+  .btn-no  { background: transparent; border: 1px solid var(--border) !important; color: var(--text-muted); }
+
+  /* ==========================================
+     UPSELL
+  ========================================== */
+  .upsell-list {
+    text-align: left; margin-top: 10px; overflow-y: auto; flex: 1; margin-bottom: 10px;
+    border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    background: rgba(0,0,0,0.1); border-radius: 8px;
+  }
+  .upsell-item { padding: 12px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 36px 1fr 60px; align-items: center; gap: 8px; }
+  .upsell-check { transform: scale(1.4); accent-color: var(--primary); }
+  .upsell-name  { font-size: 13px; font-weight: 500; color: var(--text-main); line-height: 1.2; word-break: break-word; }
+  .upsell-qty   { background: var(--bg-input); border: 1px solid var(--border); color: var(--input-color); border-radius: 6px; padding: 8px; width: 100%; text-align: center; font-weight: bold; min-height: 40px; }
+
+  /* ==========================================
+     LOADERS / MISC
+  ========================================== */
+  #magicLoader { position: fixed; inset: 0; background: rgba(15,23,42,0.95); z-index: 5000; display: none; flex-direction: column; align-items: center; justify-content: center; color: var(--primary); }
+  .spinner-magic { width: 50px; height: 50px; border: 4px solid rgba(59,130,246,0.2); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 20px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .toast {
+    position: fixed; top: 150px; left: 50%; transform: translateX(-50%);
+    background: var(--bg-overlay); color: var(--text-main); padding: 14px 28px;
+    border-radius: 99px; font-size: 15px; z-index: 4000; font-weight: 600;
+    box-shadow: var(--shadow); border: 1px solid var(--border);
+    animation: slideDown 0.3s forwards; display: flex; align-items: center; gap: 8px;
+  }
+  @keyframes slideDown { from { transform: translate(-50%,-20px); opacity:0; } to { transform: translate(-50%,0); opacity:1; } }
+
+  #netBanner { position:fixed; top:135px; width:100%; z-index:90; background: var(--danger); color: #fff; font-size: 12px; font-weight: 700; text-align: center; padding: 8px; display:none; letter-spacing: 0.5px; }
+
+  .log-list { text-align: left; overflow-y: auto; max-height: 50vh; margin: 10px 0; }
+  .log-entry { padding: 8px; border-bottom: 1px solid var(--border); font-size: 11px; font-family: 'Roboto Mono', monospace; color: var(--text-muted); }
+  .log-entry .log-ok    { color: #34d399; }
+  .log-entry .log-warn  { color: #fbbf24; }
+  .log-entry .log-err   { color: #f87171; }
+
+  @keyframes pulseRed { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+</style>
+</head>
+<body>
+
+  <div id="magicLoader">
+    <div class="spinner-magic"></div>
+    <div style="font-weight:700;font-size:18px;">Procesando...</div>
+  </div>
+
+  <nav class="top-nav">
+    <button id="btnNuevo" class="tab-btn active"><span>📝</span>Cargar</button>
+    <button id="btnVerPendientes" class="tab-btn"><span>📤</span>Cola <span id="pedidoContador" class="counter-badge hidden" style="font-size:9px;padding:1px 5px;">0</span></button>
+    <button id="btnEnviar">
+      <span>ENVIAR</span>
+      <span>PEDIDO</span>
+    </button>
+    <button id="btnVerPredicciones" class="tab-btn"><span>🔮</span>Ideas</button>
+    <button id="btnVerEstadisticas" class="tab-btn"><span>📊</span>Stats</button>
+  </nav>
+
+  <header>
+    <div class="app-title">PEDIDOS ML</div>
+    <div class="header-right">
+      <button id="btnToggleModo" onclick="toggleModo()">☀️ Claro</button>
+      <div class="status-badge">
+        <div id="connDot" class="dot offline"></div>
+        <span class="conn-label">RED</span>
+      </div>
+    </div>
+  </header>
+
+  <div id="netBanner">⚠️ MODO SIN CONEXIÓN — Los pedidos se guardan y envían al reconectar</div>
+
+  <!-- PESTAÑA 1: NUEVO PEDIDO -->
+  <main id="nuevoPedido">
+    <div id="helloBanner" style="margin-bottom:15px;"></div>
+    <div class="theme-wrapper">
+      <span class="theme-icon">🎨</span>
+      <select id="themeSelector" class="theme-select" onchange="changeTheme(this.value)">
+        <option value="azul">Azul Profundo (Default)</option>
+        <option value="verde">Naturaleza Eco</option>
+        <option value="violeta">Galaxia Violeta</option>
+        <option value="naranja">Atardecer</option>
+        <option value="rosa">Candy Pop</option>
+      </select>
+      <span class="theme-chevron">▼</span>
+    </div>
+
+    <div class="form-grid">
+      <div class="input-group">
+        <label>Fecha Entrega</label>
+        <input type="date" id="fechaEntrega" />
+      </div>
+      <div class="input-group">
+        <label>N° Cliente</label>
+        <input type="tel" inputmode="numeric" pattern="[0-9]*" id="numeroCliente" placeholder="Numero de cliente" autocomplete="off" />
+      </div>
+    </div>
+
+    <div id="infoCliente" style="margin-bottom:16px;min-height:20px;"></div>
+
+    <div class="input-group">
+      <label>Vendedor</label>
+      <input type="text" id="nombreVendedor" placeholder="Tu nombre..." />
+    </div>
+
+    <div class="input-group" style="margin-bottom:8px;">
+      <label>📦 Productos (Cant + Nombre)</label>
+      <textarea id="productos" placeholder="Ej:&#10;12 Trapos estrellita&#10;24 balerinas..."></textarea>
+    </div>
+
+    <div class="magic-toolbar">
+      <button id="btnMicInline" class="btn-magic" style="border-color:var(--primary)">🎙️ Dictar</button>
+      <button id="btnAiOptimize" class="btn-magic" style="border-color:var(--primary)">🧹 Acomodar</button>
+      <button id="btnSuggestHistory" class="btn-magic" style="border-color:var(--primary)">💡 Sugeridos</button>
+    </div>
+
+    <!-- COMBO INICIAL -->
+    <button class="btn-combo" onclick="cargarComboInicial()">📦 Cargar Combo Inicial</button>
+
+    <div class="input-group">
+      <label>Notas (Opcional)</label>
+      <textarea id="observaciones" rows="2" placeholder="Ej: Entregar por la tarde..."></textarea>
+    </div>
+
+    <div style="display:none;"><input type="checkbox" id="shareWA" /></div>
+  </main>
+
+  <!-- PESTAÑA 2: COLA DE PENDIENTES -->
+  <main id="pendientes" class="hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+      <h3 style="margin:0;font-size:20px;color:var(--text-main);">📤 Cola de Pedidos</h3>
+      <button id="btnReintentarTodos" style="background:var(--primary);color:white;border:none;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:bold;min-height:48px;">🔄 Sincronizar</button>
+    </div>
+    <div class="input-group">
+      <input id="searchPend" type="search" placeholder="Filtrar por cliente..." />
+    </div>
+    <div id="listaPendientes"></div>
+    <div style="margin-top:16px;text-align:center;">
+      <button id="btnVerLog" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:10px 16px;border-radius:8px;font-size:12px;min-height:48px;">📋 Ver historial de sincronización</button>
+    </div>
+  </main>
+
+  <!-- PESTAÑA 3: ESTADÍSTICAS -->
+  <main id="estadisticas" class="hidden">
+    <h3 style="margin-top:0;font-size:20px;color:var(--text-main);">📊 Rendimiento</h3>
+    <div class="stat-grid">
+      <div class="stat-box">
+        <span class="stat-val" style="color:var(--success)" id="statEnviados">0</span>
+        <span class="stat-lbl">Enviados hoy</span>
+      </div>
+      <div class="stat-box" style="border-color:rgba(239,68,68,0.2)">
+        <span class="stat-val" style="color:var(--danger)" id="statPendientes">0</span>
+        <span class="stat-lbl">En cola</span>
+      </div>
+    </div>
+    <div style="margin-top:20px;padding:20px;background:var(--bg-card);border-radius:var(--radius);border:1px solid var(--border);">
+      <label style="font-size:11px;text-transform:uppercase;color:var(--text-muted);font-weight:bold;">Progreso de Carga</label>
+      <div style="height:8px;background:rgba(255,255,255,0.1);border-radius:4px;margin-top:12px;overflow:hidden;">
+        <div id="barEnviados" style="width:0%;height:100%;background:var(--success);transition:width 0.5s;"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- PESTAÑA 4: PREDICCIONES -->
+  <main id="predicciones" class="hidden">
+    <h3 style="margin-top:0;font-size:20px;color:var(--text-main);">🔮 Tendencias</h3>
+    <div id="listaPredicciones"></div>
+    <h4 style="margin-top:30px;color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;">Historial Reciente (Local)</h4>
+    <div id="resumenClientes"></div>
+  </main>
+
+  <!-- MODAL: SUGERENCIAS -->
+  <div id="upsellOverlay" class="overlay">
+    <div class="modal-box" style="max-height:90vh;">
+      <h3 style="margin:0 0 5px 0;">💡 Historial del Cliente</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 10px 0;">Seleccioná lo que le falta pedir hoy:</p>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:5px;">
+        <button id="btnSelectAllUpsell" style="background:transparent;border:none;color:var(--primary);font-size:12px;font-weight:bold;min-height:36px;">Seleccionar Todos</button>
+      </div>
+      <div id="upsellList" class="upsell-list"></div>
+      <button id="btnAddSelectedUpsell" class="btn-modal btn-yes" style="margin-bottom:8px;">Agregar Seleccionados</button>
+      <button id="btnCloseUpsell" class="btn-modal btn-no">Cerrar</button>
+    </div>
+  </div>
+
+  <!-- MODAL: CONFIRMACIÓN -->
+  <div id="preConfirmOverlay" class="overlay">
+    <div class="modal-box">
+      <h3 style="margin-top:0">¿Confirmás el pedido?</h3>
+      <div id="modalClientName" style="margin-bottom:10px;min-height:40px;"></div>
+      <input type="tel" id="modalClientId" style="text-align:center;font-size:22px;font-weight:bold;background:var(--bg-input);width:140px;margin:0 auto;display:block;border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--input-color);" />
+      <div style="font-size:11px;color:var(--text-muted);margin-top:5px;">Podés cambiar el N° de cliente aquí</div>
+      <button id="btnConfirmYes" class="btn-modal btn-yes">SÍ, MANDALE</button>
+      <button id="btnConfirmNo" class="btn-modal btn-no">NO, ESPERÁ</button>
+      <button id="btnAiSummary" class="btn-modal" style="margin-top:15px;background:transparent;border:1px dashed var(--text-muted) !important;color:var(--text-muted);font-size:13px;">
+        💬 Armar WhatsApp
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL: ÉXITO (guardado local) -->
+  <div id="confirmOverlay" class="overlay">
+    <div class="modal-box" style="border-color:var(--success)">
+      <div style="font-size:50px;margin-bottom:10px;">📱</div>
+      <h2 style="color:var(--success);margin:0;font-size:24px;">¡GUARDADO!</h2>
+      <p id="confirmMsg" style="color:var(--text-muted);margin-top:5px;">Enviando a Supabase...</p>
+    </div>
+  </div>
+
+  <!-- MODAL: HORARIO LÍMITE -->
+  <div id="lateModalOverlay" class="overlay">
+    <div class="modal-box" style="border-color:var(--danger);">
+      <div style="font-size:40px;margin-bottom:10px;">⚠️</div>
+      <h3 style="color:var(--danger);margin:0;font-size:18px;">HORARIO LÍMITE</h3>
+      <p style="margin:10px 0;font-size:14px;color:var(--text-muted);">Ya es tarde. Seguramente esto salga mañana.</p>
+      <button id="btnLateCerrar" class="btn-modal btn-yes">ENTENDIDO</button>
+    </div>
+  </div>
+
+  <!-- MODAL: DICTADO -->
+  <div id="dictadoOverlay" class="overlay">
+    <div class="modal-box">
+      <h3 style="font-size:18px;">🎙️ Te escucho...</h3>
+      <div id="dictadoPreview" style="background:var(--bg-input);padding:15px;border-radius:12px;margin:15px 0;min-height:80px;text-align:left;font-style:italic;font-size:16px;color:var(--text-main);border:1px solid var(--border);"></div>
+      <div style="display:flex;gap:10px;">
+        <button id="btnDictadoCancelar" class="btn-modal btn-no" style="margin:0">Borrar</button>
+        <button id="btnDictadoUsar" class="btn-modal btn-yes" style="margin:0">Usar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: LOG DE SINCRONIZACIÓN -->
+  <div id="logOverlay" class="overlay">
+    <div class="modal-box" style="max-width:420px;width:95%;">
+      <h3 style="margin:0 0 10px 0;font-size:16px;">📋 Historial de Sincronización</h3>
+      <div id="logContent" class="log-list"></div>
+      <button id="btnClearLog" class="btn-modal btn-no" style="margin-top:8px;font-size:12px;">Limpiar log</button>
+      <button id="btnCloseLog" class="btn-modal btn-yes" style="margin-top:6px;">Cerrar</button>
+    </div>
+  </div>
+
+<script>
+  // ==========================================
+  // CONFIGURACIÓN
+  // ==========================================
+  const GF_ACTION = "https://docs.google.com/forms/d/e/1FAIpQLSfgUbkynVRveiW547pgX0AgvVDGnCd1GUoXooMTDXkiCWgdKA/formResponse";
+  const GF = { vendedor: "entry.1003904475", fecha: "entry.171879298", fecha_day: "entry.171879298_day", fecha_month: "entry.171879298_month", fecha_year: "entry.171879298_year", cliente: "entry.1103049985", productos: "entry.1828255967", observaciones: "entry.897131524", sig: "entry.1902043730" };
+  const WORKER_URL = "https://frosty-term-20ea.santamariapablodaniel.workers.dev/";
+  const SHEET_KEY = "1ZwO_E94WfhKOgRO99fqW_-bM6WyVhvYNCvjfUb33JWI";
+  const GID = "1408509216";
+
+  // ── SUPABASE (Fase 1: clientes + productos) ──
+  const SB_URL  = "https://gjeyvbidomxzofcdycya.supabase.co";
+  const SB_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
+  const TTL_CLIENTES  = 10 * 60 * 1000;  // 10 min
+  const TTL_PRODUCTOS = 60 * 60 * 1000;  // 60 min
+  const $ = id => document.getElementById(id);
+
+  localforage.config({ name: 'pedidos_ml', storeName: 'app_data' });
+
+  // ==========================================
+  // MODO CLARO / OSCURO
+  // ==========================================
+  async function toggleModo() {
+    const isLight = document.documentElement.classList.toggle('light');
+    const btn = $("btnToggleModo");
+    if (isLight) {
+      btn.textContent = "🌙 Oscuro";
+      document.body.style.background = "";
+    } else {
+      btn.textContent = "☀️ Claro";
+      // Restaurar fondo del tema de color actual
+      const savedTheme = await localforage.getItem('themePref') || 'azul';
+      document.body.style.background = themes[savedTheme]?.bg || themes.azul.bg;
+    }
+    await localforage.setItem('modoClaro', isLight);
+  }
+
+  // ==========================================
+  // TEMAS DINÁMICOS
+  // ==========================================
+  const themes = {
+    azul:    { primary: '#3b82f6', dark: '#1d4ed8', bg: 'radial-gradient(circle at top right, #1e293b, #0f172a)' },
+    verde:   { primary: '#10b981', dark: '#047857', bg: 'linear-gradient(to bottom right, #064e3b, #022c22)' },
+    violeta: { primary: '#8b5cf6', dark: '#6d28d9', bg: 'radial-gradient(ellipse at center, #2e1065, #0f172a)' },
+    naranja: { primary: '#f97316', dark: '#c2410c', bg: 'linear-gradient(to bottom, #7c2d12, #451a03)' },
+    rosa:    { primary: '#ec4899', dark: '#be185d', bg: 'linear-gradient(45deg, #831843, #500724)' }
+  };
+
+  function changeTheme(themeName) {
+    const t = themes[themeName] || themes.azul;
+    document.documentElement.style.setProperty('--primary', t.primary);
+    document.documentElement.style.setProperty('--primary-dark', t.dark);
+    document.documentElement.style.setProperty('--primary-dim', t.primary + '30');
+    // Solo cambiar fondo si estamos en modo oscuro
+    if (!document.documentElement.classList.contains('light')) {
+      document.body.style.background = t.bg;
+    }
+    localforage.setItem('themePref', themeName);
+  }
+
+  // ==========================================
+  // COMBO INICIAL
+  // ==========================================
+  const COMBO_INICIAL = [
+    "1 Sopapa negra y roja reforzada",
+    "2 Secadores goma 30cm",
+    "2 Secadores goma 40cm",
+    "1 Caja exhibidora Chisperos TK x25",
+    "3 Pulverizadores Make x750ml",
+    "1 Destapadores Carol aluminio",
+  ];
+
+  function cargarComboInicial() {
+    const cur = $("productos").value.trimEnd();
+    $("productos").value = cur ? cur + "\n" + COMBO_INICIAL.join("\n") : COMBO_INICIAL.join("\n");
+    saveDraft();
+    showToast("📦 Combo agregado al pedido", "ok");
+  }
+
+  // ==========================================
+  // PARSEO Y CARGA DE CLIENTES
+  // ==========================================
+  function parseCSV(str) {
+    const arr = []; let quote = false; let col = 0, row = 0;
+    for (let c = 0; c < str.length; c++) {
+      let cc = str[c], nc = str[c+1];
+      arr[row] = arr[row] || []; arr[row][col] = arr[row][col] || '';
+      if (cc == '"' && quote && nc == '"') { arr[row][col] += cc; ++c; }
+      else if (cc == '"') { quote = !quote; }
+      else if (cc == ',' && !quote) { ++col; }
+      else if (cc == '\r' && nc == '\n' && !quote) { ++row; col = 0; ++c; }
+      else if (cc == '\n' && !quote) { ++row; col = 0; }
+      else { arr[row][col] += cc; }
+    }
+    return arr;
+  }
+
+  let globalHistorial = [];
+  let clientNames = {};
+
+  async function loadCli() {
+    try {
+      const url = `https://docs.google.com/spreadsheets/d/${SHEET_KEY}/export?format=csv&gid=2117683454&t=${Date.now()}`;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("Error fetching sheet");
+      const txt = await r.text();
+      const rows = parseCSV(txt);
+      clientNames = {};
+      rows.forEach((r, idx) => {
+        if (idx === 0) return;
+        if (r.length >= 5) {
+          const id = r[0].trim();
+          if (id) clientNames[id] = { name: `${r[1].trim()} ${r[2].trim()}`.trim(), desc: `${r[3].trim()}, ${r[4].trim()}`.trim() };
+        }
+      });
+      if ($("numeroCliente").value) updateClientUI($("numeroCliente").value);
+    } catch(e) { console.log("Error cargando clientes:", e); }
+  }
+
+  async function updateClientUI(id) {
+    const c = clientNames[id];
+    if (c) {
+      let html = `<div style="line-height:1.2;animation:slideUp 0.3s;">
+        <div style="color:var(--success);font-weight:800;font-size:16px;">✅ ${c.name}</div>
+        <div style="color:var(--text-muted);font-size:12px;margin-top:2px;">📍 ${c.desc}</div>
+      </div>`;
+
+      // RE-PEDIR: mostrar último pedido si existe historial
+      const db = await getPredDB();
+      if (db[id] && db[id].length > 0) {
+        const last = db[id][db[id].length - 1];
+        const preview = (last.prod || "").split("\n").slice(0, 4).join("\n");
+        const more = (last.prod || "").split("\n").length > 4 ? `\n+ ${(last.prod||"").split("\n").length - 4} más...` : "";
+        html += `<div class="repedir-card">
+          <div class="repedir-header">
+            <span class="repedir-title">🔄 Último pedido</span>
+            <span class="repedir-date">${last.date}</span>
+          </div>
+          <div class="repedir-preview">${(preview + more).replace(/</g,'&lt;')}</div>
+          <button class="btn-repedir" onclick="cargarRepedir('${id}')">🔄 Re-pedir igual</button>
+        </div>`;
+      }
+
+      $("infoCliente").innerHTML = html;
+    } else {
+      $("infoCliente").innerHTML = "";
+    }
+  }
+
+  // ==========================================
+  // RE-PEDIR
+  // ==========================================
+  async function cargarRepedir(id) {
+    const db = await getPredDB();
+    if (!db[id] || !db[id].length) return;
+    const last = db[id][db[id].length - 1];
+    const cur = $("productos").value.trim();
+    if (cur && !confirm("¿Reemplazar el pedido actual con el último pedido de este cliente?")) return;
+    $("productos").value = last.prod || "";
+    saveDraft();
+    showToast(`✅ Pedido del ${last.date} cargado`, "ok");
+  }
+
+  $("numeroCliente").oninput = (e) => { saveDraft(); updateClientUI(e.target.value); };
+
+  async function loadHistorialVentas() {
+    const urls = [
+      `https://docs.google.com/spreadsheets/d/${SHEET_KEY}/gviz/tq?tqx=out:csv&gid=${GID}`,
+      `https://docs.google.com/spreadsheets/d/${SHEET_KEY}/pub?gid=${GID}&single=true&output=csv`,
+      `https://docs.google.com/spreadsheets/d/${SHEET_KEY}/export?format=csv&gid=${GID}`
+    ];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) continue;
+        const txt = await res.text();
+        if (txt.trim().startsWith("<")) continue;
+        const rows = parseCSV(txt);
+        globalHistorial = rows.slice(1).map(r => ({ cliente: (r[3]||"").trim(), vendedor: (r[2]||"").trim(), productos: (r[6]||"") })).filter(x => x.cliente && x.productos);
+        break;
+      } catch(e) {}
+    }
+  }
+
+  // ==========================================
+  // SUPABASE SYNC — FASE 1
+  // ==========================================
+  async function sbVendedoresFetch(table, params = "") {
+    const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {
+      headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` }
+    });
+    return r.ok ? r.json() : null;
+  }
+
+  async function syncClientes() {
+    try {
+      const lastSync = (await localforage.getItem('last_sync_clientes')) || 0;
+      const now = Date.now();
+
+      // Servir desde caché si es reciente
+      if (now - lastSync < TTL_CLIENTES) {
+        const cached = await localforage.getItem('clientes_cache');
+        if (cached && Object.keys(cached).length > 0) {
+          clientNames = cached;
+          if ($("numeroCliente").value) updateClientUI($("numeroCliente").value);
+          return;
+        }
+      }
+
+      // Sync incremental: solo registros actualizados desde el último sync
+      const since = lastSync > 0
+        ? `updated_at=gt.${new Date(lastSync - 60000).toISOString()}&`
+        : "";
+      const data = await sbVendedoresFetch("clientes", `${since}activo=eq.true&select=id,nombre,direccion,zona&limit=2000`);
+
+      if (data === null) throw new Error("Sin respuesta");
+
+      if (data.length > 0) {
+        const base = (await localforage.getItem('clientes_cache')) || {};
+        data.forEach(c => {
+          base[c.id] = { name: c.nombre, desc: [c.direccion, c.zona].filter(Boolean).join(", ") };
+        });
+        clientNames = base;
+        await localforage.setItem('clientes_cache', base);
+      } else {
+        const cached = await localforage.getItem('clientes_cache');
+        if (cached) clientNames = cached;
+      }
+
+      await localforage.setItem('last_sync_clientes', now);
+      if ($("numeroCliente").value) updateClientUI($("numeroCliente").value);
+
+    } catch(e) {
+      console.warn("[syncClientes] Supabase falló → usando Google Sheets:", e.message);
+      await loadCli(); // fallback
+    }
+  }
+
+  async function syncProductos() {
+    try {
+      const lastSync = (await localforage.getItem('last_sync_productos')) || 0;
+      const now = Date.now();
+
+      if (now - lastSync < TTL_PRODUCTOS) {
+        const cached = await localforage.getItem('productos_cache');
+        if (cached && cached.length > 0) return cached;
+      }
+
+      const since = lastSync > 0
+        ? `updated_at=gt.${new Date(lastSync - 60000).toISOString()}&`
+        : "";
+      const data = await sbVendedoresFetch("productos", `${since}activo=eq.true&select=id,nombre,marca,precio,keywords&limit=5000`);
+
+      if (data === null) throw new Error("Sin respuesta");
+
+      if (data.length > 0) {
+        const existing = (await localforage.getItem('productos_cache')) || [];
+        const map = Object.fromEntries(existing.map(p => [p.id, p]));
+        data.forEach(p => { map[p.id] = p; });
+        const merged = Object.values(map);
+        await localforage.setItem('productos_cache', merged);
+        await localforage.setItem('last_sync_productos', now);
+        return merged;
+      }
+
+      await localforage.setItem('last_sync_productos', now);
+      return (await localforage.getItem('productos_cache')) || [];
+
+    } catch(e) {
+      console.warn("[syncProductos] Supabase falló:", e.message);
+      return (await localforage.getItem('productos_cache')) || [];
+    }
+  }
+
+  // ==========================================
+  // LÓGICA UPSELL
+  // ==========================================
+  $("btnSuggestHistory").onclick = () => {
+    const cli = $("numeroCliente").value.trim();
+    if (!cli) return showToast("Poné el número de cliente primero", "error");
+    const ventasCliente = globalHistorial.filter(v => v.cliente === cli);
+    if (!ventasCliente.length) return showToast("No encontré historial reciente para este cliente.", "info");
+    const productosHistoricos = new Set();
+    ventasCliente.forEach(v => v.productos.split('\n').forEach(line => { let c = line.toUpperCase().replace(/^[0-9\s.,-]+/,'').trim(); if(c.length>3) productosHistoricos.add(c); }));
+    const textoActual = $("productos").value.toUpperCase();
+    const faltantes = [...productosHistoricos].filter(item => !textoActual.includes(item)).slice(0,15);
+    if (!faltantes.length) return showToast("¡Ya pidió todo lo que suele llevar!", "info");
+    $("upsellList").innerHTML = faltantes.map((item,idx) => `<div class="upsell-item"><input type="checkbox" class="upsell-check" id="chk_${idx}" value="${item}"><label for="chk_${idx}" class="upsell-name">${item}</label><input type="number" class="upsell-qty" id="qty_${idx}" value="" placeholder="Cant."></div>`).join("");
+    $("upsellOverlay").style.display = "flex";
+  };
+
+  $("btnCloseUpsell").onclick = () => $("upsellOverlay").style.display = "none";
+  $("btnSelectAllUpsell").onclick = () => { const cbs = document.querySelectorAll(".upsell-check"); const all = Array.from(cbs).every(c=>c.checked); cbs.forEach(c=>c.checked=!all); };
+  $("btnAddSelectedUpsell").onclick = () => {
+    const checks = document.querySelectorAll(".upsell-check"); let added = 0, txt = "";
+    checks.forEach((chk,idx) => { if(chk.checked) { const qty = document.getElementById(`qty_${idx}`).value.trim()||"1"; txt += (txt?"\n":"")+`${qty} ${chk.value}`; added++; } });
+    if (added > 0) { let cur = $("productos").value.trimEnd(); if(cur) cur+="\n"; $("productos").value = cur+txt; saveDraft(); showToast(`Se agregaron ${added} productos`); $("upsellOverlay").style.display="none"; }
+    else showToast("No seleccionaste nada", "error");
+  };
+
+  // ==========================================
+  // IA - VÍA WORKER
+  // ==========================================
+  async function callMagic(prompt, sys) {
+    try {
+      const res = await fetch(WORKER_URL, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({prompt, sys}) });
+      if (!res.ok) throw new Error("Error en el Worker");
+      const data = await res.json();
+      return data.text;
+    } catch(e) { console.error(e); return null; }
+  }
+
+  async function getKnownProducts() {
+    // Prioridad 1: catálogo Supabase en caché
+    const prods = (await localforage.getItem('productos_cache')) || [];
+    if (prods.length > 0) {
+      return prods.slice(0, 150).map(p => p.nombre + (p.marca ? ` (${p.marca})` : '')).join(", ");
+    }
+    // Prioridad 2: extraer de historial Google Sheets (fallback)
+    const allProds = new Set();
+    globalHistorial.forEach(h => h.productos.split('\n').forEach(l => { let p = l.replace(/^\d+\s*/,'').trim().toUpperCase(); if(p.length>3) allProds.add(p); }));
+    return Array.from(allProds).slice(0,100).join(", ");
+  }
+
+  $("btnAiOptimize").onclick = async () => {
+    const txt = $("productos").value;
+    if (!txt) return showToast("Anotá algo antes...", "error");
+    $("magicLoader").style.display = "flex";
+    const known = await getKnownProducts();
+    const sys = `Actúa como experto en logística. Tu tarea es organizar una lista de pedidos.
+    Reglas CRÍTICAS:
+    1. Detecta el patrón "CANTIDAD ARTÍCULO". Si el usuario escribe todo junto (ej: "12 lavandina 24 trapos"), SEPARALOS en líneas nuevas.
+    2. CUIDADO con los decimales: "2.5" NO se debe separar. "2.5L" es una unidad.
+    3. Si encuentras palabras que no conoces, NO las borres. Trata de corregir la ortografía basándote en esta lista de productos conocidos: [${known}]. Si no está en la lista, déjalo como está pero bien formateado.
+    4. Formato de salida: "CANTIDAD NOMBRE_DEL_ARTICULO" (un item por línea).
+    5. Solo devuelve la lista final, sin texto extra.`;
+    const resp = await callMagic(txt, sys);
+    $("magicLoader").style.display = "none";
+    if (resp) { $("productos").value = resp.trim(); showToast("¡Lista acomodada! 🧹"); }
+    else showToast("Error al procesar", "error");
+  };
+
+  $("btnAiSummary").onclick = async () => {
+    const clientData = clientNames[$("numeroCliente").value];
+    const clientName = clientData ? clientData.name : "Cliente";
+    const vendedor = $("nombreVendedor").value || "Vendedor";
+    const productos = $("productos").value;
+    const mensaje = `Hola *${clientName}*! 👋\n\nConfirmamos tu pedido:\n\n*Detalle:*\n${productos}\n\n¡Todo confirmado! Gracias por confiar en Mercado limpio. Vas a recibir tu pedido muy pronto, cualquier cosa tenés mi contacto en WhatsApp, soy ${vendedor}.`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, '_blank');
+  };
+
+  // ==========================================
+  // FIRMA / DEDUP
+  // ==========================================
+  function normalizeStr(s){ return (s||"").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Z0-9\s\n]/g,"").replace(/\s+/g," ").trim(); }
+  function normalizeProductos(s){ const lines=(s||"").split(/\n+/).map(x=>normalizeStr(x)).filter(Boolean); lines.sort(); return lines.join("|"); }
+  function fnv1a(str){ let h=0x811c9dc5; for(let i=0;i<str.length;i++){h=Math.imul(h^str.charCodeAt(i),0x01000193);} return (h>>>0).toString(16); }
+  function makeSignature(p){ return fnv1a(`${(p.fechaEntrega||"").slice(0,10)}|${normalizeStr(p.numeroCliente)}|${normalizeStr(p.nombreVendedor)}|${normalizeProductos(p.productos)}`); }
+
+  const SIG_KEY = "signaturesEnviadas";
+  async function getSigMap() { return (await localforage.getItem(SIG_KEY)) || {}; }
+  async function seenSig(sig) { return !!((await getSigMap())[sig]); }
+  async function markSig(sig) { const m = await getSigMap(); m[sig] = Date.now(); await localforage.setItem(SIG_KEY, m); }
+
+  // ==========================================
+  // SISTEMA DOUBLE-SAFE — QUEUE INDIVIDUAL
+  // ==========================================
+  const QUEUE_PREFIX = "pq_";
+  const AUDIT_KEY    = "audit_log_v1";
+  const STATS_KEY    = "statsEnviados_v2";
+  const MAX_INTENTOS = 5;
+  const RETRY_MS     = 30000;
+
+  async function getPedidosLocales() {
+    const keys = await localforage.keys();
+    const queueKeys = keys.filter(k => k.startsWith(QUEUE_PREFIX));
+    const items = await Promise.all(queueKeys.map(k => localforage.getItem(k)));
+    return items.filter(Boolean).sort((a, b) => (a.creadoAt || 0) - (b.creadoAt || 0));
+  }
+
+  async function savePedidoLocal(p) { await localforage.setItem(QUEUE_PREFIX + p.id, p); }
+  async function deletePedidoLocal(id) { await localforage.removeItem(QUEUE_PREFIX + id); }
+  async function getPendientesCount() { return (await getPedidosLocales()).filter(p => p.estado !== "enviado").length; }
+
+  async function addAuditLog(pedidoId, accion, detalle) {
+    try {
+      const log = (await localforage.getItem(AUDIT_KEY)) || [];
+      log.push({ ts: new Date().toISOString(), pedidoId: String(pedidoId).slice(-8), accion, detalle: detalle || "" });
+      if (log.length > 300) log.splice(0, log.length - 300);
+      await localforage.setItem(AUDIT_KEY, log);
+    } catch(e) {}
+  }
+
+  async function crearPedidoLocal(datos) {
+    const id = `${Date.now()}_${Math.random().toString(36).substr(2,9)}`;
+    const pedido = { id, ...datos, estado:"guardado_local", intentos:0, creadoAt:Date.now(), proximoIntento:null, ultimoError:null };
+    await savePedidoLocal(pedido);
+    addAuditLog(id, "guardado_local", `Cliente ${datos.numeroCliente}`);
+    return pedido;
+  }
+
+  // ==========================================
+  // ENVÍO AL WORKER
+  // ==========================================
+  async function enviarPedidoAlWorker(pedido) {
+    pedido.estado = "enviando";
+    pedido.intentos = (pedido.intentos || 0) + 1;
+    await savePedidoLocal(pedido);
+    addAuditLog(pedido.id, "enviando", `Intento ${pedido.intentos}/${MAX_INTENTOS}`);
+    updatePendingCount();
+
+    // Backup Google Forms — fire-and-forget
+    try {
+      const fd = new FormData();
+      fd.append(GF.vendedor, pedido.nombreVendedor); fd.append(GF.cliente, pedido.numeroCliente);
+      fd.append(GF.productos, pedido.productos); fd.append(GF.observaciones, pedido.observaciones||"");
+      const f = (pedido.fechaEntrega||"").trim();
+      if (f) { const [y,m,d] = f.split("-"); fd.append(GF.fecha,f); fd.append(GF.fecha_day,d); fd.append(GF.fecha_month,m); fd.append(GF.fecha_year,y); }
+      fd.append(GF.sig, pedido.sig||"");
+      fetch(GF_ACTION, {method:"POST", mode:"no-cors", body:fd}).catch(()=>{});
+    } catch(e) {}
+
+    // Primario: Worker → Supabase
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(WORKER_URL, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        signal: controller.signal,
+        body: JSON.stringify({
+          fechaEntrega:   pedido.fechaEntrega,
+          numeroCliente:  pedido.numeroCliente,
+          clienteNombre:  pedido.clienteNombre||"",
+          nombreVendedor: pedido.nombreVendedor,
+          productos:      pedido.productos,
+          observaciones:  pedido.observaciones||"",
+          sig:            pedido.sig||"",
+          timestamp:      pedido.creadoAt||Date.now(),
+        }),
+      });
+      clearTimeout(tid);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      if (data.status !== "ok") throw new Error(data.detail || JSON.stringify(data));
+
+      // ✅ ÉXITO
+      await markSig(pedido.sig);
+      addAuditLog(pedido.id, "enviado_ok", `Intento ${pedido.intentos}`);
+      await deletePedidoLocal(pedido.id);
+
+      const st = (await localforage.getItem(STATS_KEY)) || {};
+      const hoy = ymdLocal();
+      st[hoy] = (st[hoy] || 0) + 1;
+      await localforage.setItem(STATS_KEY, st);
+
+      return { ok: true };
+
+    } catch(e) {
+      const agotado = pedido.intentos >= MAX_INTENTOS;
+      pedido.estado        = agotado ? "fallido" : "pendiente";
+      pedido.ultimoError   = e.message || String(e);
+      pedido.proximoIntento = agotado ? null : Date.now() + RETRY_MS;
+      await savePedidoLocal(pedido);
+      addAuditLog(pedido.id, pedido.estado, pedido.ultimoError);
+      return { ok: false, error: pedido.ultimoError };
+    }
+  }
+
+  // ==========================================
+  // COLA Y REINTENTOS
+  // ==========================================
+  let isSyncing = false;
+  let _retryInterval = null;
+
+  async function procesarCola() {
+    if (isSyncing || !navigator.onLine) return;
+    const pendientes = (await getPedidosLocales()).filter(p =>
+      (p.estado === "guardado_local" || p.estado === "pendiente") &&
+      (!p.proximoIntento || Date.now() >= p.proximoIntento)
+    );
+    if (!pendientes.length) return;
+
+    isSyncing = true;
+    $("connDot").className = "dot syncing";
+
+    for (const pedido of pendientes) {
+      await enviarPedidoAlWorker(pedido);
+    }
+
+    isSyncing = false;
+    updateConn();
+    await updatePendingCount();
+    if (!$("pendientes").classList.contains("hidden")) await renderPendientes();
+    await renderStats();
+  }
+
+  function iniciarRetryInterval() {
+    if (_retryInterval) clearInterval(_retryInterval);
+    _retryInterval = setInterval(() => { if (navigator.onLine) procesarCola(); }, RETRY_MS);
+  }
+
+  // ==========================================
+  // FLUJO DE ENVÍO Y CONFIRMACIÓN
+  // ==========================================
+  $("btnEnviar").onclick = () => {
+    if (!$("numeroCliente").value || !$("productos").value) return showToast("Faltan datos che...", "error");
+    const currentId = $("numeroCliente").value;
+    $("modalClientId").value = currentId;
+    updateModalClientInfo(currentId);
+    $("preConfirmOverlay").style.display = "flex";
+  };
+
+  $("modalClientId").oninput = (e) => updateModalClientInfo(e.target.value);
+
+  function updateModalClientInfo(id) {
+    const c = clientNames[id];
+    $("modalClientName").innerHTML = c
+      ? `<div style="font-size:18px;color:var(--primary);font-weight:800;">${c.name}</div><div style="font-size:13px;color:var(--text-muted);margin-top:4px;">${c.desc}</div>`
+      : `<div style="font-size:18px;color:var(--text-muted);">Cliente Nuevo</div>`;
+  }
+
+  function ymdLocal(date = new Date()) {
+    return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+  }
+
+  function verificarHorarioLimite(fechaEntregaStr) {
+    const ahora = new Date();
+    const esTarde = (ahora.getHours() > 20) || (ahora.getHours() === 20 && ahora.getMinutes() >= 30);
+    if (!esTarde) return false;
+    const hoyStr = ymdLocal(ahora);
+    const manana = new Date(ahora); manana.setDate(ahora.getDate()+1);
+    return (fechaEntregaStr === ymdLocal(manana) || fechaEntregaStr === hoyStr);
+  }
+
+  function mostrarModalHorarioLimite(fechaEntregaStr) {
+    const manana = new Date(); manana.setDate(manana.getDate()+1);
+    const fechaArg = `${String(manana.getDate()).padStart(2,'0')}-${String(manana.getMonth()+1).padStart(2,'0')}-${manana.getFullYear()}`;
+    const vendedor = $("nombreVendedor").value || "Vendedor";
+    const mensaje = `Hola, soy ${vendedor}. Acabo de cargar pedidos para mañana (${fechaArg}) fuera de horario. Por favor sacarlo con el reparto de mañana. Gracias!`;
+    const modal = $("lateModalOverlay");
+    const p = modal.querySelector("p"); const btn = modal.querySelector("button");
+    p.innerHTML = `Son pasadas las 20:30hs.<br>Para que salga mañana, avisá al depósito ya.`;
+    btn.textContent = "📲 AVISAR A DEPÓSITO"; btn.style.background = "#25D366";
+    const newBtn = btn.cloneNode(true); btn.parentNode.replaceChild(newBtn, btn);
+    newBtn.onclick = () => { window.open(`https://wa.me/5491125781293?text=${encodeURIComponent(mensaje)}`, '_blank'); modal.style.display='none'; };
+    modal.style.display = 'flex';
+  }
+
+  $("btnConfirmYes").onclick = async () => {
+    const finalId = $("modalClientId").value;
+    $("numeroCliente").value = finalId;
+    updateClientUI(finalId);
+    saveDraft();
+
+    const cData = clientNames[finalId];
+    const datos = {
+      fechaEntrega:   $("fechaEntrega").value,
+      numeroCliente:  finalId,
+      clienteNombre:  cData ? cData.name : "",
+      nombreVendedor: $("nombreVendedor").value.toUpperCase(),
+      productos:      $("productos").value.toUpperCase(),
+      observaciones:  $("observaciones").value,
+    };
+
+    datos.sig = makeSignature(datos);
+
+    if (await seenSig(datos.sig)) {
+      showToast("¡Ese ya lo mandaste!", "error");
+      $("preConfirmOverlay").style.display = "none";
+      return;
+    }
+
+    const pedido = await crearPedidoLocal(datos);
+    logOrder(datos);
+    updatePendingCount();
+
+    $("preConfirmOverlay").style.display = "none";
+    $("confirmMsg").textContent = "Enviando a Supabase...";
+    $("confirmOverlay").style.display = "flex";
+
+    if (verificarHorarioLimite(datos.fechaEntrega)) {
+      setTimeout(() => mostrarModalHorarioLimite(datos.fechaEntrega), 500);
+    }
+
+    enviarPedidoAlWorker(pedido).then(async result => {
+      $("confirmMsg").textContent = result.ok
+        ? "✅ Enviado a Supabase"
+        : "⏳ Guardado en cola — se enviará automáticamente";
+      await updatePendingCount();
+      await renderStats();
+    });
+
+    setTimeout(() => {
+      $("confirmOverlay").style.display = "none";
+      clearForm();
+    }, 2500);
+  };
+
+  $("btnConfirmNo").onclick   = () => $("preConfirmOverlay").style.display = "none";
+  $("btnLateCerrar").onclick  = () => $("lateModalOverlay").style.display  = "none";
+
+  async function saveDraft() {
+    await localforage.setItem("draft", { f:$("fechaEntrega").value, c:$("numeroCliente").value, p:$("productos").value, o:$("observaciones").value });
+  }
+  function clearForm() { $("productos").value=""; $("numeroCliente").value=""; $("observaciones").value=""; saveDraft(); $("numeroCliente").focus(); $("infoCliente").textContent=""; }
+  $("productos").oninput = saveDraft;
+
+  // ==========================================
+  // DICTADO
+  // ==========================================
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (Recognition) {
+    const rec = new Recognition(); rec.lang = "es-AR";
+    rec.onresult = e => $("dictadoPreview").textContent = e.results[0][0].transcript;
+    $("btnMicInline").onclick = () => { $("dictadoOverlay").style.display="flex"; $("dictadoPreview").textContent="Te escucho..."; rec.start(); };
+    $("btnDictadoUsar").onclick = () => { const txt = $("dictadoPreview").textContent.toUpperCase(); $("productos").value += ($("productos").value?"\n":"")+txt; closeMic(); saveDraft(); };
+    $("btnDictadoCancelar").onclick = closeMic;
+    function closeMic(){ rec.stop(); $("dictadoOverlay").style.display="none"; }
+  } else {
+    $("btnMicInline").style.display = "none";
+  }
+
+  // ==========================================
+  // CONECTIVIDAD
+  // ==========================================
+  function updateConn() {
+    const on = navigator.onLine;
+    $("connDot").className = on ? "dot online" : "dot offline";
+    $("netBanner").style.display = on ? "none" : "block";
+    if (on) { setTimeout(procesarCola, 1000); syncClientes(); loadHistorialVentas(); }
+  }
+  window.addEventListener("online",  updateConn);
+  window.addEventListener("offline", updateConn);
+
+  async function updatePendingCount() {
+    const c = await getPendientesCount();
+    const el = $("pedidoContador");
+    el.textContent = c;
+    if (c > 0) el.classList.remove("hidden"); else el.classList.add("hidden");
+  }
+
+  // ==========================================
+  // NAVEGACIÓN
+  // ==========================================
+  const tabs = {
+    nuevo:      { main: $("nuevoPedido"),  btn: $("btnNuevo") },
+    pendientes: { main: $("pendientes"),   btn: $("btnVerPendientes"), init: renderPendientes },
+    stats:      { main: $("estadisticas"), btn: $("btnVerEstadisticas"), init: renderStats },
+    pred:       { main: $("predicciones"), btn: $("btnVerPredicciones"), init: computePredictions }
+  };
+
+  function switchTab(target) {
+    Object.values(tabs).forEach(t => { t.main.classList.add("hidden"); t.btn.classList.remove("active"); });
+    const t = tabs[target]; t.main.classList.remove("hidden"); t.btn.classList.add("active");
+    if (t.init) t.init();
+  }
+
+  $("btnNuevo").onclick           = () => switchTab("nuevo");
+  $("btnVerPendientes").onclick   = () => switchTab("pendientes");
+  $("btnVerEstadisticas").onclick = () => switchTab("stats");
+  $("btnVerPredicciones").onclick = () => switchTab("pred");
+  $("btnReintentarTodos").onclick = procesarCola;
+
+  // ==========================================
+  // RENDER COLA DE PENDIENTES
+  // ==========================================
+  function estadoBadge(estado) {
+    const map = { guardado_local:"estado-guardado", enviando:"estado-enviando", pendiente:"estado-pendiente", enviado:"estado-enviado", fallido:"estado-fallido" };
+    const txt = { guardado_local:"💾 Local", enviando:"⏳ Enviando...", pendiente:"📡 Pendiente", enviado:"✅ Enviado", fallido:"❌ Fallido" };
+    return `<span class="estado-badge ${map[estado]||'estado-guardado'}">${txt[estado]||estado}</span>`;
+  }
+
+  async function renderPendientes() {
+    const todos  = await getPedidosLocales();
+    const filter = $("searchPend").value.toLowerCase();
+    const box    = $("listaPendientes");
+    box.innerHTML = "";
+
+    const lista = filter ? todos.filter(p => p.numeroCliente.includes(filter)) : todos;
+
+    if (!lista.length) {
+      box.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text-muted);">✅ Todo sincronizado</div>`;
+      return;
+    }
+
+    [...lista].reverse().forEach(p => {
+      const ts = p.creadoAt ? new Date(p.creadoAt).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"}) : "";
+      const nomCli = p.clienteNombre || clientNames[p.numeroCliente]?.name || "";
+      const intentosTxt = p.intentos ? `<div class="intentos-txt">Intento ${p.intentos}/${MAX_INTENTOS}${p.ultimoError ? ` · ${p.ultimoError.slice(0,60)}` : ""}</div>` : "";
+      const showRetry = p.estado === "pendiente" || p.estado === "fallido" || p.estado === "guardado_local";
+
+      box.innerHTML += `
+        <div class="pedido-card" id="card_${p.id}">
+          <div class="card-header">
+            <div>
+              <strong style="font-size:16px;color:var(--text-main)">${p.numeroCliente}</strong>
+              ${nomCli ? `<span style="font-size:12px;color:var(--text-muted);margin-left:6px;">${nomCli}</span>` : ""}
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">📅 ${p.fechaEntrega} · ⏰ ${ts}</div>
+            </div>
+            ${estadoBadge(p.estado)}
+          </div>
+          <div class="card-body">${(p.productos||"").slice(0,200)}</div>
+          ${intentosTxt}
+          ${showRetry
+            ? `<div class="card-footer"><button class="btn-retry" onclick="reintentarPedido('${p.id}')">🔄 Reintentar</button><button class="btn-delete-pq" onclick="eliminarPedido('${p.id}')">✖</button></div>`
+            : `<div class="card-footer"><button class="btn-delete-pq" style="flex:1" onclick="eliminarPedido('${p.id}')">✖ Quitar</button></div>`}
+        </div>`;
+    });
+  }
+
+  async function reintentarPedido(id) {
+    const pedido = await localforage.getItem(QUEUE_PREFIX + id);
+    if (!pedido) return;
+    pedido.estado = "guardado_local";
+    pedido.intentos = 0;
+    pedido.proximoIntento = null;
+    pedido.ultimoError = null;
+    await savePedidoLocal(pedido);
+    await renderPendientes();
+    showToast("Reintentando...", "info");
+    await enviarPedidoAlWorker(pedido);
+    await updatePendingCount();
+    await renderPendientes();
+  }
+
+  async function eliminarPedido(id) {
+    if (!confirm("¿Eliminar este pedido de la cola? Si ya está en Supabase no pasa nada.")) return;
+    await deletePedidoLocal(id);
+    addAuditLog(id, "eliminado_manual", "");
+    await updatePendingCount();
+    await renderPendientes();
+  }
+
+  $("searchPend").oninput = () => renderPendientes();
+
+  // ==========================================
+  // ESTADÍSTICAS
+  // ==========================================
+  async function renderStats() {
+    const hoy = ymdLocal();
+    const st = (await localforage.getItem(STATS_KEY)) || {};
+    const enviados   = st[hoy] || 0;
+    const pendientes = await getPendientesCount();
+    $("statEnviados").textContent   = enviados;
+    $("statPendientes").textContent = pendientes;
+    const total = enviados + pendientes;
+    $("barEnviados").style.width = total ? ((enviados/total)*100)+"%" : "0%";
+  }
+
+  // ==========================================
+  // PREDICCIONES / HISTORIAL LOCAL
+  // ==========================================
+  const PRED_DB_KEY = "historialPorClienteV1";
+
+  async function getPredDB() { return (await localforage.getItem(PRED_DB_KEY)) || {}; }
+
+  async function logOrder(p) {
+    const db = await getPredDB();
+    const k = (p.numeroCliente || "").trim();
+    if (!k) return;
+    if (!db[k]) db[k] = [];
+    db[k].push({ date: ymdLocal(), prod: p.productos });
+    await localforage.setItem(PRED_DB_KEY, db);
+  }
+
+  async function computePredictions() {
+    const db = await getPredDB();
+    const list = [];
+    for (const k in db) {
+      const last = db[k][db[k].length-1];
+      const days = Math.floor((new Date() - new Date(last.date)) / 86400000);
+      if (days > 7 && days < 40) list.push({k, days});
+    }
+    list.sort((a,b) => b.days - a.days);
+    $("listaPredicciones").innerHTML = list.length
+      ? list.map(i => `<div class="pedido-card">Cliente <b>${i.k}</b> pidió hace <b>${i.days} días</b>.</div>`).join("")
+      : `<div style="text-align:center;color:var(--text-muted)">Nada para sugerir hoy.</div>`;
+  }
+
+  // ==========================================
+  // LOG DE SINCRONIZACIÓN
+  // ==========================================
+  $("btnVerLog").onclick = async () => {
+    const log = ((await localforage.getItem(AUDIT_KEY)) || []).slice().reverse();
+    const colorClass = a => a.includes("ok") ? "log-ok" : a.includes("fallido")||a.includes("error") ? "log-err" : "log-warn";
+    $("logContent").innerHTML = log.length
+      ? log.map(e => `<div class="log-entry"><span class="${colorClass(e.accion)}">[${e.accion}]</span> ${e.ts.slice(11,19)} · ID:${e.pedidoId} ${e.detalle ? "· "+e.detalle.slice(0,80) : ""}</div>`).join("")
+      : `<div style="text-align:center;color:var(--text-muted);padding:20px;">Sin registros</div>`;
+    $("logOverlay").style.display = "flex";
+  };
+  $("btnCloseLog").onclick = () => $("logOverlay").style.display = "none";
+  $("btnClearLog").onclick = async () => {
+    await localforage.removeItem(AUDIT_KEY);
+    $("logContent").innerHTML = `<div style="text-align:center;color:var(--text-muted);padding:20px;">Log limpiado</div>`;
+  };
+
+  // ==========================================
+  // TOAST
+  // ==========================================
+  function showToast(m, t="info") {
+    const el = document.createElement("div"); el.className = "toast";
+    const icon = t==="error" ? "⚠️" : t==="ok" ? "✅" : "ℹ️";
+    el.innerHTML = icon + " " + m;
+    if (t==="error") el.style.borderColor = "#ef4444";
+    if (t==="ok")    el.style.borderColor = "var(--success)";
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3500);
+  }
+
+  // ==========================================
+  // INDEXEDDB — BACKUP DIARIO
+  // ==========================================
+  let idb = null;
+  function initIDB() {
+    try {
+      const req = indexedDB.open("pedidos_backup_v1", 1);
+      req.onupgradeneeded = e => { e.target.result.createObjectStore("pedidos", { keyPath: "id" }); };
+      req.onsuccess = e => { idb = e.target.result; backupDiarioIDB(); };
+    } catch(e) {}
+  }
+
+  async function backupDiarioIDB() {
+    if (!idb) return;
+    const hoy = ymdLocal();
+    const lastBackup = await localforage.getItem("idb_last_backup");
+    if (lastBackup === hoy) return;
+    const pedidos = await getPedidosLocales();
+    if (!pedidos.length) return;
+    try {
+      const tx = idb.transaction("pedidos", "readwrite");
+      const store = tx.objectStore("pedidos");
+      pedidos.forEach(p => store.put({ ...p, _backup_date: hoy }));
+      await localforage.setItem("idb_last_backup", hoy);
+    } catch(e) {}
+  }
+
+  // ==========================================
+  // INICIO
+  // ==========================================
+  window.onload = async () => {
+    syncClientes();     // Supabase primario, Google Sheets fallback
+    syncProductos();    // catálogo productos (nuevo)
+    loadHistorialVentas(); // historial upsell (se elimina en Fase 3)
+    updateConn();
+    await updatePendingCount();
+    initIDB();
+    iniciarRetryInterval();
+
+    const d = (await localforage.getItem("draft")) || {};
+    if (d.c) { $("numeroCliente").value = d.c; updateClientUI(d.c); }
+    if (d.p)  $("productos").value = d.p;
+    if (d.o)  $("observaciones").value = d.o;
+    $("fechaEntrega").value = d.f || ymdLocal();
+
+    // Restaurar tema de color
+    const savedTheme = await localforage.getItem('themePref');
+    if (savedTheme) { $("themeSelector").value = savedTheme; changeTheme(savedTheme); }
+
+    // Restaurar modo claro/oscuro
+    const savedModo = await localforage.getItem('modoClaro');
+    if (savedModo) {
+      document.documentElement.classList.add('light');
+      $("btnToggleModo").textContent = "🌙 Oscuro";
+      document.body.style.background = "";
+    }
+
+    const v = await localforage.getItem("nombreVendedor");
+    if (v) {
+      $("nombreVendedor").value = v;
+      $("helloBanner").innerHTML = `<h3 style="margin:0 0 10px 0;color:var(--text-main);font-weight:500">Hola, <span style="color:var(--primary);font-weight:800">${v.split(" ")[0]}</span> 👋</h3>`;
+    }
+    $("nombreVendedor").onchange = (e) => localforage.setItem("nombreVendedor", e.target.value.toUpperCase());
+
+    switchTab("nuevo");
+  };
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./service-worker.js', { scope: './' })
+        .then(reg => {
+          reg.addEventListener('updatefound', () => {
+            const nw = reg.installing;
+            nw.addEventListener('statechange', () => {
+              if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+                showToast("🔄 Actualizando App...", "ok");
+                setTimeout(() => window.location.reload(), 1500);
+              }
+            });
+          });
+        }).catch(err => console.log('SW failed:', err));
+    });
+    let refreshing;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      window.location.reload();
+      refreshing = true;
+    });
+  }
+</script>
+</body>
+</html>
