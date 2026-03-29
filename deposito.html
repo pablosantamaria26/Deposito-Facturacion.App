@@ -30,6 +30,7 @@
     box-shadow:0 2px 16px rgba(0,0,0,.06);
   }
   .header-title{font-size:20px;font-weight:900;flex:1}
+  .logo-header{width:40px;height:40px;border-radius:8px;object-fit:contain;cursor:pointer;flex-shrink:0;background:#fff;padding:2px;}
   .conn-dot{width:12px;height:12px;border-radius:50%;background:#dc2626;flex-shrink:0}
   .conn-dot.online {background:var(--ok);box-shadow:0 0 0 3px #bbf7d0}
   .conn-dot.syncing{background:var(--mod);animation:pulse 1s infinite}
@@ -419,6 +420,7 @@
   <div id="vistaLista" style="display:flex;flex-direction:column;min-height:100vh">
     <div class="header">
       <div class="conn-dot" id="connDot"></div>
+      <a href="./index.html"><img src="./logo.jpeg" alt="ML" class="logo-header" onerror="this.style.display='none'"/></a>
       <div class="header-title">📦 Depósito</div>
       <button id="btnDarkDep" onclick="toggleDarkDep()" title="Modo oscuro/claro">🌙</button>
     </div>
@@ -544,6 +546,25 @@ function fmtFechaCorta(fe) {
     {weekday:"short", day:"2-digit", month:"2-digit"});
 }
 
+// ── SEMANA ISO ──
+function weekId(date) {
+  const d = new Date(date);
+  d.setHours(0,0,0,0);
+  const day = d.getDay() || 7;
+  d.setDate(d.getDate() + 4 - day);
+  const y = d.getFullYear();
+  const start = new Date(y,0,1);
+  return y * 100 + Math.ceil((((d - start) / 86400000) + 1) / 7);
+}
+function labelNumDiario(p) {
+  const nd = p.numero_diario ?? p.numero;
+  if (!nd) return null;
+  const wk = p.created_at ? weekId(p.created_at) : null;
+  const hoy = weekId(new Date());
+  const tag = (wk && wk === hoy) ? "esta semana" : "sem. anterior";
+  return `Nº ${nd} (${tag})`;
+}
+
 // ── SUPABASE ──
 async function sbGet(t, p="") {
   const r = await fetch(`${SB_URL}/rest/v1/${t}?${p}`,
@@ -645,13 +666,13 @@ function renderLista() {
     const urg = esUrgente(p.fecha_entrega);
     const cc  = p.estado==="armado" ? "armado-ok" : urg ? "urgente" : "pendiente";
     const ec  = urg ? "urg" : "pend";
-    const nd = p.numero_diario ?? p.numero;
+    const ndLabel = labelNumDiario(p);
     return `
       <div class="pedido-card ${cc}" onclick="pedidoClick('${p.id}')" style="animation:fadeInUp .2s ease ${idx*40}ms both">
         <div class="card-nombre">${p.cliente_nombre||"Cliente "+p.cliente_id||"—"}</div>
         <div class="card-sec">
           <span class="card-num">N° ${p.cliente_id||"—"}</span>
-          ${nd ? `<span class="card-ndiario">📋 Nº ${nd} del día</span>` : ""}
+          ${ndLabel ? `<span class="card-ndiario">📋 ${ndLabel}</span>` : ""}
         </div>
         <div class="card-entrega ${ec}">Entrega: ${fmtFechaCorta(p.fecha_entrega)}</div>
         <div class="card-meta">Vendedor: ${p.vendedor||"—"} · ${p.observaciones||"Sin obs."}</div>
@@ -730,8 +751,8 @@ async function abrirPedido(id) {
     document.getElementById("detNum").textContent = "N° " + (pedidoActivo.cliente_id||"—");
     const dnd = document.getElementById("detNumDiario");
     if (dnd) {
-      const nd = pedidoActivo.numero_diario ?? pedidoActivo.numero;
-      if (nd) { dnd.textContent = `📋 Pedido Nº ${nd} del día`; dnd.style.display = "block"; }
+      const ndLabel = labelNumDiario(pedidoActivo);
+      if (ndLabel) { dnd.textContent = `📋 Pedido ${ndLabel}`; dnd.style.display = "block"; }
       else dnd.style.display = "none";
     }
     document.getElementById("detNombre").textContent =
