@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Background -->
+  <rect width="192" height="192" rx="40" fill="#0f172a"/>
+
+  <!-- Box body -->
+  <rect x="40" y="96" width="112" height="70" rx="6" fill="#ffffff"/>
+
+  <!-- Box lid left flap -->
+  <polygon points="40,96 96,70 96,96" fill="#94a3b8"/>
+  <!-- Box lid right flap -->
+  <polygon points="152,96 96,70 96,96" fill="#cbd5e1"/>
+
+  <!-- Tape strip vertical -->
+  <rect x="88" y="96" width="16" height="70" fill="#e2e8f0"/>
+
+  <!-- Tape strip horizontal -->
+  <rect x="40" y="120" width="112" height="14" fill="#e2e8f0"/>
+
+  <!-- Shine on lid -->
+  <line x1="112" y1="76" x2="142" y2="90" stroke="rgba(255,255,255,0.35)" stroke-width="5" stroke-linecap="round"/>
+</svg>

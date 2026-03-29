@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Background -->
+  <rect width="192" height="192" rx="40" fill="#1d4ed8"/>
+
+  <!-- Document shadow -->
+  <rect x="54" y="38" width="88" height="112" rx="8" fill="rgba(0,0,0,0.25)"/>
+
+  <!-- Document body -->
+  <rect x="48" y="32" width="88" height="112" rx="8" fill="#ffffff"/>
+
+  <!-- Folded corner -->
+  <polygon points="112,32 136,56 112,56" fill="#bfdbfe"/>
+  <polygon points="112,32 136,56 112,56" fill="none" stroke="white" stroke-width="1.5"/>
+
+  <!-- Text lines -->
+  <rect x="62" y="74" width="60" height="7" rx="3.5" fill="#1d4ed8" opacity="0.85"/>
+  <rect x="62" y="91" width="48" height="6" rx="3" fill="#94a3b8"/>
+  <rect x="62" y="105" width="52" height="6" rx="3" fill="#94a3b8"/>
+  <rect x="62" y="119" width="42" height="6" rx="3" fill="#94a3b8"/>
+
+  <!-- $ symbol on bottom right -->
+  <circle cx="112" cy="124" r="18" fill="#1d4ed8"/>
+  <text x="112" y="131" font-size="20" font-weight="900" font-family="Arial,sans-serif" fill="white" text-anchor="middle">$</text>
+</svg>
