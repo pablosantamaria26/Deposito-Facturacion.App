@@ -942,7 +942,7 @@ async function seleccionar(id) {
 
     renderHeader();
     renderItemsF();
-    cargarNotas(pedidoActivo.cliente_id);
+    cargarNotas(pedidoActivo.cliente_id, true);
     cargarFaltantesPrevios(pedidoActivo.cliente_id, pedidoActivo.id);
 
     document.getElementById("noSel").style.display = "none";
@@ -1327,7 +1327,7 @@ async function buscarHistorial() {
 let notasClienteId = null;
 let notasCache     = [];
 
-async function cargarNotas(clienteId) {
+async function cargarNotas(clienteId, mostrarRecordatorio = false) {
   notasClienteId = clienteId || null;
   const btn = document.getElementById("btnNotas");
   if (!clienteId) { btn.style.display = "none"; return; }
@@ -1338,6 +1338,22 @@ async function cargarNotas(clienteId) {
     ? `📝 Notas (${notasCache.length})`
     : "📝 Notas";
   btn.className = "btn-notas-open" + (notasCache.length ? " tiene-notas" : "");
+
+  // Modal recordatorio: aparece automáticamente si hay notas al abrir el pedido
+  if (mostrarRecordatorio && notasCache.length > 0) {
+    const ultima = notasCache[0];
+    const preview = ultima.nota.length > 80 ? ultima.nota.slice(0, 80) + "…" : ultima.nota;
+    const nombre = pedidoActivo?.cliente_nombre || "N° " + clienteId;
+    const mas = notasCache.length > 1 ? `<div style="color:var(--muted);font-size:12px;margin-top:8px;">+${notasCache.length - 1} nota${notasCache.length - 1 > 1 ? "s" : ""} más guardada${notasCache.length - 1 > 1 ? "s" : ""}</div>` : "";
+    const quien = ultima.created_by ? ` · ${ultima.created_by}` : "";
+    const cuando = ultima.created_at
+      ? new Date(ultima.created_at).toLocaleDateString("es-AR", { day:"2-digit", month:"2-digit", year:"2-digit" })
+      : "";
+
+    if (confirm(`📝 NOTA GUARDADA — ${nombre}\n\n"${preview}"\n\n${cuando}${quien}\n\n¿Ver todas las notas?`)) {
+      abrirModalNotas();
+    }
+  }
 }
 
 function abrirModalNotas() {
