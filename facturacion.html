@@ -180,9 +180,9 @@
 
   .item-f {
     background: #fff; border: 2px solid var(--border);
-    border-radius: var(--radius); padding: 16px 18px;
-    display: grid; grid-template-columns: 54px 1fr 90px 54px;
-    align-items: center; gap: 14px; box-shadow: var(--shadow);
+    border-radius: var(--radius); padding: 14px 16px;
+    display: grid; grid-template-columns: 46px 80px 1fr 54px;
+    align-items: center; gap: 12px; box-shadow: var(--shadow);
     transition: 0.12s;
   }
   .item-f.ok       { border-color: #86efac; background: var(--succ-bg); }
@@ -204,8 +204,8 @@
   .item-f-who  { font-size: 11px; color: var(--muted); margin-top: 3px; }
 
   .qty-in {
-    width: 80px; border: 2px solid var(--border); border-radius: 10px;
-    padding: 10px 8px; font-size: 20px; font-weight: 900;
+    width: 100%; border: 2px solid var(--border); border-radius: 10px;
+    padding: 10px 6px; font-size: 20px; font-weight: 900;
     text-align: center; background: var(--bg); color: var(--text); outline: none;
   }
   .qty-in:focus { border-color: var(--prox); background: #fff; }
@@ -340,8 +340,24 @@
   .btn-notas-open:hover { border-color: var(--manana); color: var(--manana); }
   .btn-notas-open.tiene-notas { border-color: var(--manana); color: var(--manana); background: var(--man-bg); }
 
-  /* N° cliente grande */
-  .ped-num-grande { font-size: 38px; font-weight: 900; color: var(--prox); line-height: 1; letter-spacing: -1px; }
+  /* N° cliente — elemento principal, copiable */
+  .num-copy-row { display: flex; align-items: center; gap: 10px; }
+  .ped-num-grande {
+    font-size: 42px; font-weight: 900; color: var(--prox); line-height: 1; letter-spacing: -1px;
+    cursor: pointer; user-select: none; transition: opacity .12s;
+  }
+  .ped-num-grande:hover { opacity: .75; }
+  .btn-copy-cod {
+    background: var(--prox-bg); border: 2px solid var(--prox-brd); color: var(--prox);
+    padding: 6px 14px; border-radius: 99px; font-size: 13px; font-weight: 700;
+    cursor: pointer; transition: .12s; white-space: nowrap;
+  }
+  .btn-copy-cod:hover { background: var(--prox); color: #fff; }
+  .btn-copy-cod:active { transform: scale(.95); }
+
+  /* Hint atajos de teclado */
+  .kbd-hint { font-size: 11px; color: var(--muted); margin-left: auto; letter-spacing: .2px; }
+  .kbd-hint kbd { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-family: monospace; font-size: 10px; }
 
   /* Faltantes previos */
   .faltantes-previos-sec { background: #fffbeb; border-left: 6px solid #f59e0b; border-radius: 0; padding: 12px 24px; flex-shrink: 0; }
@@ -365,9 +381,14 @@
   .pend-armar-fecha.man-c  { color: var(--manana); font-weight: 800; font-size: 12px; }
   .pend-armar-fecha.prox-c { color: var(--prox);   font-weight: 700; font-size: 12px; }
 
+  /* ── VISTA ENFOQUE ── */
+  .body.enfoque .panel-left  { display: none; }
+  .body.enfoque .panel-right { width: 100%; }
+  #btnVolver:hover { border-color: var(--prox); color: var(--prox); }
+
   /* ── RESPONSIVE ── */
   @media(max-width:1000px){ :root{ --left-w: 280px; } }
-  @media(max-width:780px) { :root{ --left-w: 240px; } .item-f{ grid-template-columns: 46px 1fr 70px 44px; gap: 10px; padding: 12px 14px; } }
+  @media(max-width:780px) { :root{ --left-w: 240px; } .item-f{ grid-template-columns: 42px 66px 1fr 44px; gap: 8px; padding: 10px 12px; } }
   @media(max-width:620px) {
     .body { flex-direction: column; }
     .panel-left { width: 100%; height: 220px; border-right: none; border-bottom: 2px solid var(--border); }
@@ -375,8 +396,45 @@
     .panel-right { overflow-y: auto; }
   }
 
-  @keyframes slideUp  { from { transform: translateY(60px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  @keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes slideUp     { from { transform: translateY(60px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes fadeInUp    { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes pulseBorder { 0%,100%{ border-color:var(--prox-brd); box-shadow:none; } 50%{ border-color:var(--prox); box-shadow:0 0 0 3px rgba(37,99,235,.15); } }
+
+  /* ── PEDIDOS EN PROCESO ── */
+  .proc-item {
+    padding: 14px 16px; cursor: pointer; transition: background .12s, border-color .12s;
+    background: var(--prox-bg); border: 2px solid var(--prox-brd);
+    border-radius: var(--radius); margin: 8px 10px;
+    animation: pulseBorder 2.5s ease-in-out infinite;
+  }
+  .proc-item:hover { background: #dbeafe; border-color: var(--prox); }
+  .proc-nombre { font-size: 14px; font-weight: 800; color: var(--text); }
+  .proc-meta   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .proc-pulse  { color: var(--prox); font-size: 12px; font-weight: 700; margin-top: 6px; animation: pulse 1.8s ease-in-out infinite; }
+  #procesoList { flex: 1; overflow-y: auto; padding: 4px 0; }
+  #procesoList::-webkit-scrollbar { width: 4px; }
+  #procesoList::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Armados listos para facturar (estático, verde) */
+  .proc-item-listo {
+    padding: 14px 16px; cursor: pointer; transition: background .12s;
+    background: var(--succ-bg); border: 2px solid #86efac;
+    border-radius: var(--radius); margin: 8px 10px;
+  }
+  .proc-item-listo:hover { background: #dcfce7; }
+
+  /* Pedidos pendientes en depósito (estático, neutro) */
+  .proc-item-pend {
+    padding: 12px 16px; cursor: default;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); margin: 6px 10px;
+  }
+
+  /* Animación pulsante para "armando ahora" (verde↔amber) */
+  @keyframes pulseArmando {
+    0%,100% { border-color: #10b981; box-shadow: 0 0 0 2px rgba(16,185,129,.2); }
+    50%      { border-color: #f59e0b; box-shadow: 0 0 0 4px rgba(245,158,11,.15); }
+  }
 
   /* ── TRANSICIONES ── */
   .pedido-item { transition: background .12s, border-color .12s; }
@@ -387,53 +445,100 @@
   .chk-f       { transition: background .12s, border-color .12s, transform .1s; }
   .btn-notas-open { transition: border-color .15s, color .15s, background .15s; }
 
-  /* ── DARK MODE ── */
+  /* ── DARK MODE TOGGLE ── */
+  #btnDark { background:none; border:none; font-size:20px; cursor:pointer; padding:4px 6px; border-radius:8px; line-height:1; transition:.15s; }
+  #btnDark:hover { background: var(--bg); }
+
+  /* ── DARK MODE (sistema) ── */
   @media(prefers-color-scheme:dark){
-    :root{
-      --hoy:       #f87171; --hoy-bg:  #2d1414; --hoy-brd:  #7f1d1d;
-      --manana:    #fbbf24; --man-bg:  #292008; --man-brd:  #78350f;
-      --prox:      #60a5fa; --prox-bg: #1b2d4a; --prox-brd: #1e3a6e;
-      --success:   #4ade80; --succ-bg: #14271a;
-      --bg:        #12151c; --card:    #1e2330;
-      --text:      #eef2f7; --muted:   #8090a8; --border:   #2d3a4e;
-      --shadow:    0 2px 14px rgba(0,0,0,.4);
+    body:not(.light-forced) {
+      --hoy:       #ff7b7b; --hoy-bg:  #3a1a1a; --hoy-brd:  #882222;
+      --manana:    #ffcc55; --man-bg:  #362808; --man-brd:  #8a5a00;
+      --prox:      #74b9ff; --prox-bg: #1a2d4a; --prox-brd: #2255aa;
+      --success:   #55df8a; --succ-bg: #0f2e1e;
+      --bg:        #1e2538; --card:    #28324a;
+      --text:      #dde4f5; --muted:   #7a90b8; --border:   #3a4d6a;
+      --shadow:    0 2px 14px rgba(0,0,0,.35);
       --left-w:    340px;
     }
-    html,body { background:var(--bg); color:var(--text); }
-    .topbar,.ped-header,.ped-footer { background:rgba(30,35,48,.9); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border-color:rgba(45,58,78,.8); }
-    .ia-bar { background:rgba(18,21,28,.85); border-color:var(--border); }
-    .panel-left { background:var(--card); border-color:var(--border); }
-    .panel-right { background:var(--bg); }
-    .pedido-item:hover { background:#1a2030; }
-    .pedido-item.selected { background:#1e2d4a; }
-    .pedido-item.grp-hoy.selected { background:#2d1414; }
-    .pedido-item.grp-man.selected { background:#292008; }
-    .item-f   { background:var(--card); border-color:var(--border); }
-    .item-f.ok{ background:#14271a; border-color:#14532d; }
-    .item-f.faltante { background:#2d1414; border-color:#7f1d1d; }
-    .chk-f:not(.ok):not(.faltante) { background:var(--card); border-color:var(--border); }
-    .qty-in   { background:var(--bg); color:var(--text); border-color:var(--border); }
-    .qty-in:focus { background:var(--card); }
-    .btn-wa   { background:var(--card); border-color:var(--border); color:var(--muted); }
-    .modal-box { background:#1e2330; color:var(--text); }
-    .modal-input,.nota-input-modal { background:#12151c; color:var(--text); border-color:var(--border); }
-    .modal-btn.cancel { background:#12151c; border-color:var(--border); color:var(--muted); }
-    .nota-modal-item { background:#12151c; border-color:var(--border); }
-    .btn-notas-open { background:var(--card); border-color:var(--border); color:var(--muted); }
-    .btn-notas-open.tiene-notas { background:#292008; border-color:var(--manana); color:var(--manana); }
-    .btn-ia   { background:var(--bg); border-color:var(--border); color:var(--muted); }
-    .btn-ia:hover { border-color:var(--prox); color:var(--prox); }
-    .left-search input { background:var(--bg); color:var(--text); border-color:var(--border); }
-    .faltantes-previos-sec { background:#2a1e04; border-color:#a16207; }
-    .user-chip { background:var(--hoy); }
-    .grupo-header { background:inherit; }
-    .grupo-header.hoy  { background:var(--hoy-bg);  color:var(--hoy); border-color:var(--hoy); }
-    .grupo-header.man  { background:var(--man-bg);  color:var(--manana); border-color:var(--manana); }
-    .grupo-header.prox { background:var(--prox-bg); color:var(--prox); border-color:var(--prox); }
-    .hist-item:hover { background:#1a2030; }
-    .pend-armar-item { border-color:var(--border); }
-    #noSel { color:var(--muted); }
+    body:not(.light-forced) html,
+    body:not(.light-forced) { background:var(--bg); color:var(--text); }
+    body:not(.light-forced) .topbar,
+    body:not(.light-forced) .ped-header,
+    body:not(.light-forced) .ped-footer { background:rgba(28,34,52,.92); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border-color:rgba(58,77,106,.8); }
+    body:not(.light-forced) .ia-bar { background:rgba(20,26,40,.90); border-color:var(--border); }
+    body:not(.light-forced) .panel-left { background:var(--card); border-color:var(--border); }
+    body:not(.light-forced) .panel-right { background:var(--bg); }
+    body:not(.light-forced) .pedido-item:hover { background:#222c40; }
+    body:not(.light-forced) .pedido-item.selected { background:#1e2d4a; }
+    body:not(.light-forced) .pedido-item.grp-hoy.selected { background:#3a1a1a; }
+    body:not(.light-forced) .pedido-item.grp-man.selected { background:#362808; }
+    body:not(.light-forced) .item-f   { background:var(--card); border-color:var(--border); }
+    body:not(.light-forced) .item-f.ok{ background:#0f2e1e; border-color:#14532d; }
+    body:not(.light-forced) .item-f.faltante { background:#3a1a1a; border-color:#882222; }
+    body:not(.light-forced) .chk-f:not(.ok):not(.faltante) { background:var(--card); border-color:var(--border); }
+    body:not(.light-forced) .qty-in   { background:var(--bg); color:var(--text); border-color:var(--border); }
+    body:not(.light-forced) .qty-in:focus { background:var(--card); }
+    body:not(.light-forced) .btn-wa   { background:var(--card); border-color:var(--border); color:var(--muted); }
+    body:not(.light-forced) .modal-box { background:#28324a; color:var(--text); }
+    body:not(.light-forced) .modal-input,
+    body:not(.light-forced) .nota-input-modal { background:#1e2538; color:var(--text); border-color:var(--border); }
+    body:not(.light-forced) .modal-btn.cancel { background:#1e2538; border-color:var(--border); color:var(--muted); }
+    body:not(.light-forced) .nota-modal-item { background:#1e2538; border-color:var(--border); }
+    body:not(.light-forced) .btn-notas-open { background:var(--card); border-color:var(--border); color:var(--muted); }
+    body:not(.light-forced) .btn-notas-open.tiene-notas { background:#362808; border-color:var(--manana); color:var(--manana); }
+    body:not(.light-forced) .btn-ia   { background:var(--bg); border-color:var(--border); color:var(--muted); }
+    body:not(.light-forced) .btn-ia:hover { border-color:var(--prox); color:var(--prox); }
+    body:not(.light-forced) .left-search input { background:var(--bg); color:var(--text); border-color:var(--border); }
+    body:not(.light-forced) .faltantes-previos-sec { background:#2a1e04; border-color:#a16207; }
+    body:not(.light-forced) .user-chip { background:var(--hoy); }
+    body:not(.light-forced) .grupo-header { background:inherit; }
+    body:not(.light-forced) .grupo-header.hoy  { background:var(--hoy-bg);  color:var(--hoy); border-color:var(--hoy); }
+    body:not(.light-forced) .grupo-header.man  { background:var(--man-bg);  color:var(--manana); border-color:var(--manana); }
+    body:not(.light-forced) .grupo-header.prox { background:var(--prox-bg); color:var(--prox); border-color:var(--prox); }
+    body:not(.light-forced) .hist-item:hover { background:#222c40; }
+    body:not(.light-forced) .pend-armar-item { border-color:var(--border); }
+    body:not(.light-forced) #noSel { color:var(--muted); }
+    body:not(.light-forced) .proc-item { background:var(--prox-bg); border-color:var(--prox-brd); }
+    body:not(.light-forced) .proc-item:hover { background:#1e3a6e; border-color:var(--prox); }
   }
+
+  /* Dark mode forzado por clase */
+  body.dark-forced {
+    --hoy:       #ff7b7b; --hoy-bg:  #3a1a1a; --hoy-brd:  #882222;
+    --manana:    #ffcc55; --man-bg:  #362808; --man-brd:  #8a5a00;
+    --prox:      #74b9ff; --prox-bg: #1a2d4a; --prox-brd: #2255aa;
+    --success:   #55df8a; --succ-bg: #0f2e1e;
+    --bg:        #1e2538; --card:    #28324a;
+    --text:      #dde4f5; --muted:   #7a90b8; --border:   #3a4d6a;
+    --shadow:    0 2px 14px rgba(0,0,0,.35);
+  }
+  body.dark-forced html, body.dark-forced { background:var(--bg); color:var(--text); }
+  body.dark-forced .topbar,body.dark-forced .ped-header,body.dark-forced .ped-footer { background:rgba(28,34,52,.92); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border-color:rgba(58,77,106,.8); }
+  body.dark-forced .ia-bar { background:rgba(20,26,40,.90); border-color:var(--border); }
+  body.dark-forced .panel-left { background:var(--card); border-color:var(--border); }
+  body.dark-forced .panel-right { background:var(--bg); }
+  body.dark-forced .pedido-item:hover { background:#222c40; }
+  body.dark-forced .pedido-item.selected { background:#1e2d4a; }
+  body.dark-forced .item-f { background:var(--card); border-color:var(--border); }
+  body.dark-forced .item-f.ok { background:#0f2e1e; border-color:#14532d; }
+  body.dark-forced .item-f.faltante { background:#3a1a1a; border-color:#882222; }
+  body.dark-forced .chk-f:not(.ok):not(.faltante) { background:var(--card); border-color:var(--border); }
+  body.dark-forced .qty-in { background:var(--bg); color:var(--text); border-color:var(--border); }
+  body.dark-forced .btn-wa { background:var(--card); border-color:var(--border); color:var(--muted); }
+  body.dark-forced .modal-box { background:#28324a; color:var(--text); }
+  body.dark-forced .modal-input,body.dark-forced .nota-input-modal { background:#1e2538; color:var(--text); border-color:var(--border); }
+  body.dark-forced .modal-btn.cancel { background:#1e2538; border-color:var(--border); color:var(--muted); }
+  body.dark-forced .nota-modal-item { background:#1e2538; border-color:var(--border); }
+  body.dark-forced .btn-ia { background:var(--bg); border-color:var(--border); color:var(--muted); }
+  body.dark-forced .left-search input { background:var(--bg); color:var(--text); border-color:var(--border); }
+  body.dark-forced .proc-item { background:var(--prox-bg); border-color:var(--prox-brd); }
+  body.dark-forced .proc-item:hover { background:#1e3a6e; border-color:var(--prox); }
+  body.dark-forced .grupo-header.hoy  { background:var(--hoy-bg); color:var(--hoy); border-color:var(--hoy); }
+  body.dark-forced .grupo-header.man  { background:var(--man-bg); color:var(--manana); border-color:var(--manana); }
+  body.dark-forced .grupo-header.prox { background:var(--prox-bg); color:var(--prox); border-color:var(--prox); }
+  body.dark-forced .hist-item:hover   { background:#222c40; }
+  body.dark-forced #diaChip { background:#0f2e1e; border-color:#166534; }
 </style>
 </head>
 <body>
@@ -446,6 +551,9 @@
   <div class="topbar">
     <div class="conn-dot" id="connDot"></div>
     <div class="topbar-title">🧾 Facturación ML</div>
+    <button id="btnVolver" onclick="salirEnfoque()" title="Salir del modo enfoque" style="display:none;padding:8px 16px;border-radius:99px;border:2px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-weight:700;cursor:pointer;">← Pedidos</button>
+    <button id="btnDark" onclick="toggleDark()" title="Modo oscuro/claro">🌙</button>
+    <button id="diaChip" onclick="abrirVistaHoy()" style="display:none;background:var(--succ-bg);color:var(--success);border:2px solid #86efac;padding:5px 12px;border-radius:99px;font-size:13px;font-weight:800;white-space:nowrap;cursor:pointer;"></button>
     <div id="userChip" class="user-chip" onclick="cambiarNombre()" title="Cambiar nombre" style="cursor:pointer;">—</div>
   </div>
 
@@ -455,7 +563,7 @@
     <div class="panel-left">
       <div class="left-tabs-bar" style="grid-template-columns:1fr 1fr 1fr;">
         <button class="ltab active" id="ltabPedidos"   onclick="setLeftTab('pedidos')">Facturar</button>
-        <button class="ltab"        id="ltabArmar"     onclick="setLeftTab('armar')">A armar</button>
+        <button class="ltab"        id="ltabArmar"     onclick="setLeftTab('armar')">En proceso</button>
         <button class="ltab"        id="ltabHistorial" onclick="setLeftTab('historial')">Historial</button>
       </div>
       <!-- Vista Pedidos -->
@@ -465,10 +573,10 @@
         </div>
         <div id="pedidosList"></div>
       </div>
-      <!-- Vista A armar -->
+      <!-- Vista Pedidos en proceso -->
       <div id="armarView" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
-        <div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;flex-shrink:0;">Pendientes de armar</div>
-        <div id="armarList"></div>
+        <div id="procesoListHeader" style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:11px;font-weight:800;color:var(--prox);text-transform:uppercase;letter-spacing:.8px;flex-shrink:0;">🏭 Estado del depósito</div>
+        <div id="procesoList"></div>
       </div>
       <!-- Vista Historial -->
       <div id="historialView" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
@@ -494,17 +602,24 @@
       <!-- Pedido abierto -->
       <div id="pedidoPanel">
         <div class="ped-header">
-          <div class="ped-num-grande" id="phNumGrande">—</div>
+          <div class="num-copy-row">
+            <div class="ped-num-grande" id="phNumGrande" onclick="copiarClienteId()" title="Click para copiar">—</div>
+            <button class="btn-copy-cod" onclick="copiarClienteId()">📋 Copiar N°</button>
+          </div>
+          <div id="phNumDiario" style="display:none;margin-top:6px;"></div>
           <div class="ped-cliente" id="phCliente" style="font-size:22px;margin-top:2px;">—</div>
           <div class="ped-entrega" id="phEntrega" style="font-size:16px;margin-top:6px;">—</div>
           <div class="ped-meta"    id="phMeta">—</div>
+          <div id="phArmador" style="display:none;font-size:14px;font-weight:700;color:var(--prox);margin-top:6px;"></div>
           <div class="ped-chips"   id="phChips"></div>
           <button class="btn-notas-open" id="btnNotas" onclick="abrirModalNotas()" style="display:none;">📝 Notas</button>
         </div>
 
         <div class="ia-bar">
           <button class="btn-ia" onclick="marcarTodos()" title="Marcar todos los items como facturados">✅ Todos OK</button>
-          <button class="btn-ia" onclick="desmarcarTodos()" style="margin-left:auto;" title="Desmarcar todos los items">↩ Desmarcar</button>
+          <button class="btn-ia" id="btnEnfoque" onclick="toggleEnfoque()" title="Vista enfoque 100%">🔍 Enfoque</button>
+          <button class="btn-ia" onclick="desmarcarTodos()" title="Desmarcar todos los items">↩ Desmarcar</button>
+          <span class="kbd-hint"><kbd>Enter</kbd> marcar · <kbd>Ctrl+↵</kbd> facturar · <kbd>→</kbd> siguiente</span>
         </div>
 
         <!-- Faltantes de la semana pasada -->
@@ -548,6 +663,42 @@
   </div>
 </div>
 
+<!-- Vista: facturados HOY -->
+<div id="vistaHoy" style="display:none;position:fixed;inset:0;z-index:7500;background:var(--bg);flex-direction:column;">
+  <div style="padding:14px 20px;border-bottom:2px solid var(--border);display:flex;align-items:center;gap:14px;background:var(--card);flex-shrink:0;">
+    <button onclick="cerrarVistaHoy()" style="padding:8px 16px;border-radius:99px;border:2px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-weight:700;cursor:pointer;">← Volver</button>
+    <div style="font-size:18px;font-weight:900;flex:1;">✅ Facturados hoy</div>
+    <div id="vistaHoyCount" style="font-size:14px;color:var(--muted);font-weight:700;"></div>
+  </div>
+  <div id="vistaHoyLista" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;"></div>
+</div>
+
+<!-- Modal: PIN edición -->
+<div class="modal-over" id="modalPin">
+  <div class="modal-box">
+    <div class="modal-title">🔐 Edición bloqueada</div>
+    <div class="modal-sub">Esta factura ya fue procesada. Ingresá el PIN para editar.</div>
+    <input class="modal-input" id="inputPin" type="password" inputmode="numeric" placeholder="PIN..." maxlength="6"
+      onkeydown="if(event.key==='Enter')confirmarPin()"/>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="cerrarModalPin()">Cancelar</button>
+      <button class="modal-btn ok"     onclick="confirmarPin()">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: validación antes de facturar -->
+<div class="modal-over" id="modalConfirmFacturar">
+  <div class="modal-box">
+    <div class="modal-title" id="mcfTitle">⚠️ Items sin verificar</div>
+    <div class="modal-sub"  id="mcfSub">Hay artículos sin marcar como facturado ni como faltante.</div>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="document.getElementById('modalConfirmFacturar').style.display='none'">↩ Volver</button>
+      <button class="modal-btn ok"     onclick="confirmarFacturarVacio()">✔ Facturar igual</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: notas del cliente -->
 <div class="modal-over" id="modalNotas">
   <div class="modal-box notas-box">
@@ -558,6 +709,20 @@
     <div class="modal-btns">
       <button class="modal-btn cancel" onclick="cerrarModalNotas()">Cerrar</button>
       <button class="modal-btn ok"     onclick="guardarNota()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: pedido en proceso -->
+<div class="modal-over" id="modalProceso">
+  <div class="modal-box" style="max-height:82vh;overflow-y:auto;">
+    <div class="modal-title" id="mpCliente">—</div>
+    <div id="mpMeta" style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6;"></div>
+    <div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px;">Items del pedido</div>
+    <div id="mpItems" style="display:flex;flex-direction:column;gap:6px;max-height:38vh;overflow-y:auto;margin-bottom:16px;"></div>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="cerrarModalProceso()">Cerrar</button>
+      <button class="modal-btn ok"     onclick="irAFacturacion()">📋 Ir a facturar</button>
     </div>
   </div>
 </div>
@@ -577,9 +742,17 @@ let pedidosAll   = [];
 let pedidoActivo = null;
 let itemsActivos = [];
 
+const PIN_EDIT = "2817";
+let _editDesbloqueado = false, _pinCallback = null;
+let _enviandoFact = false;
+const _pendingItems = new Set();
+
 // ── FECHAS ──
-function hoyISO()    { return new Date().toISOString().split("T")[0]; }
-function mananaISO() { const d = new Date(); d.setDate(d.getDate()+1); return d.toISOString().split("T")[0]; }
+// Fecha en zona Argentina (UTC-3, sin DST)
+function hoyISO()    { return new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }); }
+function mananaISO() { const d = new Date(); d.setDate(d.getDate()+1); return d.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }); }
+// Medianoche Argentina en UTC (Argentina = UTC-3 fijo)
+function midnightArgUTC(dateISO) { return `${dateISO}T03:00:00Z`; }
 function viernesISO() {
   const hoy = new Date(), diff = 5 - hoy.getDay();
   const v = new Date(hoy); v.setDate(hoy.getDate() + (diff >= 0 ? diff : diff + 7));
@@ -639,6 +812,7 @@ function conectarRealtime() {
     hb = setInterval(() => ws.readyState===1 && ws.send(JSON.stringify({ topic:"phoenix", event:"heartbeat", payload:{}, ref:"hb" })), 20000);
   };
   let _rtDebounce = null;
+  let _rtItemsDebounce = null;
   ws.onmessage = async (e) => {
     try {
       const msg = JSON.parse(e.data);
@@ -652,9 +826,14 @@ function conectarRealtime() {
           if (nuevos.length) {
             toast(`📦 Nuevo armado: ${nuevos[0].cliente_nombre || "N° "+nuevos[0].cliente_id}`, "ok");
           }
+          // Actualizar tab "en proceso" si está visible
+          if (document.getElementById("armarView").style.display !== "none") cargarEnProceso();
         }, 500);
       }
-      if (t === "items_pedido" && pedidoActivo) await recargarItems();
+      if (t === "items_pedido" && pedidoActivo) {
+        clearTimeout(_rtItemsDebounce);
+        _rtItemsDebounce = setTimeout(() => recargarItems(), 400);
+      }
     } catch(_) {}
   };
   ws.onclose = () => { setConn("offline"); clearInterval(hb); setTimeout(conectarRealtime, 3000); };
@@ -701,11 +880,15 @@ function renderLista() {
       const selClass = pedidoActivo?.id === p.id ? "selected" : "";
       const facClass = p.estado === "facturado" ? "facturado" : "";
       const fechaC   = g === "hoy" ? "hoy-c" : g === "man" ? "man-c" : "prox-c";
+      const nd = p.numero_diario ?? p.numero;
       html += `
-        <div class="pedido-item grp-${key} ${selClass} ${facClass}" onclick="seleccionar('${p.id}')" style="animation:fadeInUp .2s ease both">
-          <div class="pi-nombre">${p.cliente_nombre || "Cliente " + (p.cliente_id||"—")}</div>
-          <div class="pi-fecha ${fechaC}">${icon} ${fmtFecha(p.fecha_entrega).toUpperCase()}</div>
-          <div class="pi-meta">${p.vendedor||"—"} ${p.estado === "facturado" ? "· ✅ FACTURADO" : ""}</div>
+        <div class="pedido-item grp-${key} ${selClass} ${facClass}" onclick="seleccionar('${p.id}')" style="animation:fadeInUp .2s ease both;display:flex;align-items:flex-start;gap:8px;">
+          <div style="flex:1;min-width:0;">
+            <div class="pi-nombre">${p.cliente_nombre || "Cliente " + (p.cliente_id||"—")}</div>
+            <div class="pi-fecha ${fechaC}">${icon} ${fmtFecha(p.fecha_entrega).toUpperCase()}</div>
+            <div class="pi-meta">${p.vendedor||"—"}${p.armado_por ? " · 🧑‍🏭 "+p.armado_por : ""} ${p.estado === "facturado" ? "· ✅ FACTURADO" : ""}</div>
+          </div>
+          ${nd ? `<div style="background:var(--prox-bg);color:var(--prox);border:2px solid var(--prox-brd);border-radius:10px;padding:4px 10px;font-size:18px;font-weight:900;white-space:nowrap;flex-shrink:0;line-height:1.3;text-align:center;min-width:44px;"><div style="font-size:10px;font-weight:700;opacity:.75;letter-spacing:.5px;">N°</div>${nd}</div>` : ""}
         </div>`;
     });
   };
@@ -732,7 +915,7 @@ async function seleccionar(id) {
     if (pedidoActivo.estado === "armado") {
       await sbPatch("pedidos", `id=eq.${id}`, { estado: "en_facturacion" });
       pedidoActivo.estado = "en_facturacion";
-      await cargarPedidos(); renderLista();
+      await cargarPedidos();
     }
 
     renderHeader();
@@ -760,22 +943,57 @@ function renderHeader() {
     : "—";
 
   document.getElementById("phNumGrande").textContent = `N° ${pedidoActivo.cliente_id||"—"}`;
+  const pnd = document.getElementById("phNumDiario");
+  if (pnd) {
+    const nd = pedidoActivo.numero_diario ?? pedidoActivo.numero;
+    if (nd) {
+      pnd.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;background:var(--prox-bg);color:var(--prox);border:2px solid var(--prox-brd);border-radius:12px;padding:5px 16px;font-size:22px;font-weight:900;letter-spacing:-.5px;">📋 Pedido <span style="font-size:28px;font-weight:900;">#${nd}</span> <span style="font-size:13px;font-weight:700;opacity:.7;">del día</span></span>`;
+      pnd.style.display = "block";
+    } else pnd.style.display = "none";
+  }
   document.getElementById("phCliente").textContent =
     pedidoActivo.cliente_nombre || "Cliente " + (pedidoActivo.cliente_id||"—");
   document.getElementById("phEntrega").textContent = `${icon} SE ENTREGA: ${feStr.toUpperCase()}`;
   document.getElementById("phEntrega").className = `ped-entrega ${eClass}`;
   document.getElementById("phMeta").textContent =
     `Vendedor: ${pedidoActivo.vendedor||"—"} · ${pedidoActivo.observaciones||"Sin observaciones"}`;
-  document.getElementById("phChips").innerHTML = `
-    ${pedidoActivo.armado_por ? `<div class="chip" style="color:var(--prox);border-color:#93c5fd;">🧑‍🏭 ${pedidoActivo.armado_por}</div>` : ""}
-    ${pedidoActivo.estado==="facturado" ? `<div class="chip" style="color:var(--success);border-color:#86efac;">✅ FACTURADO</div>` : ""}
-  `;
+  const armEl = document.getElementById("phArmador");
+  if (armEl) {
+    if (pedidoActivo.armado_por) {
+      armEl.textContent = `🧑‍🏭 Armado por: ${pedidoActivo.armado_por}`;
+      armEl.style.display = "block";
+    } else {
+      armEl.style.display = "none";
+    }
+  }
+  document.getElementById("phChips").innerHTML =
+    pedidoActivo.estado === "facturado"
+      ? `<div class="chip" style="color:var(--success);border-color:#86efac;">✅ FACTURADO</div>`
+      : "";
 }
 
 async function recargarItems() {
   if (!pedidoActivo) return;
-  itemsActivos = await sbGet("items_pedido", `pedido_id=eq.${pedidoActivo.id}&order=id.asc`);
-  renderItemsF();
+  const nuevos = await sbGet("items_pedido", `pedido_id=eq.${pedidoActivo.id}&order=id.asc`);
+  if (nuevos.length !== itemsActivos.length) {
+    // Cambió la cantidad de items — re-render completo
+    itemsActivos = nuevos;
+    renderItemsF();
+    return;
+  }
+  // Diff: solo actualizar filas que cambiaron y no están en proceso localmente
+  let algoCambio = false;
+  nuevos.forEach((item, i) => {
+    const viejo = itemsActivos[i];
+    if (!viejo || _pendingItems.has(item.id)) return; // ignorar cambios locales en vuelo
+    if (viejo.facturado !== item.facturado || viejo.es_faltante !== item.es_faltante ||
+        viejo.cantidad_real !== item.cantidad_real) {
+      itemsActivos[i] = item;
+      _updateRowDOM(item);
+      algoCambio = true;
+    }
+  });
+  if (algoCambio) actualizarStats();
 }
 
 function renderItemsF() {
@@ -791,63 +1009,150 @@ function renderItemsF() {
     const qtyMod = item.cantidad_real != null && item.cantidad_real !== item.cantidad ? "mod" : "";
 
     return `
-      <div class="item-f ${rowCls}" id="ifrow-${item.id}" style="animation:fadeInUp .18s ease ${i*35}ms both">
-        <button class="chk-f ${chkCls}" onclick="toggleFacturado('${item.id}',${i})">${chkTxt}</button>
+      <div class="item-f ${rowCls}" id="ifrow-${item.id}" data-idx="${i}" style="animation:fadeInUp .18s ease ${i*35}ms both">
+        <button class="btn-falt ${isFalt?"activo":""}" onclick="toggleFaltante('${item.id}',${i})"
+          title="Marcar faltante">⚠️</button>
+        <input class="qty-in ${qtyMod}" type="number" min="0" value="${qty}"
+          id="qty-${item.id}" onchange="cambiarCantidad('${item.id}',${i},this.value)" />
         <div>
           <div class="item-f-desc ${descCls}" id="ifdesc-${item.id}">${item.descripcion}</div>
           ${item.facturado_por ? `<div class="item-f-who">✓ ${item.facturado_por} · ${fmtTime(item.facturado_at)}</div>` : ""}
         </div>
-        <input class="qty-in ${qtyMod}" type="number" min="0" value="${qty}"
-          id="qty-${item.id}" onchange="cambiarCantidad('${item.id}',${i},this.value)" />
-        <button class="btn-falt ${isFalt?"activo":""}" onclick="toggleFaltante('${item.id}',${i})"
-          title="Marcar faltante">⚠️</button>
+        <button class="chk-f ${chkCls}" onclick="toggleFacturado('${item.id}',${i})">${chkTxt}</button>
       </div>`;
   }).join("");
   actualizarStats();
 }
 
+// ── _updateRowDOM — actualiza una fila sin re-renderizar todo ──
+function _updateRowDOM(item) {
+  const row = document.getElementById(`ifrow-${item.id}`);
+  if (!row) return;
+  const isFact = item.facturado, isFalt = item.es_faltante;
+  row.classList.toggle("ok",      isFact);
+  row.classList.toggle("faltante", !isFact && isFalt);
+
+  const chk = row.querySelector(".chk-f");
+  if (chk) {
+    chk.className = `chk-f${isFact ? " ok" : isFalt ? " faltante" : ""}`;
+    chk.textContent = isFact ? "✓" : isFalt ? "✕" : "";
+  }
+
+  const desc = document.getElementById(`ifdesc-${item.id}`);
+  if (desc) {
+    desc.classList.toggle("tachado", isFact);
+    const who = desc.parentElement.querySelector(".item-f-who");
+    if (isFact && !who) {
+      const t = new Date();
+      const hm = `${String(t.getHours()).padStart(2,"0")}:${String(t.getMinutes()).padStart(2,"0")}`;
+      desc.insertAdjacentHTML("afterend", `<div class="item-f-who">✓ ${currentUser||""} · ${hm}</div>`);
+    } else if (!isFact && who) {
+      who.remove();
+    }
+  }
+
+  const btnFalt = row.querySelector(".btn-falt");
+  if (btnFalt) btnFalt.classList.toggle("activo", isFalt);
+}
+
+// ── PIN ──
+function pedirPin(callback) {
+  if (_editDesbloqueado) { callback(); return; }
+  _pinCallback = callback;
+  document.getElementById("inputPin").value = "";
+  document.getElementById("modalPin").style.display = "flex";
+  setTimeout(() => document.getElementById("inputPin").focus(), 100);
+}
+function confirmarPin() {
+  if (document.getElementById("inputPin").value === PIN_EDIT) {
+    _editDesbloqueado = true;
+    document.getElementById("modalPin").style.display = "none";
+    toast("Edición desbloqueada ✓", "ok");
+    if (_pinCallback) { const cb = _pinCallback; _pinCallback = null; cb(); }
+  } else {
+    toast("PIN incorrecto ✗", "error");
+    document.getElementById("inputPin").value = "";
+    document.getElementById("inputPin").focus();
+  }
+}
+function cerrarModalPin() {
+  document.getElementById("modalPin").style.display = "none";
+  _pinCallback = null;
+}
+
 // ── ACCIONES ITEMS ──
+// Patrón: función pública verifica PIN → llama _do* que hace el trabajo sin recursión
 async function toggleFacturado(itemId, idx) {
-  const nuevo = !itemsActivos[idx].facturado;
-  itemsActivos[idx].facturado = nuevo;
-  if (nuevo) itemsActivos[idx].es_faltante = false;
-  renderItemsF();
-  const now = new Date().toISOString();
-  await sbPatch("items_pedido", `id=eq.${itemId}`, {
-    facturado: nuevo, facturado_por: nuevo ? currentUser : null,
-    facturado_at: nuevo ? now : null, es_faltante: false
-  });
+  if (pedidoActivo?.estado === "facturado") { pedirPin(() => _doToggleFacturado(itemId, idx)); return; }
+  await _doToggleFacturado(itemId, idx);
+}
+async function _doToggleFacturado(itemId, idx) {
+  if (_pendingItems.has(itemId)) return;
+  _pendingItems.add(itemId);
+  try {
+    const nuevo = !itemsActivos[idx].facturado;
+    itemsActivos[idx].facturado = nuevo;
+    if (nuevo) itemsActivos[idx].es_faltante = false;
+    _updateRowDOM(itemsActivos[idx]);
+    actualizarStats();
+    const now = new Date().toISOString();
+    await sbPatch("items_pedido", `id=eq.${itemId}`, {
+      facturado: nuevo, facturado_por: nuevo ? currentUser : null,
+      facturado_at: nuevo ? now : null, es_faltante: false
+    });
+  } finally { _pendingItems.delete(itemId); }
 }
 
 async function toggleFaltante(itemId, idx) {
-  const nuevo = !itemsActivos[idx].es_faltante;
-  itemsActivos[idx].es_faltante = nuevo;
-  if (nuevo) itemsActivos[idx].facturado = false;
-  renderItemsF();
-  await sbPatch("items_pedido", `id=eq.${itemId}`, { es_faltante: nuevo, facturado: false });
+  if (pedidoActivo?.estado === "facturado") { pedirPin(() => _doToggleFaltante(itemId, idx)); return; }
+  await _doToggleFaltante(itemId, idx);
+}
+async function _doToggleFaltante(itemId, idx) {
+  if (_pendingItems.has(itemId)) return;
+  _pendingItems.add(itemId);
+  try {
+    const nuevo = !itemsActivos[idx].es_faltante;
+    itemsActivos[idx].es_faltante = nuevo;
+    if (nuevo) itemsActivos[idx].facturado = false;
+    _updateRowDOM(itemsActivos[idx]);
+    actualizarStats();
+    await sbPatch("items_pedido", `id=eq.${itemId}`, { es_faltante: nuevo, facturado: false });
+  } finally { _pendingItems.delete(itemId); }
 }
 
 async function cambiarCantidad(itemId, idx, val) {
+  if (pedidoActivo?.estado === "facturado") { pedirPin(() => _doCambiarCantidad(itemId, idx, val)); return; }
+  await _doCambiarCantidad(itemId, idx, val);
+}
+async function _doCambiarCantidad(itemId, idx, val) {
   const qty = parseFloat(val);
   if (isNaN(qty) || qty < 0) return;
   itemsActivos[idx].cantidad_real = qty;
   const input = document.getElementById(`qty-${itemId}`);
-  input.classList.toggle("mod", qty !== itemsActivos[idx].cantidad);
+  if (input) input.classList.toggle("mod", qty !== itemsActivos[idx].cantidad);
   await sbPatch("items_pedido", `id=eq.${itemId}`, { cantidad_real: qty });
 }
 
 function marcarTodos() {
+  if (pedidoActivo?.estado === "facturado") { pedirPin(_doMarcarTodos); return; }
+  _doMarcarTodos();
+}
+function _doMarcarTodos() {
   const now = new Date().toISOString();
-  itemsActivos.forEach(i => { i.facturado = true; i.es_faltante = false; });
-  renderItemsF();
+  itemsActivos.forEach(i => { i.facturado = true; i.es_faltante = false; _updateRowDOM(i); });
+  actualizarStats();
   Promise.all(itemsActivos.map(i => sbPatch("items_pedido", `id=eq.${i.id}`, {
     facturado: true, facturado_por: currentUser, facturado_at: now, es_faltante: false
   })));
 }
 
 function desmarcarTodos() {
-  itemsActivos.forEach(i => { i.facturado = false; });
-  renderItemsF();
+  if (pedidoActivo?.estado === "facturado") { pedirPin(_doDesmarcarTodos); return; }
+  _doDesmarcarTodos();
+}
+function _doDesmarcarTodos() {
+  itemsActivos.forEach(i => { i.facturado = false; _updateRowDOM(i); });
+  actualizarStats();
   Promise.all(itemsActivos.map(i => sbPatch("items_pedido", `id=eq.${i.id}`, { facturado: false })));
 }
 
@@ -884,29 +1189,74 @@ function actualizarStats() {
   if (pedidoActivo?.estado === "facturado") {
     btn.disabled = true; btn.textContent = "✅ YA FACTURADO";
   } else {
-    btn.disabled = listos < total;
+    btn.disabled = false;
     btn.textContent = falt > 0
       ? `✅ FACTURADO (${falt} faltante${falt>1?"s":""})`
-      : "✅ FACTURADO COMPLETO";
+      : (listos === total && total > 0)
+        ? "✅ FACTURADO COMPLETO"
+        : "✅ FACTURAR";
   }
 }
 
 // ── FACTURAR ──
 async function facturarPedido() {
-  if (!pedidoActivo) return;
+  if (_enviandoFact || !pedidoActivo) return;
+  if (pedidoActivo.estado === "facturado") return;
+  const total = itemsActivos.length;
+  const ok   = itemsActivos.filter(i => i.facturado).length;
+  const falt = itemsActivos.filter(i => i.es_faltante).length;
+  const sinMarcar = total - ok - falt;
+  if (total > 0 && sinMarcar > 0) {
+    document.getElementById("mcfTitle").textContent =
+      ok + falt === 0 ? "⚠️ Sin items verificados" : `⚠️ ${sinMarcar} artículo${sinMarcar>1?"s":""} sin verificar`;
+    document.getElementById("mcfSub").textContent =
+      ok + falt === 0
+        ? "Ningún artículo fue marcado. ¿Facturar de todos modos? Todos quedarán como faltantes."
+        : `${sinMarcar} artículo${sinMarcar>1?"s":""} no están marcados ni como faltante. Podés facturar igual o volver a revisar.`;
+    document.getElementById("modalConfirmFacturar").style.display = "flex";
+    return;
+  }
+  await _ejecutarFacturar();
+}
+
+async function confirmarFacturarVacio() {
+  document.getElementById("modalConfirmFacturar").style.display = "none";
+  await _ejecutarFacturar();
+}
+
+async function _ejecutarFacturar() {
+  if (_enviandoFact) return;
+  _enviandoFact = true;
+  const btn = document.getElementById("btnFacturar");
+  btn.disabled = true; btn.textContent = "Facturando...";
   showLoader();
   try {
-    await sbPatch("pedidos", `id=eq.${pedidoActivo.id}`, { estado: "facturado" });
+    await sbPatch("pedidos", `id=eq.${pedidoActivo.id}`, {
+      estado: "facturado",
+      facturado_at: new Date().toISOString()
+    });
     await sbInsert("auditoria", {
       pedido_id: pedidoActivo.id, accion: "pedido_facturado", usuario: currentUser,
       detalle: { ok: itemsActivos.filter(i=>i.facturado).length, faltantes: itemsActivos.filter(i=>i.es_faltante).length }
     });
     pedidoActivo.estado = "facturado";
     renderHeader(); actualizarStats();
-    await cargarPedidos(); renderLista();
-    toast("¡Pedido facturado! ✅", "ok");
+    await cargarPedidos();
+    actualizarResumenDiario();
+    const next = siguientePedido();
+    toast(next ? `✅ Facturado — abriendo siguiente...` : "¡Pedido facturado! ✅", "ok");
+    setTimeout(async () => {
+      salirEnfoque();
+      if (next) {
+        await seleccionar(next.id);
+      } else {
+        document.getElementById("noSel").style.display = "flex";
+        document.getElementById("pedidoPanel").style.display = "none";
+        pedidoActivo = null; itemsActivos = [];
+      }
+    }, 1200);
   } catch(e) { toast("Error al facturar", "error"); }
-  finally { hideLoader(); }
+  finally { hideLoader(); _enviandoFact = false; actualizarStats(); }
 }
 
 // ── WHATSAPP ──
@@ -927,7 +1277,7 @@ function setLeftTab(tab) {
   document.getElementById("pedidosView").style.display   = tab==="pedidos"   ? "flex" : "none";
   document.getElementById("armarView").style.display     = tab==="armar"     ? "flex" : "none";
   document.getElementById("historialView").style.display = tab==="historial" ? "flex" : "none";
-  if (tab === "armar") cargarPendientesArmar();
+  if (tab === "armar") cargarEnProceso();
 }
 
 // ── HISTORIAL ──
@@ -1057,37 +1407,162 @@ async function cargarFaltantesPrevios(clienteId, pedidoActualId) {
   } catch(_) {}
 }
 
-// ── PENDIENTES DE ARMAR ──
-async function cargarPendientesArmar() {
-  const box = document.getElementById("armarList");
+// ── PEDIDOS EN PROCESO ──
+// Criterio: se está armando AHORA si fue armado hace menos de 2 minutos
+const ARMANDO_AHORA_MS = 120000; // 2 min
+function estaArmandoAhora(p) {
+  return (p.estado === "pendiente" || p.estado === "armado") &&
+         p.armado_por &&
+         p.armado_at &&
+         (Date.now() - new Date(p.armado_at).getTime()) < ARMANDO_AHORA_MS;
+}
+
+async function cargarEnProceso() {
+  const box = document.getElementById("procesoList");
   box.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Cargando...</div>`;
+
   const pedidos = await sbGet("pedidos",
-    "estado=eq.pendiente&order=fecha_entrega.asc,created_at.asc&limit=100");
+    "estado=in.(pendiente,armado)&order=fecha_entrega.asc,created_at.asc&limit=100");
+
   if (!pedidos.length) {
-    box.innerHTML = `<div style="padding:30px;text-align:center;color:var(--muted);font-size:14px;">🎉 No hay pedidos pendientes de armar</div>`;
+    box.innerHTML = `<div style="padding:30px;text-align:center;color:var(--muted);font-size:14px;">Sin pedidos en proceso</div>`;
     return;
   }
-  const grupos = { hoy:[], man:[], prox:[] };
-  pedidos.forEach(p => grupos[grupoFecha(p.fecha_entrega)].push(p));
+
+  // ── SECCIÓN 2: abierto en depósito hace <2min = se está armando AHORA
+  const armandoAhora = pedidos.filter(estaArmandoAhora);
+
+  // ── SECCIÓN 1: pendiente sin heartbeat reciente = en cola del depósito
+  const pendientes = pedidos.filter(p => p.estado === "pendiente" && !estaArmandoAhora(p));
+
+  // ── SECCIÓN 3: armado + tiempo >2min = listo para facturar
+  const armadosListos = pedidos.filter(p =>
+    p.estado === "armado" && !estaArmandoAhora(p)
+  );
 
   let html = "";
-  const renderGrp = (key, icon, label) => {
-    if (!grupos[key].length) return;
-    html += `<div class="grupo-header ${key}">${icon} ${label} <span class="grupo-count">${grupos[key].length}</span></div>`;
-    grupos[key].forEach(p => {
-      const fechaC = key==="hoy" ? "hoy-c" : key==="man" ? "man-c" : "prox-c";
-      html += `<div class="pend-armar-item">
-        <div class="pend-armar-num">N° ${p.cliente_id||"—"}</div>
-        <div class="pend-armar-nombre">${p.cliente_nombre||"—"}</div>
-        <div class="pend-armar-fecha ${fechaC}">${icon} ${fmtFecha(p.fecha_entrega)}</div>
-        <div class="pend-armar-meta">Vendedor: ${p.vendedor||"—"}</div>
-      </div>`;
-    });
-  };
-  renderGrp("hoy",  "🔴", "HOY");
-  renderGrp("man",  "🟠", "MAÑANA");
-  renderGrp("prox", "⏳", "PRÓXIMA SEMANA");
+
+  // SECCIÓN 2 primero: máxima urgencia visual
+  if (armandoAhora.length) {
+    html += `<div style="padding:8px 14px 4px;font-size:11px;font-weight:900;color:var(--manana);text-transform:uppercase;letter-spacing:.6px;">🔄 ARMÁNDOSE AHORA (${armandoAhora.length})</div>`;
+    html += armandoAhora.map((p, i) => {
+      const g = grupoFecha(p.fecha_entrega);
+      const icon = g==="hoy" ? "🔴" : g==="man" ? "🟠" : "⏳";
+      const nd = p.numero_diario ?? p.numero;
+      return `
+        <div class="proc-item" onclick="verProceso('${p.id}')"
+          style="animation:pulseArmando 1.5s ease-in-out ${i*300}ms infinite,fadeInUp .2s ease ${i*50}ms both;background:var(--man-bg);border-color:var(--man-brd);">
+          <div class="proc-nombre">${p.cliente_nombre || "Cliente "+p.cliente_id}</div>
+          <div class="proc-meta">${icon} ${fmtFecha(p.fecha_entrega).toUpperCase()}${nd ? " · 📋 Nº "+nd+" hoy" : ""}</div>
+          ${p.armado_por ? `<div class="proc-meta" style="margin-top:4px;color:var(--manana);font-weight:800;">🧑‍🏭 ${p.armado_por} está armando este pedido...</div>` : `<div class="proc-pulse">🔄 Se está armando este pedido...</div>`}
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button onclick="event.stopPropagation();verProceso('${p.id}')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;">🔍 Consultá</button>
+            <button onclick="event.stopPropagation();irAFacturacionDirecta('${p.id}')" style="flex:1;padding:8px;border-radius:8px;border:none;background:var(--prox);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">📋 Ir a facturar</button>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  // SECCIÓN 3: listos para facturar
+  if (armadosListos.length) {
+    html += `<div style="padding:8px 14px 4px;font-size:11px;font-weight:900;color:var(--success);text-transform:uppercase;letter-spacing:.6px;${armandoAhora.length?"margin-top:8px;":""}">✅ ARMADOS LISTOS (${armadosListos.length})</div>`;
+    html += armadosListos.map((p, i) => {
+      const g = grupoFecha(p.fecha_entrega);
+      const icon = g==="hoy" ? "🔴" : g==="man" ? "🟠" : "⏳";
+      const nd = p.numero_diario ?? p.numero;
+      return `
+        <div class="proc-item-listo" onclick="irAFacturacionDirecta('${p.id}')" style="animation:fadeInUp .2s ease ${i*50}ms both">
+          <div class="proc-nombre">${p.cliente_nombre || "Cliente "+p.cliente_id}</div>
+          <div class="proc-meta">${icon} ${fmtFecha(p.fecha_entrega).toUpperCase()}${nd ? " · 📋 Nº "+nd+" hoy" : ""}</div>
+          ${p.armado_por ? `<div class="proc-meta" style="margin-top:3px;color:var(--success);font-weight:700;">🧑‍🏭 Armado por: ${p.armado_por}</div>` : ""}
+          <div style="color:var(--success);font-size:12px;font-weight:800;margin-top:6px;">✅ Listo — hacé click para facturar</div>
+        </div>`;
+    }).join("");
+  }
+
+  // SECCIÓN 1: pedidos pendientes (en cola, sin armar)
+  if (pendientes.length) {
+    const mt = (armandoAhora.length || armadosListos.length) ? "margin-top:8px;" : "";
+    html += `<div style="padding:8px 14px 4px;font-size:11px;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;${mt}">📦 EN COLA DEL DEPÓSITO (${pendientes.length})</div>`;
+    html += pendientes.map((p, i) => {
+      const g = grupoFecha(p.fecha_entrega);
+      const icon = g==="hoy" ? "🔴" : g==="man" ? "🟠" : "⏳";
+      const nd = p.numero_diario ?? p.numero;
+      return `
+        <div class="proc-item-pend" style="animation:fadeInUp .2s ease ${i*40}ms both">
+          <div class="proc-nombre" style="color:var(--text);">${p.cliente_nombre || "Cliente "+p.cliente_id}</div>
+          <div class="proc-meta">${icon} ${fmtFecha(p.fecha_entrega).toUpperCase()}${nd ? " · 📋 Nº "+nd+" hoy" : ""}</div>
+          <div style="color:var(--muted);font-size:11px;margin-top:4px;">⏳ Esperando en cola del depósito</div>
+        </div>`;
+    }).join("");
+  }
+
   box.innerHTML = html;
+}
+
+// Ir directo a facturar desde "En proceso" (sin modal intermedio)
+async function irAFacturacionDirecta(id) {
+  cerrarModalProceso();
+  setLeftTab('pedidos');
+  await seleccionar(id);
+}
+
+let _proActual = null;
+
+async function verProceso(id) {
+  showLoader();
+  try {
+    const [ps, items] = await Promise.all([
+      sbGet("pedidos", `id=eq.${id}`),
+      sbGet("items_pedido", `pedido_id=eq.${id}&order=id.asc`)
+    ]);
+    _proActual = ps[0];
+    const p = _proActual;
+    const g = grupoFecha(p.fecha_entrega);
+    const icon = g==="hoy" ? "🔴" : g==="man" ? "🟠" : "⏳";
+
+    document.getElementById("mpCliente").textContent =
+      p.cliente_nombre || "Cliente " + p.cliente_id;
+    const mpNd = p.numero_diario ?? p.numero;
+    document.getElementById("mpMeta").innerHTML = `
+      N° ${p.cliente_id||"—"}${mpNd ? ` · 📋 Nº ${mpNd} del día` : ""}<br>
+      ${icon} Entrega: ${fmtFecha(p.fecha_entrega).toUpperCase()}<br>
+      Vendedor: ${p.vendedor||"—"}${p.observaciones ? " · "+p.observaciones : ""}<br>
+      ${p.armado_por ? `🧑‍🏭 Armado por: <strong>${p.armado_por}</strong>` : ""}
+    `;
+
+    const total = items.length;
+    const armados = items.filter(i => i.armado).length;
+    const falt = items.filter(i => i.es_faltante).length;
+    document.getElementById("mpItems").innerHTML = !total
+      ? `<div style="color:var(--muted);font-size:13px;padding:8px 0;">Sin items cargados</div>`
+      : items.map(i => `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;
+            border-radius:8px;background:${i.armado?"var(--succ-bg)":i.es_faltante?"var(--hoy-bg)":"var(--bg)"};
+            border:1px solid ${i.armado?"#86efac":i.es_faltante?"var(--hoy-brd)":"var(--border)"};">
+            <span style="font-size:18px;">${i.armado?"✅":i.es_faltante?"❌":"⬜"}</span>
+            <div style="flex:1;font-size:14px;font-weight:700;">${i.descripcion}</div>
+            <div style="font-size:14px;font-weight:900;color:var(--muted);">${i.cantidad_real??i.cantidad}</div>
+          </div>`).join("") +
+        `<div style="font-size:13px;font-weight:700;color:var(--muted);padding:8px 2px;">
+          ${armados}/${total} armados${falt?` · ${falt} faltante${falt>1?"s":""}`:""}</div>`;
+
+    document.getElementById("modalProceso").style.display = "flex";
+  } catch(e) { toast("Error al cargar", "error"); }
+  finally { hideLoader(); }
+}
+
+function cerrarModalProceso() {
+  document.getElementById("modalProceso").style.display = "none";
+  _proActual = null;
+}
+
+function irAFacturacion() {
+  if (!_proActual) return;
+  const id = _proActual.id;
+  cerrarModalProceso();
+  setLeftTab("pedidos");
+  seleccionar(id);
 }
 
 // ── UTILS ──
@@ -1108,6 +1583,41 @@ function toast(msg, tipo="") {
   tt = setTimeout(() => el.remove(), 2800);
 }
 
+// ── VISTA ENFOQUE ──
+function toggleEnfoque() {
+  const body = document.querySelector(".body");
+  const isEnfoque = body.classList.toggle("enfoque");
+  document.getElementById("btnEnfoque").textContent = isEnfoque ? "⬜ Normal" : "🔍 Enfoque";
+  document.getElementById("btnVolver").style.display = isEnfoque ? "inline-flex" : "none";
+}
+function salirEnfoque() {
+  document.querySelector(".body").classList.remove("enfoque");
+  const btnEnfoque = document.getElementById("btnEnfoque");
+  if (btnEnfoque) btnEnfoque.textContent = "🔍 Enfoque";
+  document.getElementById("btnVolver").style.display = "none";
+}
+function entrarEnfoque() {
+  // no-op - enfoque is now manual only
+}
+
+// ── DARK MODE TOGGLE ──
+function toggleDark() {
+  const isDark = document.body.classList.toggle("dark-forced");
+  document.body.classList.toggle("light-forced", !isDark);
+  document.getElementById("btnDark").textContent = isDark ? "☀️" : "🌙";
+  localStorage.setItem("factDark", isDark ? "1" : "0");
+}
+function initDark() {
+  const saved = localStorage.getItem("factDark");
+  // Si hay preferencia guardada, usarla; si no, dejar al sistema
+  if (saved === "1") {
+    document.body.classList.add("dark-forced");
+    document.getElementById("btnDark").textContent = "☀️";
+  } else if (saved === "0") {
+    document.body.classList.add("light-forced");
+  }
+}
+
 // ── NOMBRE USUARIO ──
 function confirmarNombre() {
   const nombre = document.getElementById("modalNombreInput").value.trim();
@@ -1125,15 +1635,163 @@ function cambiarNombre() {
   setTimeout(() => document.getElementById("modalNombreInput").select(), 100);
 }
 
+// ── RESUMEN DIARIO ──
+async function actualizarResumenDiario() {
+  const desde = midnightArgUTC(hoyISO());
+  try {
+    const data = await sbGet("pedidos",
+      `estado=eq.facturado&facturado_at=gte.${desde}&select=id`);
+    const n = data.length;
+    const chip = document.getElementById("diaChip");
+    if (chip) {
+      chip.textContent = n > 0 ? `✅ ${n} facturado${n>1?"s":""} hoy` : "✅ 0 hoy";
+      chip.style.display = "inline-block";
+    }
+  } catch(_) {}
+}
+
+async function abrirVistaHoy() {
+  document.getElementById("vistaHoy").style.display = "flex";
+  const desde = midnightArgUTC(hoyISO());
+  const box = document.getElementById("vistaHoyLista");
+  box.innerHTML = `<div style="text-align:center;color:var(--muted);padding:30px;">Cargando...</div>`;
+  try {
+    const data = await sbGet("pedidos",
+      `estado=eq.facturado&facturado_at=gte.${desde}&order=facturado_at.desc&limit=100`);
+    document.getElementById("vistaHoyCount").textContent = `${data.length} pedido${data.length!==1?"s":""}`;
+    if (!data.length) {
+      box.innerHTML = `<div style="text-align:center;color:var(--muted);padding:40px;font-size:16px;">Sin pedidos facturados hoy aún</div>`;
+      return;
+    }
+    box.innerHTML = data.map((p, i) => {
+      const nd = p.numero_diario ?? p.numero;
+      const hora = p.facturado_at ? new Date(p.facturado_at).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit",timeZone:"America/Argentina/Buenos_Aires"}) : "";
+      return `
+      <div onclick="cerrarVistaHoy();seleccionar('${p.id}')" style="background:var(--card);border:2px solid var(--ok-brd,#86efac);border-radius:var(--radius);padding:16px 18px;cursor:pointer;transition:border-color .12s;animation:fadeInUp .15s ease ${i*40}ms both" onmouseover="this.style.borderColor='var(--success)'" onmouseout="this.style.borderColor=''">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+          ${nd ? `<div style="background:var(--prox-bg);color:var(--prox);border:1.5px solid var(--prox-brd);border-radius:99px;padding:2px 10px;font-size:13px;font-weight:900;">📋 Nº ${nd} del día</div>` : ""}
+          <div style="font-size:15px;font-weight:900;color:var(--text);">N° ${p.cliente_id||"—"}</div>
+          ${hora ? `<div style="margin-left:auto;font-size:12px;color:var(--muted);font-weight:700;">🕐 ${hora}</div>` : ""}
+        </div>
+        <div style="font-size:18px;font-weight:800;color:var(--text);">${p.cliente_nombre||"—"}</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:4px;">Vendedor: ${p.vendedor||"—"} · Entrega: ${fmtFecha(p.fecha_entrega)}</div>
+        ${p.armado_por ? `<div style="font-size:13px;color:var(--success);margin-top:3px;">🧑‍🏭 ${p.armado_por}</div>` : ""}
+      </div>`;
+    }).join("");
+  } catch(e) { box.innerHTML = `<div style="text-align:center;color:var(--hoy);padding:30px;">Error al cargar</div>`; }
+}
+function cerrarVistaHoy() {
+  document.getElementById("vistaHoy").style.display = "none";
+}
+
+// ── COPIAR N° CLIENTE ──
+function copiarClienteId() {
+  const id = pedidoActivo?.cliente_id;
+  if (!id) return;
+  navigator.clipboard.writeText(String(id)).catch(() => {
+    // fallback para HTTP/insecure contexts
+    const el = document.createElement("textarea");
+    el.value = String(id); el.style.position = "fixed"; el.style.opacity = "0";
+    document.body.appendChild(el); el.select();
+    document.execCommand("copy"); document.body.removeChild(el);
+  });
+  toast(`📋 N° ${id} copiado`, "ok");
+}
+
+// ── NAVEGACIÓN ENTRE PEDIDOS ──
+function siguientePedido() {
+  if (!pedidoActivo) return null;
+  const idx = pedidosAll.findIndex(p => p.id === pedidoActivo.id);
+  return pedidosAll.find((p, i) => i > idx) || null;
+}
+function anteriorPedido() {
+  if (!pedidoActivo) return null;
+  const idx = pedidosAll.findIndex(p => p.id === pedidoActivo.id);
+  const prev = pedidosAll.slice(0, idx).reverse().find(() => true);
+  return prev || null;
+}
+function irSiguientePedido() {
+  const next = siguientePedido();
+  if (next) seleccionar(next.id);
+}
+function irAnteriorPedido() {
+  const prev = anteriorPedido();
+  if (prev) seleccionar(prev.id);
+}
+
+// ── ATAJOS DE ITEMS ──
+function marcarSiguientePendiente() {
+  const idx = itemsActivos.findIndex(i => !i.facturado && !i.es_faltante);
+  if (idx >= 0) _doToggleFacturado(itemsActivos[idx].id, idx);
+}
+function desmarcarUltimo() {
+  const ultimo = [...itemsActivos].reverse().find(i => i.facturado);
+  if (!ultimo) return;
+  const idx = itemsActivos.findIndex(i => i.id === ultimo.id);
+  _doToggleFacturado(ultimo.id, idx);
+}
+
+// ── TECLADO + ESCÁNER ──
+let _scanBuffer = "", _scanLastTime = 0, _scanTimeout = null;
+
+document.addEventListener("keydown", (e) => {
+  const inInput = ["INPUT","TEXTAREA"].includes(e.target.tagName);
+
+  // ── Detección de escáner (chars muy rápidos < 40ms) ──
+  if (!inInput && pedidoActivo) {
+    const now = Date.now();
+    const delta = now - _scanLastTime;
+    _scanLastTime = now;
+
+    if (e.key.length === 1 && delta < 40) {
+      _scanBuffer += e.key;
+      clearTimeout(_scanTimeout);
+      _scanTimeout = setTimeout(() => { _scanBuffer = ""; }, 200);
+      return; // acumular sin disparar atajos
+    }
+    if (e.key === "Enter" && _scanBuffer.length > 2) {
+      e.preventDefault();
+      marcarSiguientePendiente();
+      _scanBuffer = ""; _scanLastTime = 0;
+      return;
+    }
+    if (e.key.length === 1) _scanBuffer = e.key; // inicio lento = teclado normal
+  }
+
+  // ── Atajos de teclado (no activa en inputs) ──
+  if (inInput) return;
+  if (!pedidoActivo) return;
+
+  if (e.ctrlKey && e.key === "Enter") {
+    e.preventDefault(); facturarPedido();
+  } else if (e.shiftKey && e.key === "Enter") {
+    e.preventDefault(); desmarcarUltimo();
+  } else if (e.key === "Enter") {
+    e.preventDefault(); marcarSiguientePendiente();
+  } else if (e.key === "ArrowRight" && !e.ctrlKey && !e.altKey) {
+    e.preventDefault(); irSiguientePedido();
+  } else if (e.key === "ArrowLeft" && !e.ctrlKey && !e.altKey) {
+    e.preventDefault(); irAnteriorPedido();
+  }
+});
+
 // ── INIT ──
 function iniciarApp() {
   cargarPedidos(); // renderLista se llama dentro cuando llegan datos
   conectarRealtime();
+  actualizarResumenDiario();
   setInterval(cargarPedidos, 30000);
+  setInterval(actualizarResumenDiario, 60000);
+  // Refresca "En proceso" cada 30s para mover armando→listo cuando pasan los 2min
+  setInterval(() => {
+    if (document.getElementById("armarView").style.display !== "none") cargarEnProceso();
+  }, 30000);
 }
 
 window.onload = () => {
+  localStorage.setItem("app_type", "facturacion");
   hideLoader();
+  initDark();
   const saved = localStorage.getItem("factUser");
   if (saved) {
     currentUser = saved;

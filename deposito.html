@@ -32,6 +32,8 @@
   .conn-dot{width:12px;height:12px;border-radius:50%;background:#dc2626;flex-shrink:0}
   .conn-dot.online {background:var(--ok);box-shadow:0 0 0 3px #bbf7d0}
   .conn-dot.syncing{background:var(--mod);animation:pulse 1s infinite}
+  #btnDarkDep{background:none;border:none;font-size:20px;cursor:pointer;padding:4px 6px;border-radius:8px;line-height:1;transition:.15s}
+  #btnDarkDep:hover{background:var(--bg)}
 
   /* ── TABS ── */
   .tabs{display:flex;padding:10px 16px;gap:10px;background:var(--bg);border-bottom:1px solid var(--border)}
@@ -58,24 +60,81 @@
   .pedido-card.pendiente {border-left-color:var(--pend);background:var(--pend-bg)}
   .pedido-card.armado-ok {border-left-color:var(--ok);background:var(--ok-bg);opacity:.75}
 
+  /* La jerarquía en tarjetas: nombre → num/nº → fecha → meta */
+  .card-nombre{font-size:28px;font-weight:900;color:var(--text);line-height:1.15}
+  .card-sec{display:flex;align-items:center;gap:8px;margin-top:5px;flex-wrap:wrap}
   .card-num{
-    display:inline-block;background:var(--pend-bg);color:var(--pend);
-    border:1.5px solid var(--pend-brd);border-radius:99px;
-    padding:2px 10px;font-size:12px;font-weight:800;margin-bottom:6px
+    display:inline-block;background:var(--bg);color:var(--muted);
+    border:1.5px solid var(--border);border-radius:99px;
+    padding:2px 10px;font-size:12px;font-weight:700
   }
-  .card-nombre{font-size:24px;font-weight:900;color:var(--text);line-height:1.15}
+  .card-ndiario{font-size:12px;font-weight:700;color:var(--muted)}
   .card-entrega{
-    display:inline-flex;align-items:center;gap:6px;margin-top:8px;
-    font-size:13px;font-weight:800;padding:4px 10px;border-radius:99px
+    display:inline-flex;align-items:center;gap:5px;margin-top:10px;
+    font-size:13px;font-weight:700;padding:3px 10px;border-radius:99px
   }
-  .card-entrega.urg {color:var(--hoy);background:var(--hoy-bg);border:1.5px solid var(--hoy-brd)}
-  .card-entrega.pend{color:var(--pend);background:var(--pend-bg);border:1.5px solid var(--pend-brd)}
-  .card-meta{font-size:13px;color:var(--muted);margin-top:6px}
+  /* Fecha: tono suave — no compite con el nombre del cliente */
+  .card-entrega.urg {color:#b02a2a;background:#fff4f4;border:1.5px solid #f4aaaa}
+  .card-entrega.pend{color:#3a68b0;background:#f0f6ff;border:1.5px solid #93c5fd}
+  .card-meta{font-size:12px;color:var(--muted);margin-top:6px}
   .badge-armado{
     display:inline-block;margin-top:8px;
     background:var(--ok);color:#fff;
     padding:4px 12px;border-radius:99px;font-size:13px;font-weight:800
   }
+
+  /* ── TIMER ── */
+  .timer-chip{
+    font-size:15px;font-weight:900;font-family:monospace;letter-spacing:1px;
+    color:var(--ok);background:var(--ok-bg);border:2px solid var(--ok-brd);
+    border-radius:99px;padding:4px 12px;flex-shrink:0
+  }
+
+  /* ── MODO FOCO ── */
+  .filter-bar{
+    display:flex;align-items:center;gap:8px;
+    padding:8px 16px;background:var(--bg);border-bottom:1px solid var(--border);flex-shrink:0
+  }
+  .btn-foco{
+    background:var(--card);border:2px solid var(--border);color:var(--muted);
+    padding:5px 14px;border-radius:99px;font-size:13px;font-weight:700;cursor:pointer;transition:.15s
+  }
+  .btn-foco.activo{background:var(--pend-bg);border-color:var(--pend);color:var(--pend)}
+  .foco-count{font-size:12px;color:var(--muted);font-weight:700}
+
+  /* ── MÉTRICAS + BARRA PROGRESO ── */
+  .metrics-panel{
+    background:var(--card);border-bottom:2px solid var(--border);
+    padding:12px 16px 10px;flex-shrink:0
+  }
+  .metrics-label{
+    font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;
+    color:var(--muted);margin-bottom:7px
+  }
+  .prog-row{display:flex;align-items:center;gap:10px}
+  .prog-bar-outer{
+    flex:1;height:8px;background:var(--bg);border-radius:99px;
+    overflow:hidden;border:1px solid var(--border);position:relative
+  }
+  .prog-bar-fill{
+    height:100%;border-radius:99px;transition:width .6s cubic-bezier(.4,0,.2,1);
+    background:linear-gradient(90deg,var(--ok),#34d399)
+  }
+  .prog-nums{
+    font-size:14px;font-weight:900;color:var(--ok);white-space:nowrap;min-width:44px;text-align:right
+  }
+  .prog-pct{font-size:11px;font-weight:700;color:var(--muted);min-width:32px;text-align:right}
+  .metrics-row{
+    display:flex;gap:0;margin-top:10px;border-top:1px solid var(--border);
+    padding-top:8px
+  }
+  .metric-item{
+    flex:1;display:flex;flex-direction:column;gap:2px;
+    padding:0 4px;border-right:1px solid var(--border)
+  }
+  .metric-item:last-child{border-right:none}
+  .metric-lbl{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .metric-val{font-size:16px;font-weight:900;color:var(--text);font-family:monospace;letter-spacing:.5px}
 
   /* ── DETALLE ── */
   #vistaDetalle{display:none;flex-direction:column;min-height:100vh;background:var(--bg)}
@@ -95,11 +154,12 @@
   .det-title{font-size:18px;font-weight:900;flex:1}
 
   .det-info{background:#fff;border-bottom:2px solid var(--border);padding:16px 20px}
-  .det-num   {font-size:34px;font-weight:900;color:var(--pend);line-height:1;letter-spacing:-1px}
-  .det-nombre{font-size:26px;font-weight:900;color:var(--text);line-height:1.15;margin-top:4px}
+  /* Jerarquía en detalle: nombre (hero) → número/nº (metadata) */
+  .det-nombre{font-size:34px;font-weight:900;color:var(--text);line-height:1.1}
+  .det-num   {font-size:14px;font-weight:700;color:var(--muted);margin-top:5px}
   .det-entrega{font-size:18px;font-weight:800;margin-top:8px}
-  .det-entrega.urg {color:var(--hoy)}
-  .det-entrega.norm{color:var(--pend)}
+  .det-entrega.urg {color:#b02a2a}
+  .det-entrega.norm{color:#3a68b0}
   .det-sub{font-size:14px;color:var(--muted);margin-top:4px}
   .armador-chip{
     display:inline-flex;align-items:center;gap:6px;margin-top:10px;
@@ -267,32 +327,85 @@
   .btn-armar{transition:background .15s,transform .1s,box-shadow .15s,opacity .15s}
   .check-btn{transition:background .12s,border-color .12s,transform .1s}
 
-  /* ── DARK MODE ── */
+  /* ── DARK MODE (sistema) ── */
   @media(prefers-color-scheme:dark){
-    :root{
-      --hoy:#f87171; --hoy-bg:#2d1414; --hoy-brd:#7f1d1d;
-      --pend:#60a5fa; --pend-bg:#1b2d4a; --pend-brd:#1e3a6e;
-      --ok:#4ade80;  --ok-bg:#14271a;  --ok-brd:#14532d;
-      --mod:#fbbf24; --mod-bg:#292008;
-      --bg:#12151c; --card:#1e2330; --text:#eef2f7; --muted:#8090a8; --border:#2d3a4e;
-      --shadow:0 2px 14px rgba(0,0,0,.4);
+    body:not(.light-forced) {
+      --hoy:#ff7b7b; --hoy-bg:#3a1a1a; --hoy-brd:#882222;
+      --pend:#74b9ff; --pend-bg:#1a2d4a; --pend-brd:#2255aa;
+      --ok:#55df8a;  --ok-bg:#0f2e1e;  --ok-brd:#14532d;
+      --mod:#ffcc55; --mod-bg:#362808;
+      --bg:#1e2538; --card:#28324a; --text:#dde4f5; --muted:#7a90b8; --border:#3a4d6a;
+      --shadow:0 2px 14px rgba(0,0,0,.35);
     }
-    .header,.det-header{background:rgba(30,35,48,.9);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-color:rgba(45,58,78,.8)}
-    .det-footer{background:rgba(18,21,28,.95);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-color:rgba(45,58,78,.7)}
-    .det-info,.tabs{background:var(--card);border-color:var(--border)}
-    .modal-box{background:#1e2330;color:var(--text)}
-    .modal-input{background:#12151c;color:var(--text);border-color:var(--border)}
-    .check-btn:not(.on){background:var(--card);border-color:var(--border)}
-    .item-edit-bar{background:#2a1e04}
-    .edit-input,.edit-qty{background:#12151c;color:var(--text);border-color:var(--border)}
-    .armador-chip{background:#1e2330;border-color:var(--border)}
-    .btn-back{background:#1e2330;border-color:var(--border);color:var(--text)}
-    .item-qty-badge{background:var(--bg);border-color:var(--border);color:var(--text)}
-    .btn-edit-cancel{background:#1e2330;border-color:var(--border);color:var(--muted)}
-    .btn-edit-toggle{color:var(--muted)}
-    #detFaltantesPrevios{background:#2a1e04;border-color:#a16207}
-    html,body{background:var(--bg);color:var(--text)}
+    body:not(.light-forced) .header,
+    body:not(.light-forced) .det-header { background:rgba(28,34,52,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-color:rgba(58,77,106,.8) }
+    body:not(.light-forced) .det-footer { background:rgba(28,34,52,.95);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-color:rgba(58,77,106,.7) }
+    body:not(.light-forced) .det-info,
+    body:not(.light-forced) .tabs { background:var(--card);border-color:var(--border) }
+    body:not(.light-forced) .modal-box { background:#28324a;color:var(--text) }
+    body:not(.light-forced) .modal-input { background:#1e2538;color:var(--text);border-color:var(--border) }
+    body:not(.light-forced) .check-btn:not(.on) { background:var(--card);border-color:var(--border) }
+    body:not(.light-forced) .item-edit-bar { background:#2d1e04 }
+    body:not(.light-forced) .edit-input,
+    body:not(.light-forced) .edit-qty { background:#1e2538;color:var(--text);border-color:var(--border) }
+    body:not(.light-forced) .armador-chip { background:#28324a;border-color:var(--border) }
+    body:not(.light-forced) .btn-back { background:#28324a;border-color:var(--border);color:var(--text) }
+    body:not(.light-forced) .item-qty-badge { background:var(--bg);border-color:var(--border);color:var(--text) }
+    body:not(.light-forced) .btn-edit-cancel { background:#28324a;border-color:var(--border);color:var(--muted) }
+    body:not(.light-forced) .btn-edit-toggle { color:var(--muted) }
+    body:not(.light-forced) #detFaltantesPrevios { background:#2d1e04;border-color:#a16207 }
+    body:not(.light-forced) html,
+    body:not(.light-forced) { background:var(--bg);color:var(--text) }
+    /* ── Métricas dark ── */
+    body:not(.light-forced) .metrics-panel { background:var(--card); border-color:var(--border); }
+    body:not(.light-forced) .prog-bar-outer { background:var(--bg); border-color:var(--border); }
+    /* ── Items: fondo dark explícito (base es #fff hardcodeado) ── */
+    body:not(.light-forced) .item-row:not(.armado) { background:var(--card); border-color:var(--border); }
+    /* ── Nombres de artículos: contraste WCAG ≥ 4.5:1 (#f1f5f9 / #28324a = ~11.8:1) ── */
+    body:not(.light-forced) .item-desc { color:#f1f5f9; font-weight:800; }
+    body:not(.light-forced) .item-desc.tachado { color:#6a8099; font-weight:700; }
+    body:not(.light-forced) .item-qty-badge { background:#1e2d45; color:#f1f5f9; border-color:#4a6484; font-weight:900; }
+    body:not(.light-forced) .card-nombre { color:#f1f5f9; }
+    body:not(.light-forced) .det-nombre  { color:#f1f5f9; }
   }
+
+  body.dark-forced {
+    --hoy:#ff7b7b; --hoy-bg:#3a1a1a; --hoy-brd:#882222;
+    --pend:#74b9ff; --pend-bg:#1a2d4a; --pend-brd:#2255aa;
+    --ok:#55df8a;  --ok-bg:#0f2e1e;  --ok-brd:#14532d;
+    --mod:#ffcc55; --mod-bg:#362808;
+    --bg:#1e2538; --card:#28324a; --text:#dde4f5; --muted:#7a90b8; --border:#3a4d6a;
+    --shadow:0 2px 14px rgba(0,0,0,.35);
+  }
+  body.dark-forced { background:var(--bg); color:var(--text); }
+  body.dark-forced .header,
+  body.dark-forced .det-header { background:rgba(28,34,52,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-color:rgba(58,77,106,.8) }
+  body.dark-forced .det-footer { background:rgba(28,34,52,.95);backdrop-filter:blur(8px);border-color:rgba(58,77,106,.7) }
+  body.dark-forced .det-info,
+  body.dark-forced .tabs { background:var(--card);border-color:var(--border) }
+  body.dark-forced .modal-box { background:#28324a;color:var(--text) }
+  body.dark-forced .modal-input { background:#1e2538;color:var(--text);border-color:var(--border) }
+  body.dark-forced .check-btn:not(.on) { background:var(--card);border-color:var(--border) }
+  body.dark-forced .item-edit-bar { background:#2d1e04 }
+  body.dark-forced .edit-input,
+  body.dark-forced .edit-qty { background:#1e2538;color:var(--text);border-color:var(--border) }
+  body.dark-forced .armador-chip { background:#28324a;border-color:var(--border) }
+  body.dark-forced .btn-back { background:#28324a;border-color:var(--border);color:var(--text) }
+  body.dark-forced .item-qty-badge { background:var(--bg);border-color:var(--border);color:var(--text) }
+  body.dark-forced .btn-edit-cancel { background:#28324a;border-color:var(--border);color:var(--muted) }
+  body.dark-forced .btn-edit-toggle { color:var(--muted) }
+  body.dark-forced #detFaltantesPrevios { background:#2d1e04;border-color:#a16207 }
+  /* ── Métricas dark ── */
+  body.dark-forced .metrics-panel { background:var(--card); border-color:var(--border); }
+  body.dark-forced .prog-bar-outer { background:var(--bg); border-color:var(--border); }
+  /* ── Items: fondo dark explícito (base es #fff hardcodeado) ── */
+  body.dark-forced .item-row:not(.armado) { background:var(--card); border-color:var(--border); }
+  /* ── Nombres de artículos: contraste WCAG ≥ 4.5:1 (#f1f5f9 / #28324a = ~11.8:1) ── */
+  body.dark-forced .item-desc { color:#f1f5f9; font-weight:800; }
+  body.dark-forced .item-desc.tachado { color:#6a8099; font-weight:700; }
+  body.dark-forced .item-qty-badge { background:#1e2d45; color:#f1f5f9; border-color:#4a6484; font-weight:900; }
+  body.dark-forced .card-nombre { color:#f1f5f9; }
+  body.dark-forced .det-nombre  { color:#f1f5f9; }
 </style>
 </head>
 <body>
@@ -306,11 +419,13 @@
     <div class="header">
       <div class="conn-dot" id="connDot"></div>
       <div class="header-title">📦 Depósito</div>
+      <button id="btnDarkDep" onclick="toggleDarkDep()" title="Modo oscuro/claro">🌙</button>
     </div>
     <div class="tabs">
       <button class="tab-btn hoy active" id="tabHoy"  onclick="setTab('hoy')">🔴 HOY<br><span style="font-size:12px;font-weight:600">Esta semana</span></button>
       <button class="tab-btn pend"       id="tabPend" onclick="setTab('pend')">🔵 PRÓXIMA SEMANA<br><span style="font-size:12px;font-weight:600">Pedidos a preparar</span></button>
     </div>
+    <div id="metricsPanel" class="metrics-panel" style="display:none;"></div>
     <div id="listaPedidos"></div>
   </div>
 
@@ -319,11 +434,13 @@
     <div class="det-header">
       <button class="btn-back" onclick="volverALista()">← Volver</button>
       <div class="det-title" id="detTitle">Pedido</div>
+      <div id="timerDisplay" class="timer-chip">00:00</div>
     </div>
     <div class="det-info">
-      <div class="det-num"    id="detNum">N° —</div>
       <div class="det-nombre" id="detNombre">—</div>
-      <div class="det-entrega" id="detEntrega">—</div>
+      <div class="det-num"    id="detNum">N° —</div>
+      <div id="detNumDiario" style="display:none;font-size:12px;font-weight:700;color:var(--muted);margin-top:2px;"></div>
+      <div class="det-entrega" id="detEntrega" style="margin-top:10px;">—</div>
       <div class="det-sub"    id="detSub">—</div>
       <div class="armador-chip" id="armadorChip" style="display:none">
         🧑‍🏭 Armando: <strong id="armadorNombre"></strong>
@@ -335,6 +452,10 @@
       <div id="detFaltantesList"></div>
     </div>
 
+    <div class="filter-bar">
+      <button id="btnFoco" class="btn-foco" onclick="toggleFoco()">👁 Solo pendientes</button>
+      <span id="focoCount" class="foco-count"></span>
+    </div>
     <div id="listaItems"></div>
     <div class="det-footer">
       <div id="msgMotDep"></div>
@@ -358,11 +479,23 @@
   </div>
 </div>
 
+<!-- ── Modal: Confirmar envío sin items ── -->
+<div class="modal-over" id="modalConfirmEnvio">
+  <div class="modal-box" style="border-top:4px solid var(--pend)">
+    <div class="modal-title">📦 Sin items marcados</div>
+    <div class="modal-sub">¿Enviar el pedido sin ningún item tildado? Todos quedarán como faltantes en facturación.</div>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="document.getElementById('modalConfirmEnvio').style.display='none'">Cancelar</button>
+      <button class="modal-btn ok"     onclick="confirmarEnvioVacio()">Sí, enviar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Modal: Confirmar destildar ── -->
 <div class="modal-over" id="modalDestildar">
   <div class="modal-box">
     <div class="modal-title">⚠️ ¿Destildar este artículo?</div>
-    <div class="modal-sub">Va a quedar como <strong style="color:var(--hoy)">faltante</strong> en facturación.</div>
+    <div class="modal-sub">El artículo quedará <strong style="color:var(--hoy)">sin marcar</strong>. Si enviás el pedido sin tildarlo, figurará como faltante en facturación.</div>
     <div style="font-size:18px;font-weight:800;color:var(--hoy);margin-bottom:20px" id="destildarNombre"></div>
     <div class="modal-btns">
       <button class="modal-btn cancel" onclick="cerrarModalDestildar()">Cancelar</button>
@@ -388,17 +521,26 @@ let armadorActual  = localStorage.getItem("depositoArmador") || "";
 let pendingPedidoId= null;   // pedido esperando confirmación de armador
 let confirmDestildar = null; // {itemId, idx}
 
-// ── FECHAS ──
+// ── FECHAS (zona Argentina, UTC-3 fijo) ──
+function hoyISO() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+}
 function viernesISO() {
   const h = new Date(), diff = 5 - h.getDay();
   const v = new Date(h); v.setDate(h.getDate() + (diff >= 0 ? diff : diff + 7));
-  return v.toISOString().split("T")[0];
+  return v.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
 }
 function esUrgente(fe) { return !fe || fe <= viernesISO(); }
 function fmtFechaLarga(fe) {
   if (!fe) return "—";
   return new Date(fe + "T12:00:00").toLocaleDateString("es-AR",
     {weekday:"long",day:"2-digit",month:"2-digit",year:"numeric"}).toUpperCase();
+}
+// Formato corto para tarjetas: "Lun 28/03" — sin mayúsculas forzadas
+function fmtFechaCorta(fe) {
+  if (!fe) return "—";
+  return new Date(fe + "T12:00:00").toLocaleDateString("es-AR",
+    {weekday:"short", day:"2-digit", month:"2-digit"});
 }
 
 // ── SUPABASE ──
@@ -475,6 +617,7 @@ async function cargarPedidos() {
       pedidosCache = data;
       renderLista();
     }
+    cargarProgreso(); // barra de progreso (no bloquea)
   } catch(e) { setConn("offline"); }
 }
 
@@ -501,13 +644,15 @@ function renderLista() {
     const urg = esUrgente(p.fecha_entrega);
     const cc  = p.estado==="armado" ? "armado-ok" : urg ? "urgente" : "pendiente";
     const ec  = urg ? "urg" : "pend";
-    const icon= urg ? "🔴" : "🔵";
-    const fe  = fmtFechaLarga(p.fecha_entrega);
+    const nd = p.numero_diario ?? p.numero;
     return `
       <div class="pedido-card ${cc}" onclick="pedidoClick('${p.id}')" style="animation:fadeInUp .2s ease ${idx*40}ms both">
-        <div class="card-num">N° ${p.cliente_id||"—"}</div>
         <div class="card-nombre">${p.cliente_nombre||"Cliente "+p.cliente_id||"—"}</div>
-        <div class="card-entrega ${ec}">${icon} SE ENTREGA: ${fe}</div>
+        <div class="card-sec">
+          <span class="card-num">N° ${p.cliente_id||"—"}</span>
+          ${nd ? `<span class="card-ndiario">📋 Nº ${nd} del día</span>` : ""}
+        </div>
+        <div class="card-entrega ${ec}">Entrega: ${fmtFechaCorta(p.fecha_entrega)}</div>
         <div class="card-meta">Vendedor: ${p.vendedor||"—"} · ${p.observaciones||"Sin obs."}</div>
         ${p.estado==="armado" ? `<div class="badge-armado">✅ ARMADO${p.armado_por ? " · " + p.armado_por : ""}</div>` : ""}
       </div>`;
@@ -549,14 +694,49 @@ async function abrirPedido(id) {
     pedidoActivo = ps[0];
     itemsActivos = items;
 
+    // Heartbeat: avisarle a facturación que este pedido está siendo armado ahora
+    if (pedidoActivo.estado === "pendiente" && armadorActual) {
+      const nowHB = new Date().toISOString();
+      console.log("[HB] Enviando heartbeat para pedido", pedidoActivo.id, "armador:", armadorActual);
+      try {
+        const hbResult = await sbPatch("pedidos", `id=eq.${pedidoActivo.id}`, {
+          armado_por: armadorActual,
+          armado_at: nowHB
+        });
+        console.log("[HB] Resultado heartbeat:", hbResult);
+      } catch(hbErr) {
+        console.warn("[HB] Error heartbeat:", hbErr);
+      }
+      pedidoActivo.armado_por = armadorActual;
+      pedidoActivo.armado_at = nowHB;
+    } else {
+      console.log("[HB] Skip heartbeat — estado:", pedidoActivo.estado, "armadorActual:", armadorActual);
+    }
+
+    // Timer: iniciar (retoma desde donde quedó si ya había arrancado)
+    iniciarTimer(pedidoActivo.id);
+
+    // Modo foco: restaurar estado por pedido
+    _modoFoco = _focoStates[pedidoActivo.id] || false;
+    const btnFoco = document.getElementById("btnFoco");
+    if (btnFoco) {
+      btnFoco.classList.toggle("activo", _modoFoco);
+      btnFoco.textContent = _modoFoco ? "👁 Solo pendientes (ON)" : "👁 Solo pendientes";
+    }
+
     const urg = esUrgente(pedidoActivo.fecha_entrega);
-    document.getElementById("detTitle").textContent =
-      pedidoActivo.cliente_nombre || "Cliente "+pedidoActivo.cliente_id;
+    document.getElementById("detTitle").textContent = "📦 Pedido";
     document.getElementById("detNum").textContent = "N° " + (pedidoActivo.cliente_id||"—");
+    const dnd = document.getElementById("detNumDiario");
+    if (dnd) {
+      const nd = pedidoActivo.numero_diario ?? pedidoActivo.numero;
+      if (nd) { dnd.textContent = `📋 Pedido Nº ${nd} del día`; dnd.style.display = "block"; }
+      else dnd.style.display = "none";
+    }
     document.getElementById("detNombre").textContent =
       pedidoActivo.cliente_nombre || "Cliente "+pedidoActivo.cliente_id;
     document.getElementById("detEntrega").textContent =
-      `${urg?"🔴":"🔵"} SE ENTREGA: ${fmtFechaLarga(pedidoActivo.fecha_entrega)}`;
+      `Entrega: ${fmtFechaCorta(pedidoActivo.fecha_entrega)}`;
     document.getElementById("detEntrega").className = `det-entrega ${urg?"urg":"norm"}`;
     document.getElementById("detSub").textContent =
       `Vendedor: ${pedidoActivo.vendedor||"—"} · ${pedidoActivo.observaciones||"Sin obs."}`;
@@ -577,14 +757,20 @@ async function abrirPedido(id) {
 
 // ── RENDER ITEMS ──
 function renderItems() {
+  // Modo foco: mostrar solo los no armados
+  const items = _modoFoco ? itemsActivos.filter(i => !i.armado) : itemsActivos;
+  const pendientes = itemsActivos.filter(i => !i.armado).length;
+  const focoEl = document.getElementById("focoCount");
+  if (focoEl) focoEl.textContent = _modoFoco ? `${pendientes} pendiente${pendientes!==1?"s":""}` : "";
+
   const box = document.getElementById("listaItems");
-  box.innerHTML = itemsActivos.map((item, i) => {
+  box.innerHTML = items.map((item, i) => {
     const armado = item.armado;
     const mod    = item.modificado;
     return `
       <div class="item-row ${armado?"armado":""} ${mod?"modificado-row":""}" id="irow-${item.id}">
         <div class="item-main">
-          <button class="check-btn ${armado?"on":""}" onclick="toggleItem('${item.id}',${i},${!armado})">
+          <button class="check-btn ${armado?"on":""}" onclick="toggleItem('${item.id}',${i})">
             ${armado?"✓":""}
           </button>
           <div class="item-info">
@@ -667,8 +853,10 @@ async function guardarEdit(itemId, idx) {
 }
 
 // ── TOGGLE ARMADO ──
-async function toggleItem(itemId, idx, nuevoEstado) {
-  if (!nuevoEstado && itemsActivos[idx].armado) {
+async function toggleItem(itemId, idx) {
+  const nuevoEstado = !itemsActivos[idx].armado;
+  if (!nuevoEstado) {
+    // untiling - show confirm modal
     confirmDestildar = {itemId, idx};
     document.getElementById("destildarNombre").textContent = itemsActivos[idx].descripcion;
     document.getElementById("modalDestildar").style.display = "flex";
@@ -692,19 +880,22 @@ async function confirmarDestildar() {
 async function aplicarToggle(itemId, idx, nuevoEstado) {
   itemsActivos[idx].armado = nuevoEstado;
   const row  = document.getElementById(`irow-${itemId}`);
-  const btn  = row.querySelector(".check-btn");
+  const btn  = row?.querySelector(".check-btn");
   const desc = document.getElementById(`idesc-${itemId}`);
   if (nuevoEstado) {
-    row.classList.add("armado"); btn.classList.add("on"); btn.textContent="✓"; desc.classList.add("tachado");
+    row?.classList.add("armado"); btn?.classList.add("on");
+    if (btn) btn.textContent = "✓"; desc?.classList.add("tachado");
   } else {
-    row.classList.remove("armado"); btn.classList.remove("on"); btn.textContent=""; desc.classList.remove("tachado");
+    row?.classList.remove("armado"); btn?.classList.remove("on");
+    if (btn) btn.textContent = ""; desc?.classList.remove("tachado");
+    toast("✓ Artículo desmarcado", "mod");
   }
   actualizarProgreso();
   const now = new Date().toISOString();
   await sbPatch("items_pedido", `id=eq.${itemId}`, {
     armado: nuevoEstado,
-    armado_por:  nuevoEstado ? armadorActual : null,
-    armado_at:   nuevoEstado ? now : null,
+    armado_por: nuevoEstado ? armadorActual : null,
+    armado_at:  nuevoEstado ? now : null,
   }).catch(() => toast("Error al guardar","error"));
 }
 
@@ -751,34 +942,53 @@ function actualizarProgreso() {
   if (pedidoActivo?.estado === "armado") {
     btn.disabled = true; btn.textContent = "✅ YA ESTÁ ARMADO";
   } else {
-    // Permitir enviar aunque no haya items (pedido vacío = todos faltantes)
-    btn.disabled = total > 0 && armados === 0;
-    btn.textContent = total === 0 ? "✅ ENVIAR SIN ITEMS" :
-      (faltantes>0 && armados>0
-        ? `✅ ARMAR (${faltantes} faltante${faltantes>1?"s":""})`
-        : "✅ MARCAR COMO ARMADO");
+    btn.disabled = false;
+    btn.textContent = total === 0       ? "✅ ENVIAR SIN ITEMS" :
+      armados === 0                     ? "✅ ENVIAR (todo faltante)" :
+      faltantes > 0                     ? `✅ ARMAR (${faltantes} faltante${faltantes>1?"s":""})` :
+                                          "✅ MARCAR COMO ARMADO";
   }
 }
 
 // ── COMPLETAR ──
+let _enviando = false;
+
 async function completarPedido() {
-  if (!pedidoActivo || pedidoActivo.estado==="armado") return;
+  if (_enviando || !pedidoActivo || pedidoActivo.estado==="armado") return;
+  const armados = itemsActivos.filter(i => i.armado).length;
+  if (itemsActivos.length > 0 && armados === 0) {
+    document.getElementById("modalConfirmEnvio").style.display = "flex";
+    return;
+  }
+  await _ejecutarArmar();
+}
+
+async function confirmarEnvioVacio() {
+  document.getElementById("modalConfirmEnvio").style.display = "none";
+  await _ejecutarArmar();
+}
+
+async function _ejecutarArmar() {
+  if (_enviando) return;
+  _enviando = true;
+  // Finalizar timer y guardar métrica antes de enviar
+  finalizarTimer(pedidoActivo.id, pedidoActivo.cliente_nombre, armadorActual);
+  const btn = document.getElementById("btnArmar");
+  btn.disabled = true; btn.textContent = "Enviando...";
   showLoader();
   try {
     const faltantes = itemsActivos.filter(i => !i.armado);
     if (faltantes.length) {
-      // es_faltante es opcional — si la columna no existe, no bloquea
       await Promise.all(faltantes.map(i =>
         sbPatch("items_pedido",`id=eq.${i.id}`,{es_faltante:true}).catch(()=>{})
       ));
     }
     const nowArmado = new Date().toISOString();
-    // CRÍTICO: cambiar estado a armado
-    await sbPatch("pedidos",`id=eq.${pedidoActivo.id}`,{estado:"armado"});
-    // OPCIONAL: guardar quién armó (requiere columnas armado_por/armado_at en pedidos)
-    sbPatch("pedidos",`id=eq.${pedidoActivo.id}`,{
-      armado_por:armadorActual, armado_at:nowArmado
-    }).catch(()=>{});
+    await sbPatch("pedidos", `id=eq.${pedidoActivo.id}`, {
+      estado: "armado",
+      armado_por: armadorActual,
+      armado_at: nowArmado
+    });
     await sbInsert("auditoria",{
       pedido_id:pedidoActivo.id, accion:"pedido_armado", usuario:armadorActual,
       detalle:{armados:itemsActivos.filter(i=>i.armado).length, faltantes:faltantes.length}
@@ -790,7 +1000,7 @@ async function completarPedido() {
       : "✅ ¡Pedido armado completo!", "ok");
     setTimeout(volverALista, 1400);
   } catch(e) { toast("Error","error"); }
-  finally { hideLoader(); }
+  finally { hideLoader(); _enviando = false; actualizarProgreso(); }
 }
 
 // ── FALTANTES PREVIOS (depósito) ──
@@ -855,6 +1065,7 @@ async function flushSyncQueue() {
 
 // ── NAV ──
 function volverALista() {
+  if (pedidoActivo) pausarTimer(pedidoActivo.id);
   pedidoActivo = null;
   localStorage.removeItem("depositoActivePedido");
   document.getElementById("vistaDetalle").style.display = "none";
@@ -873,9 +1084,147 @@ function toast(msg,tipo=""){
   document.body.appendChild(el); clearTimeout(tt); tt=setTimeout(()=>el.remove(),2800);
 }
 
+// ── TIMER ──
+let _timerMs = 0, _timerStart = null, _timerInterval = null;
+
+function iniciarTimer(pedidoId) {
+  _timerMs = parseInt(localStorage.getItem('dep_timer_' + pedidoId) || '0');
+  _timerStart = Date.now();
+  clearInterval(_timerInterval);
+  _timerInterval = setInterval(actualizarTimerUI, 1000);
+  actualizarTimerUI();
+}
+
+function pausarTimer(pedidoId) {
+  if (_timerStart !== null) { _timerMs += Date.now() - _timerStart; _timerStart = null; }
+  clearInterval(_timerInterval); _timerInterval = null;
+  if (pedidoId) localStorage.setItem('dep_timer_' + pedidoId, String(_timerMs));
+}
+
+function finalizarTimer(pedidoId, clienteNombre, operario) {
+  if (_timerStart !== null) { _timerMs += Date.now() - _timerStart; _timerStart = null; }
+  clearInterval(_timerInterval); _timerInterval = null;
+  if (_timerMs > 0) guardarMetrica(pedidoId, clienteNombre, operario, _timerMs);
+  localStorage.removeItem('dep_timer_' + pedidoId);
+  _timerMs = 0;
+  actualizarTimerUI();
+}
+
+function fmtTimer(ms) {
+  const mm = Math.floor(ms / 60000);
+  const ss = Math.floor((ms % 60000) / 1000);
+  return `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+}
+
+function actualizarTimerUI() {
+  const el = document.getElementById("timerDisplay");
+  if (!el) return;
+  const total = _timerMs + (_timerStart !== null ? Date.now() - _timerStart : 0);
+  el.textContent = fmtTimer(total);
+}
+
+// ── MÉTRICAS ──
+function guardarMetrica(pedidoId, clienteNombre, operario, duracionMs) {
+  const m = JSON.parse(localStorage.getItem('depositoMetrics') || '[]');
+  const idx = m.findIndex(x => x.id === pedidoId);
+  const e = { id: pedidoId, c: clienteNombre||pedidoId, op: operario, ms: duracionMs, f: hoyISO() };
+  if (idx >= 0) m[idx] = e; else m.push(e);
+  localStorage.setItem('depositoMetrics', JSON.stringify(m.slice(-500)));
+}
+
+function renderMetrics(hechos, total) {
+  const panel = document.getElementById("metricsPanel");
+  if (!panel) return;
+  const pct = total > 0 ? Math.round((hechos / total) * 100) : 0;
+  const hoy = hoyISO();
+  const m = JSON.parse(localStorage.getItem('depositoMetrics') || '[]');
+  const deHoy = m.filter(x => x.f === hoy && x.ms > 0);
+
+  let metricsHtml = "";
+  if (deHoy.length >= 1) {
+    const avg  = deHoy.reduce((s,x) => s + x.ms, 0) / deHoy.length;
+    const fast = deHoy.reduce((a,b) => a.ms < b.ms ? a : b);
+    const slow = deHoy.reduce((a,b) => a.ms > b.ms ? a : b);
+    metricsHtml = `
+      <div class="metrics-row">
+        <div class="metric-item">
+          <span class="metric-lbl">⏱ Tiempo promedio</span>
+          <span class="metric-val">${fmtTimer(avg)}</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-lbl">⚡ Pedido más rápido</span>
+          <span class="metric-val">${fmtTimer(fast.ms)}</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-lbl">🐢 Pedido más lento</span>
+          <span class="metric-val">${fmtTimer(slow.ms)}</span>
+        </div>
+      </div>`;
+  }
+
+  panel.innerHTML = `
+    <div class="metrics-label">Pedidos de esta semana</div>
+    <div class="prog-row">
+      <div class="prog-bar-outer">
+        <div class="prog-bar-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="prog-nums">${hechos}/${total}</div>
+      <div class="prog-pct">${pct}%</div>
+    </div>
+    ${metricsHtml}`;
+  panel.style.display = "block";
+}
+
+let _progresoHechos = 0, _progresoTotal = 0;
+async function cargarProgreso() {
+  try {
+    const hace7 = new Date(); hace7.setDate(hace7.getDate() - 7);
+    const desde = hace7.toISOString().split("T")[0] + "T00:00:00Z";
+    const todos = await sbGet("pedidos",
+      `fecha_entrega=lte.${viernesISO()}&created_at=gte.${desde}&select=id,estado&limit=500`);
+    _progresoTotal = todos.length;
+    _progresoHechos = todos.filter(p => p.estado !== "pendiente").length;
+    renderMetrics(_progresoHechos, _progresoTotal);
+  } catch(_) {}
+}
+
+// ── MODO FOCO ──
+let _modoFoco = false;
+const _focoStates = {};
+
+function toggleFoco() {
+  _modoFoco = !_modoFoco;
+  if (pedidoActivo) _focoStates[pedidoActivo.id] = _modoFoco;
+  const btn = document.getElementById("btnFoco");
+  if (btn) {
+    btn.classList.toggle("activo", _modoFoco);
+    btn.textContent = _modoFoco ? "👁 Solo pendientes (ON)" : "👁 Solo pendientes";
+  }
+  renderItems();
+}
+
+// ── DARK MODE ──
+function toggleDarkDep() {
+  const isDark = document.body.classList.toggle("dark-forced");
+  document.body.classList.toggle("light-forced", !isDark);
+  document.getElementById("btnDarkDep").textContent = isDark ? "☀️" : "🌙";
+  localStorage.setItem("depDark", isDark ? "1" : "0");
+}
+function initDarkDep() {
+  const saved = localStorage.getItem("depDark");
+  if (saved === "1") {
+    document.body.classList.add("dark-forced");
+    document.getElementById("btnDarkDep").textContent = "☀️";
+  } else if (saved === "0") {
+    document.body.classList.add("light-forced");
+  }
+}
+
 // ── INIT ──
 window.onload = async () => {
+  localStorage.setItem("app_type", "deposito");
   hideLoader();
+  initDarkDep();
   await cargarPedidos();
   conectarRealtime();
   setInterval(cargarPedidos, 30000);

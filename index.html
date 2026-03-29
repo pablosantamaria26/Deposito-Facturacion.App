@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Mercado Limpio - Distribuidora</title>
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Roboto', sans-serif;
+    background: #f8fafc;
+    color: #0f172a;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px;
+  }
+
+  .card {
+    background: #ffffff;
+    border-radius: 24px;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.10);
+    padding: 48px 40px 40px;
+    max-width: 420px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .logo-wrap {
+    width: 200px;
+    height: 200px;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    background: #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .logo-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .logo-placeholder {
+    font-size: 64px;
+    line-height: 1;
+  }
+
+  .title {
+    font-size: 22px;
+    font-weight: 900;
+    color: #0f172a;
+    text-align: center;
+    letter-spacing: -0.3px;
+    line-height: 1.2;
+  }
+
+  .subtitle {
+    font-size: 13px;
+    color: #64748b;
+    text-align: center;
+    margin-top: -16px;
+  }
+
+  .btns {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+  }
+
+  .btn-app {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 22px 24px;
+    border-radius: 16px;
+    border: none;
+    cursor: pointer;
+    font-family: 'Roboto', sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+    text-decoration: none;
+    transition: transform .12s ease, box-shadow .12s ease;
+    min-height: 72px;
+  }
+
+  .btn-app:active {
+    transform: scale(0.97);
+  }
+
+  .btn-deposito {
+    background: #0f172a;
+    color: #ffffff;
+    box-shadow: 0 4px 16px rgba(15,23,42,0.20);
+  }
+
+  .btn-deposito:hover {
+    box-shadow: 0 6px 24px rgba(15,23,42,0.28);
+  }
+
+  .btn-facturacion {
+    background: #1d4ed8;
+    color: #ffffff;
+    box-shadow: 0 4px 16px rgba(29,78,216,0.25);
+  }
+
+  .btn-facturacion:hover {
+    box-shadow: 0 6px 24px rgba(29,78,216,0.35);
+  }
+
+  .btn-icon {
+    font-size: 32px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .btn-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .btn-label {
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: .3px;
+  }
+
+  .btn-desc {
+    font-size: 12px;
+    font-weight: 400;
+    opacity: 0.75;
+  }
+
+  /* Status badge */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 500;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+  }
+
+  .status-dot.offline {
+    background: #ef4444;
+  }
+
+  /* Redirect screen */
+  .redirect-screen {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    color: #475569;
+    font-size: 15px;
+  }
+
+  .spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid #e2e8f0;
+    border-top-color: #1d4ed8;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .redirect-name {
+    font-size: 18px;
+    font-weight: 800;
+    color: #0f172a;
+  }
+</style>
+</head>
+<body>
+
+<!-- REDIRECT SCREEN -->
+<div class="redirect-screen" id="redirectScreen">
+  <div class="spinner"></div>
+  <div class="redirect-name" id="redirectName"></div>
+  <div>Redirigiendo...</div>
+</div>
+
+<!-- SELECTION CARD -->
+<div class="card" id="selectionCard" style="display:none;">
+
+  <div class="logo-wrap">
+    <img src="./logo.jpeg" alt="Mercado Limpio"
+      onerror="this.parentElement.innerHTML='<div class=\'logo-placeholder\'>🛒</div>'" />
+  </div>
+
+  <div class="title">Mercado Limpio<br>Distribuidora</div>
+  <div class="subtitle">Seleccioná tu aplicación</div>
+
+  <div class="btns">
+    <a class="btn-app btn-deposito" href="./deposito.html" onclick="setApp('deposito')">
+      <span class="btn-icon">📦</span>
+      <span class="btn-text">
+        <span class="btn-label">DEPÓSITO</span>
+        <span class="btn-desc">Armar y gestionar pedidos</span>
+      </span>
+    </a>
+    <a class="btn-app btn-facturacion" href="./facturacion.html" onclick="setApp('facturacion')">
+      <span class="btn-icon">💰</span>
+      <span class="btn-text">
+        <span class="btn-label">FACTURACIÓN</span>
+        <span class="btn-desc">Facturar y gestionar clientes</span>
+      </span>
+    </a>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Conectado</span>
+  </div>
+
+</div>
+
+<script>
+  function setApp(type) {
+    localStorage.setItem("app_type", type);
+  }
+
+  function init() {
+    // Check connectivity
+    function updateStatus() {
+      const dot = document.getElementById("statusDot");
+      const txt = document.getElementById("statusText");
+      if (navigator.onLine) {
+        dot.classList.remove("offline");
+        txt.textContent = "Conectado";
+      } else {
+        dot.classList.add("offline");
+        txt.textContent = "Sin conexión";
+      }
+    }
+    window.addEventListener("online", updateStatus);
+    window.addEventListener("offline", updateStatus);
+    updateStatus();
+
+    // Auto-redirect if app was previously chosen
+    const savedApp = localStorage.getItem("app_type");
+    if (savedApp === "deposito" || savedApp === "facturacion") {
+      const dest = savedApp === "deposito" ? "./deposito.html" : "./facturacion.html";
+      const name = savedApp === "deposito" ? "📦 Depósito" : "💰 Facturación";
+      document.getElementById("redirectName").textContent = name;
+      document.getElementById("redirectScreen").style.display = "flex";
+      setTimeout(() => { window.location.replace(dest); }, 600);
+    } else {
+      document.getElementById("selectionCard").style.display = "flex";
+    }
+  }
+
+  init();
+
+  // Register service worker
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+  }
+</script>
+</body>
+</html>
