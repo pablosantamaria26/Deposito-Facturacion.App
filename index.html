@@ -117,91 +117,6 @@
   .btn-label { font-size: 18px; font-weight: 900; letter-spacing: .3px; }
   .btn-desc { font-size: 12px; font-weight: 400; opacity: 0.75; }
 
-  /* ── STATS PANEL ── */
-  .stats-panel {
-    width: 100%;
-    background: #f8fafc;
-    border: 1.5px solid #e2e8f0;
-    border-radius: 16px;
-    padding: 16px;
-  }
-
-  .stats-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-  }
-
-  .stats-title {
-    font-size: 12px;
-    font-weight: 900;
-    color: #475569;
-    text-transform: uppercase;
-    letter-spacing: .6px;
-  }
-
-  .stats-week {
-    font-size: 11px;
-    color: #94a3b8;
-    font-weight: 600;
-  }
-
-  .stats-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 8px;
-  }
-
-  .stat-box {
-    background: #ffffff;
-    border: 1.5px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 10px 8px;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .stat-icon { font-size: 18px; line-height: 1; }
-
-  .stat-value {
-    font-size: 17px;
-    font-weight: 900;
-    color: #0f172a;
-    line-height: 1;
-  }
-
-  .stat-label {
-    font-size: 10px;
-    font-weight: 700;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: .4px;
-  }
-
-  .stat-box.rapido { border-color: #86efac; background: #f0fdf4; }
-  .stat-box.rapido .stat-value { color: #16a34a; }
-
-  .stat-box.lento { border-color: #fca5a5; background: #fef2f2; }
-  .stat-box.lento .stat-value { color: #dc2626; }
-
-  .stats-sub {
-    margin-top: 10px;
-    font-size: 11px;
-    color: #94a3b8;
-    text-align: center;
-    font-weight: 600;
-  }
-
-  .stats-loading {
-    text-align: center;
-    color: #94a3b8;
-    font-size: 13px;
-    padding: 12px 0;
-  }
-
   /* Status badge */
   .status-bar {
     display: flex;
@@ -275,17 +190,6 @@
     </a>
   </div>
 
-  <!-- STATS PANEL -->
-  <div class="stats-panel" id="statsPanel">
-    <div class="stats-header">
-      <span class="stats-title">⏱ Tiempos de armado</span>
-      <span class="stats-week" id="statsWeekLabel"></span>
-    </div>
-    <div id="statsContent">
-      <div class="stats-loading">Cargando estadísticas...</div>
-    </div>
-  </div>
-
   <div class="status-bar">
     <div class="status-dot" id="statusDot"></div>
     <span id="statusText">Conectado</span>
@@ -294,116 +198,6 @@
 </div>
 
 <script>
-  const SB_URL  = "https://gjeyvbidomxzofcdycya.supabase.co";
-  const SB_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
-
-  // ── ISO WEEK ──
-  function weekId(date) {
-    const d = new Date(date);
-    d.setHours(0,0,0,0);
-    const day = d.getDay() || 7;
-    d.setDate(d.getDate() + 4 - day);
-    const y = d.getFullYear();
-    const start = new Date(y, 0, 1);
-    return y * 100 + Math.ceil((((d - start) / 86400000) + 1) / 7);
-  }
-
-  function getWeekStart() {
-    const now = new Date();
-    const day = now.getDay() || 7;
-    const mon = new Date(now);
-    mon.setDate(now.getDate() - (day - 1));
-    mon.setHours(0, 0, 0, 0);
-    return mon.toISOString();
-  }
-
-  function fmtMin(secs) {
-    if (secs === null || secs === undefined) return "—";
-    if (secs < 60)  return secs + "s";
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return s > 0 ? `${m}m ${s}s` : `${m}m`;
-  }
-
-  // ── SUPABASE ──
-  async function sbGet(params) {
-    const r = await fetch(`${SB_URL}/rest/v1/pedidos?${params}`, {
-      headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` }
-    });
-    return r.ok ? r.json() : [];
-  }
-
-  // ── CALCULAR PROMEDIOS ──
-  async function calcularPromediosVendedores() {
-    const weekStart = getWeekStart();
-    const pedidos = await sbGet(
-      `estado=eq.armado&armado_at=not.is.null&created_at=gte.${encodeURIComponent(weekStart)}&select=created_at,armado_at,cliente_nombre,armado_por&limit=200`
-    );
-
-    if (!pedidos.length) return null;
-
-    // Filtrar los que tienen ambas fechas válidas y calcular segundos
-    const tiempos = pedidos
-      .map(p => {
-        const start = new Date(p.created_at).getTime();
-        const end   = new Date(p.armado_at).getTime();
-        const diff  = Math.round((end - start) / 1000);
-        return diff > 0 ? { secs: diff, nombre: p.cliente_nombre, armador: p.armado_por } : null;
-      })
-      .filter(Boolean);
-
-    if (!tiempos.length) return null;
-
-    const total   = tiempos.reduce((acc, t) => acc + t.secs, 0);
-    const promedio = Math.round(total / tiempos.length);
-    const rapido  = tiempos.reduce((a, b) => a.secs < b.secs ? a : b);
-    const lento   = tiempos.reduce((a, b) => a.secs > b.secs ? a : b);
-
-    return { promedio, rapido, lento, total: tiempos.length };
-  }
-
-  // ── RENDER ESTADÍSTICAS ──
-  async function renderEstadisticasVendedores() {
-    const content = document.getElementById("statsContent");
-
-    // Week label
-    const now = new Date();
-    const weekLabel = `Semana ${weekId(now)}`;
-    document.getElementById("statsWeekLabel").textContent = weekLabel;
-
-    try {
-      const stats = await calcularPromediosVendedores();
-
-      if (!stats) {
-        content.innerHTML = `<div class="stats-loading">Sin pedidos armados esta semana aún</div>`;
-        return;
-      }
-
-      content.innerHTML = `
-        <div class="stats-grid">
-          <div class="stat-box">
-            <div class="stat-icon">⏱</div>
-            <div class="stat-value">${fmtMin(stats.promedio)}</div>
-            <div class="stat-label">Promedio</div>
-          </div>
-          <div class="stat-box rapido">
-            <div class="stat-icon">⚡</div>
-            <div class="stat-value">${fmtMin(stats.rapido.secs)}</div>
-            <div class="stat-label">Más rápido</div>
-          </div>
-          <div class="stat-box lento">
-            <div class="stat-icon">🐢</div>
-            <div class="stat-value">${fmtMin(stats.lento.secs)}</div>
-            <div class="stat-label">Más lento</div>
-          </div>
-        </div>
-        <div class="stats-sub">${stats.total} pedido${stats.total !== 1 ? "s" : ""} armado${stats.total !== 1 ? "s" : ""} esta semana</div>
-      `;
-    } catch(e) {
-      content.innerHTML = `<div class="stats-loading">Sin datos disponibles</div>`;
-    }
-  }
-
   // ── INIT ──
   function setApp(type) {
     localStorage.setItem("app_type", type);
@@ -434,7 +228,6 @@
       setTimeout(() => { window.location.replace(dest); }, 600);
     } else {
       document.getElementById("selectionCard").style.display = "flex";
-      renderEstadisticasVendedores();
     }
   }
 

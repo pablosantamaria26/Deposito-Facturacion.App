@@ -1154,19 +1154,16 @@ function guardarMetrica(pedidoId, clienteNombre, operario, duracionMs) {
   localStorage.setItem('depositoMetrics', JSON.stringify(m.slice(-500)));
 }
 
-function renderMetrics(hechos, total) {
+function renderMetrics(hechos, total, tiempos) {
   const panel = document.getElementById("metricsPanel");
   if (!panel) return;
   const pct = total > 0 ? Math.round((hechos / total) * 100) : 0;
-  const hoy = hoyISO();
-  const m = JSON.parse(localStorage.getItem('depositoMetrics') || '[]');
-  const deHoy = m.filter(x => x.f === hoy && x.ms > 0);
 
   let metricsHtml = "";
-  if (deHoy.length >= 1) {
-    const avg  = deHoy.reduce((s,x) => s + x.ms, 0) / deHoy.length;
-    const fast = deHoy.reduce((a,b) => a.ms < b.ms ? a : b);
-    const slow = deHoy.reduce((a,b) => a.ms > b.ms ? a : b);
+  if (tiempos && tiempos.length >= 1) {
+    const avg  = Math.round(tiempos.reduce((s,x) => s + x.ms, 0) / tiempos.length);
+    const fast = tiempos.reduce((a,b) => a.ms < b.ms ? a : b);
+    const slow = tiempos.reduce((a,b) => a.ms > b.ms ? a : b);
     metricsHtml = `
       <div class="metrics-row">
         <div class="metric-item">
@@ -1185,7 +1182,7 @@ function renderMetrics(hechos, total) {
   }
 
   panel.innerHTML = `
-    <div class="metrics-label">Pedidos de esta semana</div>
+    <div class="metrics-label">Pedidos desde el sábado 11:30hs</div>
     <div class="prog-row">
       <div class="prog-bar-outer">
         <div class="prog-bar-fill" style="width:${pct}%"></div>
@@ -1197,16 +1194,37 @@ function renderMetrics(hechos, total) {
   panel.style.display = "block";
 }
 
+// Semana laboral: reinicia sábados 11:30hs Argentina (UTC-3 = 14:30 UTC)
+function getSemanaStart() {
+  const now = new Date();
+  const argMs = now.getTime() - 3 * 3600000; // desplazar a hora Argentina
+  const arg = new Date(argMs);
+  const dow = arg.getUTCDay();   // 0=Dom ... 6=Sáb (en hora ARG)
+  const hhmm = arg.getUTCHours() * 60 + arg.getUTCMinutes(); // minutos del día ARG
+  let daysBack = dow === 6 ? (hhmm >= 11 * 60 + 30 ? 0 : 7)
+                           : (dow === 0 ? 1 : dow + 1);
+  const sat = new Date(now);
+  sat.setUTCDate(now.getUTCDate() - daysBack);
+  sat.setUTCHours(14, 30, 0, 0); // 11:30 ARG = 14:30 UTC
+  return sat.toISOString();
+}
+
 let _progresoHechos = 0, _progresoTotal = 0;
 async function cargarProgreso() {
   try {
-    const hace7 = new Date(); hace7.setDate(hace7.getDate() - 7);
-    const desde = hace7.toISOString().split("T")[0] + "T00:00:00Z";
+    const desde = getSemanaStart();
     const todos = await sbGet("pedidos",
-      `fecha_entrega=lte.${viernesISO()}&created_at=gte.${desde}&select=id,estado&limit=500`);
+      `created_at=gte.${encodeURIComponent(desde)}&select=id,estado,created_at,armado_at,cliente_nombre&limit=500`);
     _progresoTotal = todos.length;
     _progresoHechos = todos.filter(p => p.estado !== "pendiente").length;
-    renderMetrics(_progresoHechos, _progresoTotal);
+    const tiempos = todos
+      .filter(p => p.armado_at && p.created_at)
+      .map(p => {
+        const ms = new Date(p.armado_at) - new Date(p.created_at);
+        return ms > 0 ? { ms, c: p.cliente_nombre } : null;
+      })
+      .filter(Boolean);
+    renderMetrics(_progresoHechos, _progresoTotal, tiempos);
   } catch(_) {}
 }
 
