@@ -803,12 +803,19 @@ function doFetchClientes(lastSync, now) {
   var since = lastSync > 0
     ? 'updated_at=gt.' + new Date(lastSync - 60000).toISOString() + '&'
     : '';
-  return sbGet('clientes', since + 'activo=eq.true&select=id,nombre,direccion,zona,vendedor&limit=3000')
+  
+  // CORRECCIÓN: Pedimos las columnas reales que tenés en Supabase
+  return sbGet('clientes', since + 'select=id,nombre,apellido,domicilio,localidad,vendedor&limit=3000')
     .then(function(data) {
       return localforage.getItem('cli_cache').then(function(base) {
         base = base || {};
         data.forEach(function(c) {
-          base[c.id] = { name: c.nombre, desc: [c.direccion, c.zona].filter(Boolean).join(', '), vendedor: c.vendedor };
+          // MAPEO: Adaptamos lo que viene de Supabase al formato que la App necesita
+          base[c.id] = { 
+            name: (c.nombre + ' ' + (c.apellido || '')).trim(), 
+            desc: [c.domicilio, c.localidad].filter(Boolean).join(', '), 
+            vendedor: c.vendedor 
+          };
         });
         clientesMap = base;
         return localforage.setItem('cli_cache', base)
