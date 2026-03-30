@@ -105,7 +105,7 @@ function parsearProductos(productosRaw) {
 async function syncPedidoASupabase(env, pedidoData) {
   try {
     const {
-      sig, vendedor, cliente, productos, observaciones,
+      sig, vendedor, clienteNombre, cliente, productos, observaciones,
       fechaEntrega, timestamp
     } = pedidoData;
 
@@ -114,6 +114,7 @@ async function syncPedidoASupabase(env, pedidoData) {
       sig,
       vendedor: (vendedor || "").toUpperCase(),
       cliente_id: String(cliente || ""),
+      cliente_nombre: (clienteNombre || "").toUpperCase() || null,
       productos_raw: productos || "",
       observaciones: observaciones || "",
       fecha_entrega: fechaEntrega || null,
@@ -242,9 +243,14 @@ export default {
       // RUTAS POST
       // =========================================================
       if (method === "POST") {
-        const clone = request.clone();
+        // Leer el body UNA SOLA VEZ como texto y luego parsear
+        let bodyText = "";
         let bodyJson = null;
-        try { bodyJson = await clone.json(); } catch (e) {}
+        try {
+          bodyText = await request.text();
+          bodyJson = tryParseJSON(bodyText);
+        } catch (e) {}
+        console.log("[worker] POST recibido - bodyJson keys:", bodyJson ? Object.keys(bodyJson).join(",") : "null/no-json");
 
         // 🧠 RUTA IA: Gemini (si tiene prompt + sys)
         if (bodyJson && bodyJson.prompt && bodyJson.sys) {
@@ -336,51 +342,126 @@ export default {
           }
         }
 
-        // 🔄 RUTA ORIGINAL: proxy a GAS + sync a Supabase
-        const bodyText = await request.text();
-        const parsedBody = tryParseJSON(bodyText);
-
-        // Proxy a GAS (comportamiento original intacto)
-        const upstream = await fetch(GAS_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": request.headers.get("Content-Type") || "application/json",
-            "Accept": "application/json",
-          },
-          body: bodyText,
-          redirect: "follow",
-        });
-
-        const raw = await upstream.text();
-        const parsed = tryParseJSON(raw);
-
-        // NUEVO: Duplicar a Supabase si el body tiene datos de pedido
-        if (parsedBody && (parsedBody.fechaEntrega || parsedBody.fecha_entrega)) {
-          // Fire-and-forget: no bloqueamos la respuesta al vendedor
-          const syncData = {
-            sig: parsedBody.sig || parsedBody.sig || String(Date.now()),
-            vendedor: parsedBody.nombreVendedor || parsedBody.vendedor || "",
-            cliente: parsedBody.numeroCliente || parsedBody.cliente || "",
-            productos: parsedBody.productos || "",
-            observaciones: parsedBody.observaciones || "",
-            fechaEntrega: parsedBody.fechaEntrega || parsedBody.fecha_entrega || "",
-            timestamp: Date.now(),
+        // 🔄 RUTA PEDIDO: Supabase directo con errores visibles
+        // Detectar como pedido si tiene fecha O número de cliente (evita caer al proxy GAS cuando fecha es vacía)
+        if (bodyJson && (bodyJson.fechaEntrega || bodyJson.fecha_entrega || bodyJson.numeroCliente || bodyJson.cliente)) {
+          console.log("[worker] 📥 PEDIDO RECIBIDO - keys:", Object.keys(bodyJson).join(","));
+          console.log("[worker] fechaEntrega:", bodyJson.fechaEntrega, "| numeroCliente:", bodyJson.numeroCliente, "| sig:", bodyJson.sig);
+          console.log("[worker] clienteNombre:", bodyJson.clienteNombre, "| vendedor:", bodyJson.nombreVendedor);
+          const pedidoRow = {
+            sig:           bodyJson.sig || String(Date.now()),
+            vendedor:      (bodyJson.nombreVendedor || bodyJson.vendedor || "").toUpperCase(),
+            cliente_id:    String(bodyJson.numeroCliente || bodyJson.cliente || ""),
+            cliente_nombre:(bodyJson.clienteNombre || bodyJson.cliente_nombre || "").toUpperCase() || null,
+            productos_raw: bodyJson.productos || "",
+            observaciones: bodyJson.observaciones || "",
+            fecha_entrega: bodyJson.fechaEntrega || bodyJson.fecha_entrega || null,
+            fecha_pedido:  bodyJson.timestamp ? new Date(bodyJson.timestamp).toISOString() : new Date().toISOString(),
+            estado:        "pendiente",
           };
-          // ctx.waitUntil mantiene la promesa viva después de responder
-          env.SUPABASE_URL && ctx.waitUntil(syncPedidoASupabase(env, syncData).catch(() => {}));
-        }
 
-        if (!parsed) {
-          return new Response(JSON.stringify({
-            status: "error",
-            message: "GAS no devolvió JSON.",
-            raw_response: raw.slice(0, 100),
-          }), {
-            status: 502,
+          console.log("[worker] 🏗️ pedidoRow:", JSON.stringify(pedidoRow));
+          // INSERT directo a Supabase — errores son visibles en la respuesta
+          const sbUrl = `${env.SUPABASE_URL}/rest/v1/pedidos?on_conflict=sig`;
+          const sbRes = await fetch(sbUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": env.SUPABASE_SERVICE_KEY,
+              "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+              "Prefer": "return=representation,resolution=ignore-duplicates",
+            },
+            body: JSON.stringify(pedidoRow),
+          });
+
+          const sbBody = await sbRes.text();
+          console.log("[worker] 🗄️ Supabase HTTP:", sbRes.status, "| body:", sbBody.slice(0, 300));
+
+          if (!sbRes.ok) {
+            // Devolver el error real de Supabase para diagnóstico
+            return new Response(JSON.stringify({
+              status: "supabase_error",
+              http: sbRes.status,
+              detail: sbBody,
+              row_sent: pedidoRow,
+            }), {
+              status: 200, // 200 para que la app no reintente, el error queda visible
+              headers: withCors({ "Content-Type": "application/json" }),
+            });
+          }
+
+          // Insertar items
+          const parsedSb = tryParseJSON(sbBody);
+          const pedidoId = parsedSb?.[0]?.id;
+
+          console.log("[worker] 🆔 pedidoId:", pedidoId);
+          // Si pedidoId es null = Supabase recibió OK pero ignoró por sig duplicado
+          // Significa que el pedido YA estaba en Supabase → igual devolvemos ok
+          if (!pedidoId) {
+            console.log("[worker] sig duplicado ignorado por Supabase:", pedidoRow.sig);
+            return new Response(JSON.stringify({ status: "ok", sig: pedidoRow.sig, pedido_id: null, note: "duplicate_already_in_supabase" }), {
+              headers: withCors({ "Content-Type": "application/json" }),
+            });
+          }
+
+          if (pedidoId) {
+            const items = (bodyJson.productos || "").split("\n")
+              .map(l => l.trim()).filter(Boolean)
+              .map(linea => {
+                const m = linea.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+                return m ? { pedido_id: pedidoId, descripcion: m[2].trim(), cantidad: parseFloat(m[1]) }
+                         : { pedido_id: pedidoId, descripcion: linea, cantidad: 1 };
+              });
+            console.log("[worker] 📦 items a insertar:", items.length);
+            if (items.length > 0) {
+              await fetch(`${env.SUPABASE_URL}/rest/v1/items_pedido?pedido_id=eq.${pedidoId}`, {
+                method: "DELETE",
+                headers: { "apikey": env.SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}` },
+              });
+              await fetch(`${env.SUPABASE_URL}/rest/v1/items_pedido`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "apikey": env.SUPABASE_SERVICE_KEY,
+                  "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+                  "Prefer": "return=minimal",
+                },
+                body: JSON.stringify(items),
+              });
+            }
+          }
+
+          // GAS fire-and-forget
+          ctx.waitUntil(
+            fetch(GAS_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: bodyText,
+              redirect: "follow",
+            }).catch(() => {})
+          );
+
+          console.log("[worker] ✅ pedido OK - sig:", pedidoRow.sig, "| id:", pedidoId);
+          return new Response(JSON.stringify({ status: "ok", sig: pedidoRow.sig, pedido_id: pedidoId }), {
             headers: withCors({ "Content-Type": "application/json" }),
           });
         }
 
+        // Fallback: proxy puro a GAS para otros POST no-pedido
+        const upstream = await fetch(GAS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: bodyText,
+          redirect: "follow",
+        });
+        const raw = await upstream.text();
+        const parsed = tryParseJSON(raw);
+        if (!parsed) {
+          return new Response(JSON.stringify({ status: "error", message: "GAS no devolvió JSON." }), {
+            status: 502,
+            headers: withCors({ "Content-Type": "application/json" }),
+          });
+        }
         return new Response(JSON.stringify(parsed), {
           status: upstream.status,
           headers: withCors({ "Content-Type": "application/json" }),

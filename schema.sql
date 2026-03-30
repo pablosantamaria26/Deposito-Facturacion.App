@@ -89,10 +89,20 @@ CREATE POLICY "public_all_items"        ON items_pedido FOR ALL USING (true) WIT
 CREATE POLICY "public_all_auditoria"    ON auditoria    FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================================
--- NUEVAS COLUMNAS EN PEDIDOS (quién armó)
+-- NUEVAS COLUMNAS EN PEDIDOS (quién armó / facturó)
 -- ============================================================
-ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS armado_por  TEXT;
-ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS armado_at   TIMESTAMPTZ;
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS armado_por    TEXT;
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS armado_at     TIMESTAMPTZ;
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS facturado_at  TIMESTAMPTZ;
+
+-- ============================================================
+-- COLUMNAS FALTANTES EN ITEMS_PEDIDO
+-- (usadas por deposito.html y facturacion.html)
+-- ============================================================
+ALTER TABLE items_pedido ADD COLUMN IF NOT EXISTS es_faltante     BOOLEAN DEFAULT false;
+ALTER TABLE items_pedido ADD COLUMN IF NOT EXISTS modificado       BOOLEAN DEFAULT false;
+ALTER TABLE items_pedido ADD COLUMN IF NOT EXISTS nombre_original  TEXT;
+ALTER TABLE items_pedido ADD COLUMN IF NOT EXISTS cantidad_real    NUMERIC;
 
 -- ============================================================
 -- NOTAS POR CLIENTE (escribe/ve Laura en facturación)
@@ -110,3 +120,74 @@ CREATE INDEX IF NOT EXISTS idx_notas_created_at  ON notas_cliente(created_at DES
 
 ALTER TABLE notas_cliente ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "public_all_notas" ON notas_cliente FOR ALL USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- TABLA CLIENTES — fuente primaria para la app de vendedores
+-- ============================================================
+-- Columnas alineadas con codigo.gs (trigger cada 10 min desde Google Sheets)
+CREATE TABLE IF NOT EXISTS clientes (
+  id          TEXT PRIMARY KEY,          -- NumeroCliente (ej: "10001")
+  nombre      TEXT,                      -- col Nombre del sheet
+  apellido    TEXT,                      -- col Apellido del sheet (nombre del negocio)
+  domicilio   TEXT,
+  localidad   TEXT,
+  lat         TEXT,
+  lng         TEXT,
+  vendedor    TEXT,
+  activo      BOOLEAN DEFAULT true,
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_clientes_vendedor  ON clientes(vendedor);
+CREATE INDEX IF NOT EXISTS idx_clientes_activo    ON clientes(activo);
+CREATE INDEX IF NOT EXISTS idx_clientes_updated   ON clientes(updated_at DESC);
+
+ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_all_clientes" ON clientes FOR ALL USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- TABLA PRODUCTOS — catálogo para la app de vendedores
+-- ============================================================
+CREATE TABLE IF NOT EXISTS productos (
+  id          uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  nombre      TEXT NOT NULL,
+  marca       TEXT,
+  precio      NUMERIC,
+  keywords    TEXT,                      -- palabras clave separadas por coma para búsqueda
+  activo      BOOLEAN DEFAULT true,
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_productos_activo   ON productos(activo);
+CREATE INDEX IF NOT EXISTS idx_productos_marca    ON productos(marca);
+CREATE INDEX IF NOT EXISTS idx_productos_updated  ON productos(updated_at DESC);
+
+ALTER TABLE productos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_all_productos" ON productos FOR ALL USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- NÚMERO DIARIO — Supabase lo asigna automáticamente en cada INSERT
+-- Se reinicia cada día (cuenta los pedidos del mismo día UTC-3)
+-- El worker NO lo envía; se calcula aquí con un trigger BEFORE INSERT
+-- ============================================================
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS numero_diario INTEGER;
+
+CREATE OR REPLACE FUNCTION set_numero_diario()
+RETURNS TRIGGER AS $$
+DECLARE
+  dia DATE;
+BEGIN
+  -- Usar fecha_pedido si está disponible, si no now() — ambas en UTC pero la lógica es la misma
+  dia := COALESCE(NEW.fecha_pedido, now())::date;
+  SELECT COALESCE(MAX(numero_diario), 0) + 1
+    INTO NEW.numero_diario
+    FROM pedidos
+   WHERE fecha_pedido::date = dia;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_numero_diario ON pedidos;
+CREATE TRIGGER trg_numero_diario
+  BEFORE INSERT ON pedidos
+  FOR EACH ROW EXECUTE FUNCTION set_numero_diario();
