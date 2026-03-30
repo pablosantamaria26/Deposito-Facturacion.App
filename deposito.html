@@ -559,10 +559,7 @@ function weekId(date) {
 function labelNumDiario(p) {
   const nd = p.numero_diario ?? p.numero;
   if (!nd) return null;
-  const wk = p.created_at ? weekId(p.created_at) : null;
-  const hoy = weekId(new Date());
-  const tag = (wk && wk === hoy) ? "esta semana" : "sem. anterior";
-  return `Nº ${nd} (${tag})`;
+  return `Nº ${nd}`; // <--- Ahora solo devuelve el número, sin el texto de la semana.
 }
 
 // ── SUPABASE ──
