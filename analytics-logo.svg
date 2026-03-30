@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <!-- Fondo degradado diagonal -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#1E1B4B"/>
+      <stop offset="50%"  stop-color="#312E81"/>
+      <stop offset="100%" stop-color="#4338CA"/>
+    </linearGradient>
+
+    <!-- Barra principal -->
+    <linearGradient id="bar1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"   stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"   stop-color="#A78BFA"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="bar3" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"   stop-color="#C4B5FD"/>
+      <stop offset="100%" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <linearGradient id="bar4" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"   stop-color="#E0E7FF"/>
+      <stop offset="100%" stop-color="#A5B4FC"/>
+    </linearGradient>
+
+    <!-- Brillo superior -->
+    <radialGradient id="shine" cx="30%" cy="20%" r="60%">
+      <stop offset="0%"   stop-color="rgba(255,255,255,0.12)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+
+    <!-- Filtro blur para glow -->
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softglow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <clipPath id="round">
+      <rect width="512" height="512" rx="112" ry="112"/>
+    </clipPath>
+  </defs>
+
+  <!-- Fondo con clip redondeado -->
+  <g clip-path="url(#round)">
+    <!-- Base -->
+    <rect width="512" height="512" fill="url(#bgGrad)"/>
+
+    <!-- Patrón de puntos sutil (grid) -->
+    <g opacity="0.08">
+      <circle cx="52" cy="52" r="2" fill="white"/><circle cx="98" cy="52" r="2" fill="white"/><circle cx="144" cy="52" r="2" fill="white"/><circle cx="190" cy="52" r="2" fill="white"/><circle cx="236" cy="52" r="2" fill="white"/><circle cx="282" cy="52" r="2" fill="white"/><circle cx="328" cy="52" r="2" fill="white"/><circle cx="374" cy="52" r="2" fill="white"/><circle cx="420" cy="52" r="2" fill="white"/><circle cx="466" cy="52" r="2" fill="white"/><circle cx="52" cy="98" r="2" fill="white"/><circle cx="98" cy="98" r="2" fill="white"/><circle cx="144" cy="98" r="2" fill="white"/><circle cx="190" cy="98" r="2" fill="white"/><circle cx="236" cy="98" r="2" fill="white"/><circle cx="282" cy="98" r="2" fill="white"/><circle cx="328" cy="98" r="2" fill="white"/><circle cx="374" cy="98" r="2" fill="white"/><circle cx="420" cy="98" r="2" fill="white"/><circle cx="466" cy="98" r="2" fill="white"/><circle cx="52" cy="144" r="2" fill="white"/><circle cx="98" cy="144" r="2" fill="white"/><circle cx="144" cy="144" r="2" fill="white"/><circle cx="190" cy="144" r="2" fill="white"/><circle cx="236" cy="144" r="2" fill="white"/><circle cx="282" cy="144" r="2" fill="white"/><circle cx="328" cy="144" r="2" fill="white"/><circle cx="374" cy="144" r="2" fill="white"/><circle cx="420" cy="144" r="2" fill="white"/><circle cx="466" cy="144" r="2" fill="white"/><circle cx="52" cy="190" r="2" fill="white"/><circle cx="98" cy="190" r="2" fill="white"/><circle cx="144" cy="190" r="2" fill="white"/><circle cx="190" cy="190" r="2" fill="white"/><circle cx="236" cy="190" r="2" fill="white"/><circle cx="282" cy="190" r="2" fill="white"/><circle cx="328" cy="190" r="2" fill="white"/><circle cx="374" cy="190" r="2" fill="white"/><circle cx="420" cy="190" r="2" fill="white"/><circle cx="466" cy="190" r="2" fill="white"/><circle cx="52" cy="236" r="2" fill="white"/><circle cx="98" cy="236" r="2" fill="white"/><circle cx="144" cy="236" r="2" fill="white"/><circle cx="190" cy="236" r="2" fill="white"/><circle cx="236" cy="236" r="2" fill="white"/><circle cx="282" cy="236" r="2" fill="white"/><circle cx="328" cy="236" r="2" fill="white"/><circle cx="374" cy="236" r="2" fill="white"/><circle cx="420" cy="236" r="2" fill="white"/><circle cx="466" cy="236" r="2" fill="white"/><circle cx="52" cy="282" r="2" fill="white"/><circle cx="98" cy="282" r="2" fill="white"/><circle cx="144" cy="282" r="2" fill="white"/><circle cx="190" cy="282" r="2" fill="white"/><circle cx="236" cy="282" r="2" fill="white"/><circle cx="282" cy="282" r="2" fill="white"/><circle cx="328" cy="282" r="2" fill="white"/><circle cx="374" cy="282" r="2" fill="white"/><circle cx="420" cy="282" r="2" fill="white"/><circle cx="466" cy="282" r="2" fill="white"/><circle cx="52" cy="328" r="2" fill="white"/><circle cx="98" cy="328" r="2" fill="white"/><circle cx="144" cy="328" r="2" fill="white"/><circle cx="190" cy="328" r="2" fill="white"/><circle cx="236" cy="328" r="2" fill="white"/><circle cx="282" cy="328" r="2" fill="white"/><circle cx="328" cy="328" r="2" fill="white"/><circle cx="374" cy="328" r="2" fill="white"/><circle cx="420" cy="328" r="2" fill="white"/><circle cx="466" cy="328" r="2" fill="white"/><circle cx="52" cy="374" r="2" fill="white"/><circle cx="98" cy="374" r="2" fill="white"/><circle cx="144" cy="374" r="2" fill="white"/><circle cx="190" cy="374" r="2" fill="white"/><circle cx="236" cy="374" r="2" fill="white"/><circle cx="282" cy="374" r="2" fill="white"/><circle cx="328" cy="374" r="2" fill="white"/><circle cx="374" cy="374" r="2" fill="white"/><circle cx="420" cy="374" r="2" fill="white"/><circle cx="466" cy="374" r="2" fill="white"/><circle cx="52" cy="420" r="2" fill="white"/><circle cx="98" cy="420" r="2" fill="white"/><circle cx="144" cy="420" r="2" fill="white"/><circle cx="190" cy="420" r="2" fill="white"/><circle cx="236" cy="420" r="2" fill="white"/><circle cx="282" cy="420" r="2" fill="white"/><circle cx="328" cy="420" r="2" fill="white"/><circle cx="374" cy="420" r="2" fill="white"/><circle cx="420" cy="420" r="2" fill="white"/><circle cx="466" cy="420" r="2" fill="white"/><circle cx="52" cy="466" r="2" fill="white"/><circle cx="98" cy="466" r="2" fill="white"/><circle cx="144" cy="466" r="2" fill="white"/><circle cx="190" cy="466" r="2" fill="white"/><circle cx="236" cy="466" r="2" fill="white"/><circle cx="282" cy="466" r="2" fill="white"/><circle cx="328" cy="466" r="2" fill="white"/><circle cx="374" cy="466" r="2" fill="white"/><circle cx="420" cy="466" r="2" fill="white"/><circle cx="466" cy="466" r="2" fill="white"/>
+    </g>
+
+    <!-- Brillo radial -->
+    <rect width="512" height="512" fill="url(#shine)"/>
+
+    <!-- ── GRÁFICO DE BARRAS ── -->
+    <!-- Base line -->
+    <line x1="96" y1="358" x2="416" y2="358" stroke="rgba(255,255,255,0.15)" stroke-width="2"/>
+
+    <!-- Barra 1 — más baja -->
+    <rect x="108" y="288" width="54" height="70" rx="10" fill="url(#bar1)" opacity="0.85"/>
+
+    <!-- Barra 2 — media -->
+    <rect x="182" y="238" width="54" height="120" rx="10" fill="url(#bar2)" opacity="0.90"/>
+
+    <!-- Barra 3 — alta -->
+    <rect x="256" y="178" width="54" height="180" rx="10" fill="url(#bar3)" opacity="0.95"/>
+
+    <!-- Barra 4 — más alta (estrella) -->
+    <rect x="330" y="138" width="54" height="220" rx="10" fill="url(#bar4)" filter="url(#softglow)"/>
+
+    <!-- Línea de tendencia encima de las barras -->
+    <polyline
+      points="135,272 209,222 283,162 357,122"
+      fill="none"
+      stroke="#F0ABFC"
+      stroke-width="4"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      filter="url(#glow)"
+    />
+
+    <!-- Puntos en la línea de tendencia -->
+    <circle cx="135" cy="272" r="7" fill="#F0ABFC" filter="url(#glow)"/>
+    <circle cx="209" cy="222" r="7" fill="#F0ABFC" filter="url(#glow)"/>
+    <circle cx="283" cy="162" r="7" fill="#F0ABFC" filter="url(#glow)"/>
+    <circle cx="357" cy="122" r="9" fill="#FFFFFF" filter="url(#glow)"/>
+
+    <!-- Flecha de crecimiento arriba del último punto -->
+    <polyline
+      points="347,108 357,96 367,108"
+      fill="none"
+      stroke="#FFFFFF"
+      stroke-width="3.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+
+    <!-- ── TEXTO "ML" monograma inferior ── -->
+    <text
+      x="256"
+      y="428"
+      text-anchor="middle"
+      font-family="'Arial Black', 'Helvetica Neue', sans-serif"
+      font-weight="900"
+      font-size="38"
+      letter-spacing="8"
+      fill="rgba(255,255,255,0.90)"
+    >ANALYTICS</text>
+
+    <!-- Línea decorativa bajo el texto -->
+    <rect x="176" y="438" width="160" height="2" rx="1" fill="rgba(255,255,255,0.20)"/>
+
+    <!-- Borde interno sutil -->
+    <rect width="512" height="512" rx="112" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="2"/>
+  </g>
+</svg>
