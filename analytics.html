@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+<title>Mercado Limpio · Analytics</title>
+<meta name="theme-color" content="#ffffff"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+/* ═══════════════════════════════════════════
+   TOKENS & RESET
+═══════════════════════════════════════════ */
+:root {
+  --bg:        #F5F5F7;
+  --surface:   #FFFFFF;
+  --surface2:  #F9F9FB;
+  --border:    rgba(0,0,0,0.06);
+  --text:      #1C1C1E;
+  --text2:     #48484A;
+  --text3:     #8E8E93;
+  --accent:    #6366F1;
+  --accent-s:  rgba(99,102,241,0.10);
+  --green:     #34C759;
+  --green-s:   rgba(52,199,89,0.12);
+  --orange:    #FF9500;
+  --orange-s:  rgba(255,149,0,0.12);
+  --red:       #FF3B30;
+  --red-s:     rgba(255,59,48,0.12);
+  --blue:      #007AFF;
+  --blue-s:    rgba(0,122,255,0.12);
+  --r:         18px;
+  --r-sm:      12px;
+  --shadow:    0 1px 2px rgba(0,0,0,0.03), 0 4px 20px rgba(0,0,0,0.06);
+  --shadow-lg: 0 8px 40px rgba(0,0,0,0.10);
+  --safe-top:  env(safe-area-inset-top, 0px);
+  --safe-bot:  env(safe-area-inset-bottom, 0px);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: none; }
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100svh;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
+button { font-family: inherit; border: none; cursor: pointer; }
+a { text-decoration: none; }
+
+/* ═══════════════════════════════════════════
+   HEADER
+═══════════════════════════════════════════ */
+.header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: calc(var(--safe-top) + 14px) 20px 14px;
+  display: flex; align-items: center; gap: 12px;
+}
+.header-logo {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(99,102,241,0.35);
+}
+.header-info { flex: 1; min-width: 0; }
+.header-title { font-size: 17px; font-weight: 700; color: var(--text); line-height: 1.2; }
+.header-sub   { font-size: 12px; color: var(--text3); margin-top: 1px; }
+.header-actions { display: flex; gap: 8px; }
+.btn-icon {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--surface2); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; color: var(--text2);
+  transition: transform .15s, background .15s;
+}
+.btn-icon:active { transform: scale(.92); background: var(--border); }
+
+/* ═══════════════════════════════════════════
+   SCROLL CONTAINER
+═══════════════════════════════════════════ */
+.scroll {
+  padding: 20px 16px calc(var(--safe-bot) + 32px);
+  display: flex; flex-direction: column; gap: 16px;
+}
+
+/* ═══════════════════════════════════════════
+   SECTION LABEL
+═══════════════════════════════════════════ */
+.section-label {
+  font-size: 13px; font-weight: 600;
+  color: var(--text3); letter-spacing: .04em;
+  text-transform: uppercase; padding: 0 2px;
+  margin-bottom: -8px;
+}
+
+/* ═══════════════════════════════════════════
+   KPI GRID
+═══════════════════════════════════════════ */
+.kpi-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.kpi-card {
+  background: var(--surface);
+  border-radius: var(--r);
+  padding: 16px 18px 18px;
+  box-shadow: var(--shadow);
+  position: relative; overflow: hidden;
+  border: 1px solid var(--border);
+  transition: transform .2s;
+}
+.kpi-card:active { transform: scale(.97); }
+.kpi-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  border-radius: var(--r) var(--r) 0 0;
+}
+.kpi-card.k-green::before  { background: var(--green); }
+.kpi-card.k-blue::before   { background: var(--blue); }
+.kpi-card.k-orange::before { background: var(--orange); }
+.kpi-card.k-red::before    { background: var(--red); }
+.kpi-card.k-accent::before { background: var(--accent); }
+
+.kpi-icon {
+  font-size: 22px; margin-bottom: 10px; display: block;
+}
+.kpi-value {
+  font-size: 32px; font-weight: 800; line-height: 1;
+  letter-spacing: -.03em; color: var(--text);
+}
+.kpi-value.loading { color: var(--text3); font-size: 24px; }
+.kpi-label {
+  font-size: 12px; font-weight: 500; color: var(--text3);
+  margin-top: 4px; line-height: 1.3;
+}
+.kpi-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; font-weight: 600;
+  padding: 2px 7px; border-radius: 99px;
+  margin-top: 8px;
+}
+.kpi-badge.up   { background: var(--green-s);  color: #1a7a33; }
+.kpi-badge.down { background: var(--red-s);    color: #c0392b; }
+.kpi-badge.neu  { background: var(--accent-s); color: #4338ca; }
+
+/* KPI ancho completo */
+.kpi-card.full { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; }
+.kpi-card.full .kpi-icon { margin-bottom: 0; font-size: 28px; }
+.kpi-card.full .kpi-info { flex: 1; }
+.kpi-card.full .kpi-value { font-size: 28px; }
+
+/* ═══════════════════════════════════════════
+   CHART CARD
+═══════════════════════════════════════════ */
+.chart-card {
+  background: var(--surface);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.chart-header {
+  padding: 18px 20px 0;
+  display: flex; align-items: flex-start; gap: 10px;
+}
+.chart-title-block { flex: 1; }
+.chart-title { font-size: 16px; font-weight: 700; color: var(--text); }
+.chart-sub   { font-size: 12px; color: var(--text3); margin-top: 2px; }
+.chart-body  { padding: 16px 12px 12px; height: 200px; }
+.chart-body.tall { height: 240px; }
+
+/* Segmented control de período */
+.period-ctrl {
+  display: flex; gap: 0;
+  background: var(--bg); border-radius: 8px; padding: 2px;
+}
+.period-btn {
+  flex: 1; font-size: 11px; font-weight: 600; color: var(--text3);
+  padding: 5px 8px; border-radius: 6px; background: transparent;
+  transition: background .15s, color .15s; text-align: center;
+}
+.period-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+
+/* ═══════════════════════════════════════════
+   LIST CARD (faltantes, clientes, etc.)
+═══════════════════════════════════════════ */
+.list-card {
+  background: var(--surface);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.list-header {
+  padding: 18px 20px 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+.list-title { font-size: 16px; font-weight: 700; color: var(--text); flex: 1; }
+.list-badge {
+  font-size: 11px; font-weight: 700;
+  background: var(--red-s); color: var(--red);
+  padding: 3px 9px; border-radius: 99px;
+}
+.list-badge.accent { background: var(--accent-s); color: var(--accent); }
+
+.list-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  transition: background .1s;
+}
+.list-row:active { background: var(--bg); }
+.list-rank {
+  width: 24px; height: 24px; border-radius: 8px;
+  background: var(--bg); display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text3); flex-shrink: 0;
+}
+.list-rank.gold   { background: #FFF3CD; color: #856404; }
+.list-rank.silver { background: #E9ECEF; color: #495057; }
+.list-rank.bronze { background: #FFE5D0; color: #8B4513; }
+
+.list-main  { flex: 1; min-width: 0; }
+.list-name  { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list-meta  { font-size: 11px; color: var(--text3); margin-top: 2px; }
+.list-value { font-size: 15px; font-weight: 700; color: var(--text); text-align: right; flex-shrink: 0; }
+.list-value small { display: block; font-size: 10px; font-weight: 400; color: var(--text3); }
+
+/* Bar de progreso mini */
+.mini-bar-wrap { height: 3px; background: var(--bg); border-radius: 99px; margin-top: 5px; }
+.mini-bar { height: 100%; border-radius: 99px; transition: width .6s cubic-bezier(.4,0,.2,1); }
+
+/* ═══════════════════════════════════════════
+   ALERTAS
+═══════════════════════════════════════════ */
+.alert-card {
+  border-radius: var(--r);
+  border: 1px solid;
+  padding: 14px 16px;
+  display: flex; gap: 12px; align-items: flex-start;
+}
+.alert-card.warn {
+  background: #FFFBEB; border-color: #FDE68A;
+}
+.alert-card.danger {
+  background: #FFF5F5; border-color: #FED7D7;
+}
+.alert-icon { font-size: 22px; flex-shrink: 0; line-height: 1.2; }
+.alert-title { font-size: 14px; font-weight: 700; color: var(--text); }
+.alert-body  { font-size: 13px; color: var(--text2); margin-top: 3px; line-height: 1.5; }
+
+/* ═══════════════════════════════════════════
+   IA INSIGHT CARD
+═══════════════════════════════════════════ */
+.ai-card {
+  background: linear-gradient(135deg, #4338CA 0%, #6366F1 50%, #8B5CF6 100%);
+  border-radius: var(--r);
+  padding: 20px;
+  box-shadow: 0 4px 24px rgba(99,102,241,0.35);
+  position: relative; overflow: hidden;
+}
+.ai-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='160' cy='40' r='80' fill='rgba(255,255,255,0.05)'/%3E%3Ccircle cx='20' cy='160' r='60' fill='rgba(255,255,255,0.04)'/%3E%3C/svg%3E") no-repeat center/cover;
+}
+.ai-inner { position: relative; }
+.ai-label { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.65); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 6px; }
+.ai-title { font-size: 20px; font-weight: 800; color: #fff; line-height: 1.2; margin-bottom: 12px; }
+.ai-text  { font-size: 14px; color: rgba(255,255,255,0.88); line-height: 1.6; min-height: 44px; }
+.ai-text.placeholder { color: rgba(255,255,255,0.5); font-style: italic; }
+.ai-actions { margin-top: 16px; display: flex; gap: 8px; }
+.btn-ai {
+  flex: 1; padding: 11px 16px; border-radius: 12px;
+  font-size: 14px; font-weight: 700;
+  transition: transform .15s, opacity .15s;
+}
+.btn-ai:active { transform: scale(.96); opacity: .9; }
+.btn-ai.primary { background: #fff; color: #4338CA; }
+.btn-ai.secondary { background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.25); }
+.btn-ai.loading { opacity: .7; pointer-events: none; }
+
+/* Spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff; border-radius: 50%;
+  animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px;
+}
+
+/* ═══════════════════════════════════════════
+   EMPTY STATE
+═══════════════════════════════════════════ */
+.empty {
+  padding: 32px 20px; text-align: center;
+  font-size: 13px; color: var(--text3);
+}
+.empty-icon { font-size: 36px; margin-bottom: 10px; }
+
+/* ═══════════════════════════════════════════
+   SKELETON
+═══════════════════════════════════════════ */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skel {
+  background: linear-gradient(90deg, #f0f0f0 25%, #fafafa 50%, #f0f0f0 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 8px;
+}
+
+/* ═══════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════ */
+#toastEl {
+  position: fixed; bottom: calc(var(--safe-bot) + 24px); left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: rgba(28,28,30,0.92); color: #fff;
+  padding: 12px 20px; border-radius: 12px;
+  font-size: 14px; font-weight: 500;
+  backdrop-filter: blur(10px); z-index: 9999;
+  transition: transform .3s cubic-bezier(.34,1.56,.64,1), opacity .3s;
+  opacity: 0; white-space: nowrap; max-width: 90vw;
+}
+#toastEl.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+/* ═══════════════════════════════════════════
+   REFRESH INDICATOR
+═══════════════════════════════════════════ */
+.refresh-row {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 11px; color: var(--text3); padding: 4px 0;
+}
+.refresh-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--green);
+}
+.refresh-dot.stale { background: var(--orange); }
+
+/* ═══════════════════════════════════════════
+   ANIMATIONS
+═══════════════════════════════════════════ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp .4s cubic-bezier(.4,0,.2,1) both; }
+.fade-up:nth-child(1) { animation-delay: .05s; }
+.fade-up:nth-child(2) { animation-delay: .10s; }
+.fade-up:nth-child(3) { animation-delay: .15s; }
+.fade-up:nth-child(4) { animation-delay: .20s; }
+.fade-up:nth-child(5) { animation-delay: .25s; }
+.fade-up:nth-child(6) { animation-delay: .30s; }
+.fade-up:nth-child(7) { animation-delay: .35s; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-logo">📊</div>
+  <div class="header-info">
+    <div class="header-title">Mercado Limpio</div>
+    <div class="header-sub" id="headerSub">Cargando...</div>
+  </div>
+  <div class="header-actions">
+    <button class="btn-icon" id="btnRefresh" title="Actualizar">↻</button>
+    <button class="btn-icon" id="btnPDF" title="Exportar PDF">⬇</button>
+  </div>
+</header>
+
+<!-- MAIN SCROLL -->
+<main class="scroll" id="mainScroll">
+
+  <!-- KPIs HOY -->
+  <div class="section-label fade-up">Resumen de hoy</div>
+  <div class="kpi-grid" id="kpiGrid">
+    <!-- se renderizan por JS -->
+    <div class="kpi-card k-green fade-up"><span class="kpi-icon">📦</span><div class="skel" style="height:32px;width:60px;margin-bottom:8px"></div><div class="skel" style="height:12px;width:80px"></div></div>
+    <div class="kpi-card k-blue  fade-up"><span class="kpi-icon">✅</span><div class="skel" style="height:32px;width:60px;margin-bottom:8px"></div><div class="skel" style="height:12px;width:80px"></div></div>
+    <div class="kpi-card k-orange fade-up"><span class="kpi-icon">⚠️</span><div class="skel" style="height:32px;width:60px;margin-bottom:8px"></div><div class="skel" style="height:12px;width:80px"></div></div>
+    <div class="kpi-card k-accent fade-up"><span class="kpi-icon">🏪</span><div class="skel" style="height:32px;width:60px;margin-bottom:8px"></div><div class="skel" style="height:12px;width:80px"></div></div>
+  </div>
+
+  <!-- GRÁFICO TENDENCIA -->
+  <div class="section-label fade-up">Tendencia</div>
+  <div class="chart-card fade-up">
+    <div class="chart-header">
+      <div class="chart-title-block">
+        <div class="chart-title">Pedidos por día</div>
+        <div class="chart-sub" id="chartSub">Últimas 4 semanas</div>
+      </div>
+      <div class="period-ctrl" id="periodCtrl">
+        <button class="period-btn active" data-d="28">28d</button>
+        <button class="period-btn"        data-d="14">14d</button>
+        <button class="period-btn"        data-d="7">7d</button>
+      </div>
+    </div>
+    <div class="chart-body">
+      <canvas id="chartPedidos"></canvas>
+    </div>
+  </div>
+
+  <!-- IA INSIGHT -->
+  <div class="ai-card fade-up" id="aiCard">
+    <div class="ai-inner">
+      <div class="ai-label">✦ Inteligencia Comercial</div>
+      <div class="ai-title">Análisis con IA</div>
+      <div class="ai-text placeholder" id="aiText">Presioná "Analizar" para generar un informe ejecutivo con recomendaciones de compra basado en los datos reales.</div>
+      <div class="ai-actions">
+        <button class="btn-ai primary" id="btnAI">✦ Analizar</button>
+        <button class="btn-ai secondary" id="btnAIReport">📄 Reporte PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FALTANTES FRECUENTES -->
+  <div class="section-label fade-up">Faltantes frecuentes</div>
+  <div class="list-card fade-up" id="faltantesCard">
+    <div class="list-header">
+      <div class="list-title">Artículos que faltan</div>
+      <div class="list-badge" id="faltantesBadge">—</div>
+    </div>
+    <div id="faltantesList"><div class="empty"><div class="empty-icon">🔍</div>Cargando...</div></div>
+  </div>
+
+  <!-- TOP CLIENTES -->
+  <div class="section-label fade-up">Clientes</div>
+  <div class="list-card fade-up" id="clientesCard">
+    <div class="list-header">
+      <div class="list-title">Más activos (90 días)</div>
+      <div class="list-badge accent" id="clientesBadge">—</div>
+    </div>
+    <div id="clientesList"><div class="empty"><div class="empty-icon">🏪</div>Cargando...</div></div>
+  </div>
+
+  <!-- GRÁFICO VENDEDORES -->
+  <div class="section-label fade-up">Vendedores</div>
+  <div class="chart-card fade-up">
+    <div class="chart-header">
+      <div class="chart-title-block">
+        <div class="chart-title">Pedidos por vendedor</div>
+        <div class="chart-sub">Últimos 90 días</div>
+      </div>
+    </div>
+    <div class="chart-body">
+      <canvas id="chartVendedores"></canvas>
+    </div>
+  </div>
+
+  <!-- FALTANTE ALERTS -->
+  <div class="section-label fade-up">Alertas activas</div>
+  <div id="alertasContainer" class="fade-up">
+    <div class="empty"><div class="empty-icon">⏳</div>Cargando alertas...</div>
+  </div>
+
+  <!-- REFRESH INFO -->
+  <div class="refresh-row fade-up" id="refreshRow">
+    <div class="refresh-dot" id="refreshDot"></div>
+    <span id="refreshLabel">Conectando...</span>
+  </div>
+
+</main>
+
+<div id="toastEl"></div>
+
+<script>
+// ════════════════════════════════════════════
+// CONFIG
+// ════════════════════════════════════════════
+const SB_URL  = "https://gjeyvbidomxzofcdycya.supabase.co";
+const SB_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
+const WORKER  = "https://frosty-term-20ea.santamariapablodaniel.workers.dev/";
+
+// ════════════════════════════════════════════
+// SUPABASE HELPERS
+// ════════════════════════════════════════════
+async function sbGet(table, params = "") {
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {
+    headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` }
+  });
+  return r.ok ? r.json() : [];
+}
+
+// ════════════════════════════════════════════
+// TOAST
+// ════════════════════════════════════════════
+let _toastTimer;
+function toast(msg) {
+  const el = document.getElementById("toastEl");
+  el.textContent = msg; el.classList.add("show");
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove("show"), 2800);
+}
+
+// ════════════════════════════════════════════
+// FECHA HELPERS
+// ════════════════════════════════════════════
+function hoy() {
+  return new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" });
+}
+function makeISO(daysAgo) {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  d.setHours(0,0,0,0);
+  return d.toISOString();
+}
+function fmtDate(iso) {
+  return new Date(iso).toLocaleDateString("es-AR", { day:"2-digit", month:"2-digit" });
+}
+
+// ════════════════════════════════════════════
+// CHART DEFAULTS
+// ════════════════════════════════════════════
+Chart.defaults.font.family = "'Inter', sans-serif";
+Chart.defaults.color = "#8E8E93";
+let chartPedidos, chartVendedores;
+
+// ════════════════════════════════════════════
+// KPI RENDER
+// ════════════════════════════════════════════
+function renderKPIs(data) {
+  const grid = document.getElementById("kpiGrid");
+  const { hoyCount, facturadosHoy, faltantesHoy, pendientes, semanaCount, tasaFaltantes } = data;
+
+  grid.innerHTML = `
+    <div class="kpi-card k-green">
+      <span class="kpi-icon">📦</span>
+      <div class="kpi-value">${hoyCount}</div>
+      <div class="kpi-label">Pedidos hoy</div>
+      ${semanaCount !== undefined ? `<span class="kpi-badge neu">↗ ${semanaCount} esta semana</span>` : ""}
+    </div>
+    <div class="kpi-card k-blue">
+      <span class="kpi-icon">✅</span>
+      <div class="kpi-value">${facturadosHoy}</div>
+      <div class="kpi-label">Facturados hoy</div>
+    </div>
+    <div class="kpi-card k-orange">
+      <span class="kpi-icon">⚠️</span>
+      <div class="kpi-value">${tasaFaltantes}%</div>
+      <div class="kpi-label">Items faltantes (sem.)</div>
+      <span class="kpi-badge ${tasaFaltantes > 15 ? "down" : "up"}">${tasaFaltantes > 15 ? "↑ Revisar" : "✓ Normal"}</span>
+    </div>
+    <div class="kpi-card k-accent">
+      <span class="kpi-icon">🔄</span>
+      <div class="kpi-value">${pendientes}</div>
+      <div class="kpi-label">Pendientes ahora</div>
+    </div>
+  `;
+}
+
+// ════════════════════════════════════════════
+// CHART PEDIDOS POR DÍA
+// ════════════════════════════════════════════
+async function loadChartPedidos(days = 28) {
+  const desde = makeISO(days);
+  const data = await sbGet("pedidos",
+    `created_at=gte.${desde}&select=created_at,estado&order=created_at.asc&limit=500`);
+
+  // Agrupar por fecha
+  const byDate = {};
+  data.forEach(p => {
+    const d = p.created_at.slice(0,10);
+    if (!byDate[d]) byDate[d] = { total: 0, facturado: 0 };
+    byDate[d].total++;
+    if (p.estado === "facturado") byDate[d].facturado++;
+  });
+
+  // Generar labels de los últimos N días
+  const labels = [], totales = [], facturados = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0,10);
+    labels.push(fmtDate(key));
+    totales.push(byDate[key]?.total || 0);
+    facturados.push(byDate[key]?.facturado || 0);
+  }
+
+  const ctx = document.getElementById("chartPedidos").getContext("2d");
+  if (chartPedidos) chartPedidos.destroy();
+
+  chartPedidos = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Pedidos",
+          data: totales,
+          borderColor: "#6366F1",
+          backgroundColor: "rgba(99,102,241,0.08)",
+          borderWidth: 2.5,
+          pointRadius: days <= 14 ? 4 : 2,
+          pointBackgroundColor: "#6366F1",
+          tension: 0.4, fill: true
+        },
+        {
+          label: "Facturados",
+          data: facturados,
+          borderColor: "#34C759",
+          backgroundColor: "transparent",
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.4, fill: false,
+          borderDash: [4,3]
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { intersect: false, mode: "index" },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "rgba(28,28,30,0.9)",
+          titleFont: { weight: "700", size: 13 },
+          bodyFont: { size: 12 },
+          padding: 10, cornerRadius: 10,
+          callbacks: {
+            title: items => items[0].label,
+            label: item => ` ${item.dataset.label}: ${item.raw}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { maxTicksLimit: 6, font: { size: 10 } }
+        },
+        y: {
+          grid: { color: "rgba(0,0,0,0.04)" },
+          ticks: { stepSize: 1, font: { size: 10 } },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+
+  document.getElementById("chartSub").textContent =
+    `${data.length} pedidos en ${days} días`;
+}
+
+// ════════════════════════════════════════════
+// CHART VENDEDORES
+// ════════════════════════════════════════════
+async function loadChartVendedores() {
+  const desde = makeISO(90);
+  const data = await sbGet("pedidos",
+    `created_at=gte.${desde}&vendedor=neq.null&select=vendedor&limit=1000`);
+
+  const byVend = {};
+  data.forEach(p => {
+    const v = (p.vendedor || "Sin vendedor").trim().toUpperCase();
+    byVend[v] = (byVend[v] || 0) + 1;
+  });
+
+  const sorted = Object.entries(byVend).sort((a,b) => b[1]-a[1]).slice(0,8);
+  const colors = ["#6366F1","#34C759","#FF9500","#007AFF","#FF3B30","#AF52DE","#FF2D55","#5AC8FA"];
+
+  const ctx = document.getElementById("chartVendedores").getContext("2d");
+  if (chartVendedores) chartVendedores.destroy();
+
+  chartVendedores = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: sorted.map(([v]) => v.length > 14 ? v.slice(0,14)+"…" : v),
+      datasets: [{
+        data: sorted.map(([,n]) => n),
+        backgroundColor: sorted.map((_,i) => colors[i % colors.length] + "CC"),
+        borderColor:     sorted.map((_,i) => colors[i % colors.length]),
+        borderWidth: 1.5,
+        borderRadius: 8,
+        borderSkipped: false
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "rgba(28,28,30,0.9)",
+          callbacks: { label: item => ` ${item.raw} pedidos` }
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { grid: { color: "rgba(0,0,0,0.04)" }, beginAtZero: true, ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+// ════════════════════════════════════════════
+// FALTANTES FRECUENTES
+// ════════════════════════════════════════════
+async function loadFaltantes() {
+  const desde = makeISO(90);
+  const items = await sbGet("items_pedido",
+    `es_faltante=eq.true&created_at=gte.${desde}&select=descripcion,cantidad,pedido_id&limit=2000`);
+
+  if (!items.length) {
+    document.getElementById("faltantesList").innerHTML =
+      `<div class="empty"><div class="empty-icon">🎉</div>Sin faltantes en 90 días</div>`;
+    document.getElementById("faltantesBadge").textContent = "0";
+    return;
+  }
+
+  // Contar por descripción
+  const counts = {};
+  items.forEach(i => {
+    const k = (i.descripcion || "").trim().toLowerCase();
+    if (!k) return;
+    if (!counts[k]) counts[k] = { desc: (i.descripcion||"").trim(), veces: 0, pedidos: new Set() };
+    counts[k].veces++;
+    counts[k].pedidos.add(i.pedido_id);
+  });
+
+  const sorted = Object.values(counts).sort((a,b) => b.veces - a.veces).slice(0, 10);
+  const maxVeces = sorted[0]?.veces || 1;
+
+  document.getElementById("faltantesBadge").textContent = `${sorted.length} items`;
+  document.getElementById("faltantesList").innerHTML = sorted.map((f, i) => {
+    const rankCls = i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "";
+    const pct = Math.round((f.veces / maxVeces) * 100);
+    return `
+      <div class="list-row">
+        <div class="list-rank ${rankCls}">${i+1}</div>
+        <div class="list-main">
+          <div class="list-name">${escHtml(f.desc)}</div>
+          <div class="list-meta">${f.pedidos.size} pedido${f.pedidos.size!==1?"s":""} distintos</div>
+          <div class="mini-bar-wrap"><div class="mini-bar" style="width:${pct}%;background:#FF3B30"></div></div>
+        </div>
+        <div class="list-value">${f.veces}<small>veces</small></div>
+      </div>`;
+  }).join("");
+}
+
+// ════════════════════════════════════════════
+// TOP CLIENTES
+// ════════════════════════════════════════════
+async function loadClientes() {
+  const desde = makeISO(90);
+  const pedidos = await sbGet("pedidos",
+    `created_at=gte.${desde}&estado=neq.cancelado&select=cliente_id,cliente_nombre,estado&limit=1000`);
+
+  if (!pedidos.length) {
+    document.getElementById("clientesList").innerHTML = `<div class="empty">Sin datos</div>`;
+    return;
+  }
+
+  const byClient = {};
+  pedidos.forEach(p => {
+    const id = p.cliente_id;
+    if (!id) return;
+    if (!byClient[id]) byClient[id] = { nombre: p.cliente_nombre || "Cliente "+id, pedidos: 0, facturados: 0 };
+    byClient[id].pedidos++;
+    if (p.estado === "facturado") byClient[id].facturados++;
+  });
+
+  const sorted = Object.entries(byClient).sort((a,b) => b[1].pedidos - a[1].pedidos).slice(0, 8);
+  const max = sorted[0]?.[1].pedidos || 1;
+
+  document.getElementById("clientesBadge").textContent = `${Object.keys(byClient).length} clientes`;
+  document.getElementById("clientesList").innerHTML = sorted.map(([id, c], i) => {
+    const rankCls = i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "";
+    const pct = Math.round((c.pedidos / max) * 100);
+    const tasa = c.pedidos > 0 ? Math.round((c.facturados/c.pedidos)*100) : 0;
+    return `
+      <div class="list-row">
+        <div class="list-rank ${rankCls}">${i+1}</div>
+        <div class="list-main">
+          <div class="list-name">${escHtml(c.nombre)}</div>
+          <div class="list-meta">#${id} · ${tasa}% facturado</div>
+          <div class="mini-bar-wrap"><div class="mini-bar" style="width:${pct}%;background:#6366F1"></div></div>
+        </div>
+        <div class="list-value">${c.pedidos}<small>pedidos</small></div>
+      </div>`;
+  }).join("");
+}
+
+// ════════════════════════════════════════════
+// ALERTAS DE FALTANTES CRÓNICOS
+// ════════════════════════════════════════════
+async function loadAlertas() {
+  const desde = makeISO(21); // 3 semanas
+  const items = await sbGet("items_pedido",
+    `es_faltante=eq.true&created_at=gte.${desde}&select=descripcion,created_at,pedido_id&limit=2000`);
+
+  const container = document.getElementById("alertasContainer");
+
+  if (!items.length) {
+    container.innerHTML = `<div class="alert-card warn"><div class="alert-icon">✅</div><div><div class="alert-title">Sin alertas activas</div><div class="alert-body">No hay artículos faltando hace más de 2 semanas.</div></div></div>`;
+    return;
+  }
+
+  // Agrupar por descripción y contar semanas distintas
+  const byDesc = {};
+  items.forEach(i => {
+    const k = (i.descripcion||"").trim().toLowerCase();
+    if (!k) return;
+    if (!byDesc[k]) byDesc[k] = { desc: (i.descripcion||"").trim(), pedidos: new Set(), fechas: [] };
+    byDesc[k].pedidos.add(i.pedido_id);
+    byDesc[k].fechas.push(new Date(i.created_at));
+  });
+
+  // Solo los que aparecen en >= 3 pedidos distintos
+  const alertas = Object.values(byDesc)
+    .filter(a => a.pedidos.size >= 3)
+    .sort((a,b) => b.pedidos.size - a.pedidos.size)
+    .slice(0, 5);
+
+  if (!alertas.length) {
+    container.innerHTML = `<div class="alert-card warn"><div class="alert-icon">✅</div><div><div class="alert-title">Sin alertas críticas</div><div class="alert-body">Todos los faltantes son puntuales.</div></div></div>`;
+    return;
+  }
+
+  container.innerHTML = alertas.map(a => `
+    <div class="alert-card danger" style="margin-bottom:10px">
+      <div class="alert-icon">🔴</div>
+      <div>
+        <div class="alert-title">${escHtml(a.desc)}</div>
+        <div class="alert-body">Faltó en <strong>${a.pedidos.size} pedidos</strong> en las últimas 3 semanas. Revisá el stock.</div>
+      </div>
+    </div>`).join("");
+}
+
+// ════════════════════════════════════════════
+// KPI LOADING
+// ════════════════════════════════════════════
+async function loadKPIs() {
+  const hoyISO = new Date(); hoyISO.setHours(0,0,0,0);
+  const hoyStr = hoyISO.toISOString();
+  const semanaStr = makeISO(7);
+
+  const [pedidosHoy, pedidosSemana, itemsSemana] = await Promise.all([
+    sbGet("pedidos", `created_at=gte.${hoyStr}&select=estado&limit=200`),
+    sbGet("pedidos", `created_at=gte.${semanaStr}&select=estado,id&limit=500`),
+    sbGet("items_pedido", `created_at=gte.${semanaStr}&select=es_faltante&limit=3000`)
+  ]);
+
+  const facturadosHoy = pedidosHoy.filter(p => p.estado === "facturado").length;
+  const pendientes    = pedidosHoy.filter(p => ["pendiente","armado","en_facturacion"].includes(p.estado)).length;
+  const totalItems    = itemsSemana.length;
+  const faltantesItems= itemsSemana.filter(i => i.es_faltante).length;
+  const tasaFaltantes = totalItems > 0 ? Math.round((faltantesItems / totalItems) * 100) : 0;
+
+  renderKPIs({
+    hoyCount: pedidosHoy.length,
+    facturadosHoy,
+    faltantesHoy: faltantesItems,
+    pendientes,
+    semanaCount: pedidosSemana.length,
+    tasaFaltantes
+  });
+}
+
+// ════════════════════════════════════════════
+// IA ANÁLISIS
+// ════════════════════════════════════════════
+async function runAI() {
+  const btn = document.getElementById("btnAI");
+  const textEl = document.getElementById("aiText");
+  btn.innerHTML = '<span class="spinner"></span>Analizando...';
+  btn.classList.add("loading");
+  textEl.classList.remove("placeholder");
+  textEl.textContent = "Procesando datos...";
+
+  try {
+    // Recopilar datos para Gemini
+    const [pedidos90, faltantes90, top5] = await Promise.all([
+      sbGet("pedidos", `created_at=gte.${makeISO(90)}&select=estado,vendedor,cliente_id,created_at&limit=1000`),
+      sbGet("items_pedido", `es_faltante=eq.true&created_at=gte.${makeISO(90)}&select=descripcion&limit=500`),
+      sbGet("pedidos", `created_at=gte.${makeISO(7)}&select=cliente_nombre,vendedor,estado&limit=100`)
+    ]);
+
+    // Procesar
+    const totalPedidos = pedidos90.length;
+    const facturados   = pedidos90.filter(p => p.estado === "facturado").length;
+    const vendedores   = {};
+    pedidos90.forEach(p => { const v = p.vendedor||"Sin asignar"; vendedores[v]=(vendedores[v]||0)+1; });
+    const topVend = Object.entries(vendedores).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([v,n])=>`${v}(${n})`).join(", ");
+
+    const faltantesCount = {};
+    faltantes90.forEach(i => { const k=(i.descripcion||"").trim(); faltantesCount[k]=(faltantesCount[k]||0)+1; });
+    const topFaltantes = Object.entries(faltantesCount).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([d,n])=>`${d}(${n}x)`).join(", ");
+
+    const prompt = `Sos un asesor comercial experto en distribución de limpieza y bazar en Argentina. Analizá estos datos de los últimos 90 días y generá un resumen ejecutivo conciso (4-5 oraciones), enfocado en: 1) rendimiento general, 2) faltantes críticos a reponer, 3) una recomendación de compra concreta. Sé directo y práctico.
+
+DATOS:
+- Total pedidos: ${totalPedidos}
+- Facturados: ${facturados} (${Math.round(facturados/totalPedidos*100)}%)
+- Top vendedores: ${topVend}
+- Artículos que más faltan: ${topFaltantes}
+- Semana actual: ${top5.length} pedidos`;
+
+    const res = await fetch(WORKER, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, sys: "Respondé en español rioplatense, máximo 5 oraciones, sin listas, sin asteriscos. Texto corrido, profesional y directo." })
+    });
+    const data = await res.json();
+    textEl.textContent = data.text || "No se pudo generar el análisis.";
+  } catch(e) {
+    textEl.textContent = "Error al conectar con el servicio de IA. Intentá de nuevo.";
+  } finally {
+    btn.innerHTML = "✦ Re-analizar";
+    btn.classList.remove("loading");
+  }
+}
+
+// ════════════════════════════════════════════
+// PDF EXPORT
+// ════════════════════════════════════════════
+async function exportPDF() {
+  toast("Generando PDF...");
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+    // Header
+    doc.setFillColor(99, 102, 241);
+    doc.rect(0, 0, 210, 28, "F");
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(20); doc.setFont("helvetica","bold");
+    doc.text("Mercado Limpio · Reporte Analítico", 14, 12);
+    doc.setFontSize(10); doc.setFont("helvetica","normal");
+    doc.text(`Generado: ${new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`, 14, 22);
+
+    doc.setTextColor(28,28,30);
+    let y = 38;
+
+    // KPIs
+    doc.setFontSize(14); doc.setFont("helvetica","bold");
+    doc.text("Resumen del período", 14, y); y += 8;
+    doc.setFontSize(10); doc.setFont("helvetica","normal");
+
+    const kpiCards = document.querySelectorAll(".kpi-card");
+    kpiCards.forEach(card => {
+      const val = card.querySelector(".kpi-value")?.textContent || "";
+      const lbl = card.querySelector(".kpi-label")?.textContent || "";
+      if (val && lbl) {
+        doc.setFont("helvetica","bold"); doc.text(`${val}`, 14, y);
+        doc.setFont("helvetica","normal"); doc.text(` — ${lbl}`, 24, y);
+        y += 6;
+      }
+    });
+
+    y += 6;
+    // IA Text
+    const aiText = document.getElementById("aiText")?.textContent || "";
+    if (aiText && !aiText.includes("Presioná")) {
+      doc.setFontSize(13); doc.setFont("helvetica","bold");
+      doc.text("Análisis IA", 14, y); y += 7;
+      doc.setFontSize(10); doc.setFont("helvetica","normal");
+      const lines = doc.splitTextToSize(aiText, 182);
+      doc.text(lines, 14, y); y += lines.length * 5 + 6;
+    }
+
+    // Faltantes
+    doc.setFontSize(13); doc.setFont("helvetica","bold");
+    doc.text("Artículos faltantes frecuentes", 14, y); y += 7;
+    doc.setFontSize(10); doc.setFont("helvetica","normal");
+    document.querySelectorAll("#faltantesList .list-row").forEach((row, i) => {
+      if (y > 270) { doc.addPage(); y = 20; }
+      const name = row.querySelector(".list-name")?.textContent || "";
+      const val  = row.querySelector(".list-value")?.textContent || "";
+      doc.text(`${i+1}. ${name} — ${val}`, 14, y); y += 6;
+    });
+
+    doc.save(`mercado-limpio-reporte-${new Date().toISOString().slice(0,10)}.pdf`);
+    toast("✅ PDF descargado");
+  } catch(e) {
+    toast("Error al generar PDF");
+    console.error(e);
+  }
+}
+
+// ════════════════════════════════════════════
+// ESCAPE HTML
+// ════════════════════════════════════════════
+function escHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ════════════════════════════════════════════
+// PERIOD CONTROL
+// ════════════════════════════════════════════
+document.getElementById("periodCtrl").addEventListener("click", e => {
+  const btn = e.target.closest(".period-btn");
+  if (!btn) return;
+  document.querySelectorAll(".period-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  loadChartPedidos(parseInt(btn.dataset.d));
+});
+
+// ════════════════════════════════════════════
+// REFRESH
+// ════════════════════════════════════════════
+async function loadAll() {
+  document.getElementById("headerSub").textContent = hoy();
+  document.getElementById("refreshLabel").textContent = "Actualizando...";
+  document.getElementById("refreshDot").classList.add("stale");
+
+  await Promise.all([
+    loadKPIs(),
+    loadChartPedidos(28),
+    loadChartVendedores(),
+    loadFaltantes(),
+    loadClientes(),
+    loadAlertas()
+  ]);
+
+  const now = new Date().toLocaleTimeString("es-AR", { hour:"2-digit", minute:"2-digit" });
+  document.getElementById("refreshLabel").textContent = `Actualizado ${now}`;
+  document.getElementById("refreshDot").classList.remove("stale");
+}
+
+document.getElementById("btnRefresh").addEventListener("click", () => {
+  document.getElementById("btnRefresh").style.transform = "rotate(360deg)";
+  document.getElementById("btnRefresh").style.transition = "transform .5s";
+  setTimeout(() => {
+    document.getElementById("btnRefresh").style.transform = "";
+    document.getElementById("btnRefresh").style.transition = "";
+  }, 500);
+  loadAll();
+  toast("Actualizando datos...");
+});
+
+document.getElementById("btnPDF").addEventListener("click", exportPDF);
+document.getElementById("btnAI").addEventListener("click", runAI);
+document.getElementById("btnAIReport").addEventListener("click", async () => {
+  await runAI();
+  await exportPDF();
+});
+
+// ════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════
+loadAll();
+// Auto-refresh cada 5 minutos
+setInterval(loadAll, 5 * 60 * 1000);
+</script>
+</body>
+</html>
