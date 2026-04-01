@@ -1,5 +1,5 @@
 // =========================================================
-// 🧠 WORKER HÍBRIDO v2: IA GEMINI + PROXY GAS + SUPABASE SYNC
+// 🧠 WORKER HÍBRIDO v3: IA GEMINI + SUPABASE + COBERTURA + MEMORIA
 // =========================================================
 // Env vars requeridas en Cloudflare:
 //   GEMINI_API_KEY       → API key de Google Gemini
@@ -16,12 +16,19 @@ const baseCorsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
-function withCors(headers = {}, extra = {}) {
-  return { ...baseCorsHeaders, ...headers, ...extra };
+function withCors(headers = {}) {
+  return { ...baseCorsHeaders, ...headers };
 }
 
 function tryParseJSON(text) {
   try { return JSON.parse(text); } catch (_) { return null; }
+}
+
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: withCors({ "Content-Type": "application/json" }),
+  });
 }
 
 // =========================================================
@@ -29,8 +36,7 @@ function tryParseJSON(text) {
 // =========================================================
 
 async function supabaseInsert(env, table, data) {
-  const url = `${env.SUPABASE_URL}/rest/v1/${table}`;
-  const res = await fetch(url, {
+  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -44,8 +50,7 @@ async function supabaseInsert(env, table, data) {
 }
 
 async function supabaseUpsert(env, table, data, onConflict = "sig") {
-  const url = `${env.SUPABASE_URL}/rest/v1/${table}?on_conflict=${onConflict}`;
-  const res = await fetch(url, {
+  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?on_conflict=${onConflict}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -59,8 +64,7 @@ async function supabaseUpsert(env, table, data, onConflict = "sig") {
 }
 
 async function supabaseQuery(env, table, params = "") {
-  const url = `${env.SUPABASE_URL}/rest/v1/${table}?${params}`;
-  const res = await fetch(url, {
+  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?${params}`, {
     headers: {
       "apikey": env.SUPABASE_SERVICE_KEY,
       "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
@@ -70,8 +74,7 @@ async function supabaseQuery(env, table, params = "") {
 }
 
 async function supabasePatch(env, table, match, data) {
-  const url = `${env.SUPABASE_URL}/rest/v1/${table}?${match}`;
-  const res = await fetch(url, {
+  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?${match}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -84,8 +87,35 @@ async function supabasePatch(env, table, match, data) {
   return res.ok ? await res.json() : null;
 }
 
+// Llama a una función SQL de Supabase (RPC)
+async function supabaseRPC(env, funcName, params = {}) {
+  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/${funcName}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": env.SUPABASE_SERVICE_KEY,
+      "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+    },
+    body: JSON.stringify(params),
+  });
+  return res.ok ? await res.json() : null;
+}
+
 // =========================================================
-// PARSEO DE PRODUCTOS (texto → array de items)
+// HELPERS DE FECHA/TURNO (Argentina UTC-3, sin DST desde 2008)
+// =========================================================
+function getTurnoAR_() {
+  const h = (new Date().getUTCHours() + 21) % 24; // UTC-3
+  return h >= 14 ? "Tarde" : "Mañana";
+}
+
+function getDateAR_() {
+  const ar = new Date(Date.now() - 3 * 3600 * 1000);
+  return ar.toISOString().split("T")[0]; // YYYY-MM-DD
+}
+
+// =========================================================
+// PARSEO DE PRODUCTOS
 // =========================================================
 function parsearProductos(productosRaw) {
   if (!productosRaw) return [];
@@ -100,65 +130,188 @@ function parsearProductos(productosRaw) {
 }
 
 // =========================================================
-// SINCRONIZAR PEDIDO A SUPABASE (fire-and-forget compatible)
+// IA — HERRAMIENTAS (function calling de Gemini)
+// La IA puede ejecutar estas acciones de forma autónoma
 // =========================================================
-async function syncPedidoASupabase(env, pedidoData) {
+const HERRAMIENTAS_IA = [
+  {
+    name: "registrar_visita",
+    description: "Registra que el vendedor visitó a un cliente. Usar cuando el vendedor menciona que fue a ver, visitó, o estuvo con un cliente.",
+    parameters: {
+      type: "object",
+      properties: {
+        cliente_id:  { type: "string", description: "ID numérico del cliente (ej: '10234')" },
+        tipo:        { type: "string", enum: ["venta", "visita", "no_compro", "no_llegue"], description: "Resultado de la visita" },
+        nota:        { type: "string", description: "Observación breve sobre qué pasó" }
+      },
+      required: ["cliente_id", "tipo"]
+    }
+  },
+  {
+    name: "crear_nota_cliente",
+    description: "Crea una nota visible para todo el equipo (facturación, depósito) sobre un cliente.",
+    parameters: {
+      type: "object",
+      properties: {
+        cliente_id: { type: "string", description: "ID numérico del cliente" },
+        nota:       { type: "string", description: "Texto de la nota (máximo 200 caracteres)" }
+      },
+      required: ["cliente_id", "nota"]
+    }
+  },
+  {
+    name: "crear_tarea",
+    description: "Crea un recordatorio para el vendedor sobre algo pendiente (visitar, llamar, preparar pedido).",
+    parameters: {
+      type: "object",
+      properties: {
+        tarea:      { type: "string", description: "Qué hay que hacer" },
+        cliente_id: { type: "string", description: "ID del cliente relacionado (si aplica)" },
+        vence_at:   { type: "string", description: "Fecha límite formato YYYY-MM-DD" }
+      },
+      required: ["tarea"]
+    }
+  }
+];
+
+// =========================================================
+// IA — EJECUTAR ACCIONES (cuando Gemini llama a una función)
+// =========================================================
+async function ejecutarAccionIA(env, nombre, args, vendedor) {
   try {
-    const {
-      sig, vendedor, clienteNombre, cliente, productos, observaciones,
-      fechaEntrega, timestamp
-    } = pedidoData;
-
-    // 1. Upsert pedido (idempotente por sig)
-    const pedidoRow = {
-      sig,
-      vendedor: (vendedor || "").toUpperCase(),
-      cliente_id: String(cliente || ""),
-      cliente_nombre: (clienteNombre || "").toUpperCase() || null,
-      productos_raw: productos || "",
-      observaciones: observaciones || "",
-      fecha_entrega: fechaEntrega || null,
-      fecha_pedido: timestamp ? new Date(timestamp).toISOString() : new Date().toISOString(),
-      estado: "pendiente",
-    };
-
-    const inserted = await supabaseUpsert(env, "pedidos", pedidoRow, "sig");
-    if (!inserted || !inserted[0]) return;
-
-    const pedidoId = inserted[0].id;
-
-    // 2. Insertar items (solo si el pedido fue creado nuevo, no en update)
-    const items = parsearProductos(productos);
-    if (items.length > 0) {
-      const itemsRows = items.map(item => ({
-        pedido_id: pedidoId,
-        descripcion: item.descripcion,
-        cantidad: item.cantidad,
-      }));
-
-      // Borrar items previos y reinsertar (para mantener consistencia)
-      await fetch(`${env.SUPABASE_URL}/rest/v1/items_pedido?pedido_id=eq.${pedidoId}`, {
-        method: "DELETE",
-        headers: {
-          "apikey": env.SUPABASE_SERVICE_KEY,
-          "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-        },
-      });
-
-      await supabaseInsert(env, "items_pedido", itemsRows);
+    if (nombre === "registrar_visita") {
+      await Promise.all([
+        supabaseInsert(env, "visitas", {
+          cliente_id: args.cliente_id,
+          vendedor,
+          tipo:       args.tipo,
+          nota:       args.nota || null,
+        }),
+        supabaseInsert(env, "timeline_cliente", {
+          cliente_id: args.cliente_id,
+          vendedor,
+          tipo:       args.tipo,
+          resumen:    args.nota || `Visita registrada (${args.tipo})`,
+          origen:     "ia",
+        }),
+      ]);
+      return { ok: true };
     }
 
-    // 3. Auditoría
-    await supabaseInsert(env, "auditoria", {
-      pedido_id: pedidoId,
-      accion: "pedido_recibido",
-      usuario: pedidoData.vendedor || "sistema",
-      detalle: { sig, origen: "worker", items_count: items.length },
-    });
+    if (nombre === "crear_nota_cliente") {
+      await Promise.all([
+        supabaseInsert(env, "notas_cliente", {
+          cliente_id: args.cliente_id,
+          nota:       args.nota,
+          created_by: `${vendedor} (IA)`,
+        }),
+        supabaseInsert(env, "timeline_cliente", {
+          cliente_id: args.cliente_id,
+          vendedor,
+          tipo:       "nota_ia",
+          resumen:    args.nota.slice(0, 120),
+          origen:     "ia",
+        }),
+      ]);
+      return { ok: true };
+    }
 
+    if (nombre === "crear_tarea") {
+      await supabaseInsert(env, "tareas", {
+        vendedor,
+        cliente_id: args.cliente_id || null,
+        tarea:      args.tarea,
+        vence_at:   args.vence_at || null,
+        creada_por: "ia",
+      });
+      return { ok: true };
+    }
+
+    return { ok: false, error: `Función desconocida: ${nombre}` };
   } catch (e) {
-    console.error("syncPedidoASupabase error:", e.message);
+    console.error(`[IA] Error ejecutando ${nombre}:`, e.message);
+    return { ok: false, error: e.message };
   }
+}
+
+// =========================================================
+// IA — CONSTRUIR SYSTEM PROMPT con contexto real de Supabase
+// =========================================================
+function buildSystemPrompt(ctx) {
+  let sys = ctx.prompt_base ||
+    "Sos Soporte Mercado Limpio, asistente de ventas de la distribuidora. Hablás en español rioplatense, sos directo y breve (máximo 3-4 oraciones). Nunca inventás datos.";
+
+  // Cobertura general del vendedor
+  if (ctx.cobertura) {
+    const c = ctx.cobertura;
+    sys += `\n\n== COBERTURA DE TU CARTERA ==\n`;
+    sys += `Total: ${c.total_clientes} clientes | Al día: ${c.al_dia} | Pendientes: ${c.pendientes} | Críticos: ${c.criticos} | Abandonados: ${c.abandonados} | Sin visitar nunca: ${c.nunca_visitados}\n`;
+    sys += `Porcentaje de cobertura: ${c.pct_cobertura}%\n`;
+  }
+
+  // Clientes críticos (más urgentes)
+  if (ctx.criticos?.length) {
+    sys += `\n== CLIENTES CRÍTICOS (sin comprar >30 días) ==\n`;
+    ctx.criticos.forEach(c => {
+      sys += `- [${c.id}] ${c.nombre} ${c.apellido || ""} | ${c.localidad} | ${c.dias_sin_comprar} días sin comprar\n`;
+    });
+  }
+
+  // Zonas del vendedor
+  if (ctx.zonas?.length) {
+    sys += `\n== ZONAS ==\n`;
+    ctx.zonas.forEach(z => {
+      sys += `- ${z.localidad}: ${z.total_clientes} clientes, ${z.criticos} críticos, promedio ${z.promedio_dias} días sin comprar\n`;
+    });
+  }
+
+  // Cliente en foco (si se abrió el chat desde una ficha)
+  if (ctx.cliente) {
+    const c = ctx.cliente;
+    sys += `\n== CLIENTE EN FOCO ==\n`;
+    sys += `ID: ${c.id} | ${c.nombre} ${c.apellido || ""} | ${c.localidad} | ${c.domicilio}\n`;
+    sys += `Días sin comprar: ${c.dias_sin_comprar === 999 ? "nunca compró" : c.dias_sin_comprar + " días"}\n`;
+  }
+
+  // Últimos pedidos del cliente en foco
+  if (ctx.ultimos_pedidos?.length) {
+    sys += `\n== ÚLTIMOS PEDIDOS ==\n`;
+    ctx.ultimos_pedidos.forEach(p => {
+      const fecha = p.fecha_entrega || "sin fecha";
+      const prods = (p.productos || "").replace(/\n/g, " | ").slice(0, 120);
+      sys += `- ${fecha}: ${prods}\n`;
+    });
+  }
+
+  // Notas del equipo sobre el cliente
+  if (ctx.notas?.length) {
+    sys += `\n== NOTAS DEL EQUIPO ==\n`;
+    ctx.notas.forEach(n => {
+      const fecha = new Date(n.created_at).toLocaleDateString("es-AR");
+      sys += `- [${n.created_by} — ${fecha}]: ${n.nota}\n`;
+    });
+  }
+
+  // Línea de tiempo de interacciones recientes
+  if (ctx.timeline?.length) {
+    sys += `\n== LÍNEA DE TIEMPO (interacciones recientes) ==\n`;
+    ctx.timeline.forEach(t => {
+      const fecha = new Date(t.created_at).toLocaleDateString("es-AR");
+      sys += `- ${fecha} [${t.tipo}]: ${t.resumen || ""}\n`;
+    });
+  }
+
+  // Memoria de conversación anterior
+  if (ctx.memoria_previa) {
+    sys += `\n== MEMORIA DE CONVERSACIÓN ANTERIOR ==\n${ctx.memoria_previa.resumen}\n`;
+    if (ctx.memoria_previa.hechos_clave && Object.keys(ctx.memoria_previa.hechos_clave).length) {
+      sys += `Hechos clave recordados: ${JSON.stringify(ctx.memoria_previa.hechos_clave)}\n`;
+    }
+  }
+
+  sys += `\n== PODÉS HACER ==\nRegistrar visitas, crear notas para el equipo, armar recordatorios. Cuando el vendedor te lo pida, ejecutás la acción y confirmás que lo hiciste.`;
+
+  return sys;
 }
 
 // =========================================================
@@ -168,10 +321,10 @@ export default {
   async fetch(request, env, ctx) {
     try {
       const method = request.method.toUpperCase();
-      const url = new URL(request.url);
-      const path = url.pathname;
+      const url    = new URL(request.url);
+      const path   = url.pathname;
 
-      // ✅ OPTIONS (CORS preflight)
+      // OPTIONS (CORS preflight)
       if (method === "OPTIONS") {
         return new Response(null, {
           status: 204,
@@ -183,36 +336,29 @@ export default {
       }
 
       // =========================================================
-      // RUTAS GET
+      // GET
       // =========================================================
       if (method === "GET") {
 
-        // GET /pedidos — lista pedidos con filtros opcionales
-        // ?estado=pendiente&fecha=2025-03-26
+        // GET /pedidos?estado=&fecha=
         if (path === "/pedidos") {
           const estado = url.searchParams.get("estado");
           const fecha  = url.searchParams.get("fecha");
-
-          let filtros = "order=created_at.desc&limit=100";
+          let filtros  = "order=created_at.desc&limit=100";
           if (estado) filtros += `&estado=eq.${estado}`;
           if (fecha)  filtros += `&fecha_entrega=eq.${fecha}`;
-
           const pedidos = await supabaseQuery(env, "pedidos", filtros);
-          return new Response(JSON.stringify(pedidos), {
-            headers: withCors({ "Content-Type": "application/json" }),
-          });
+          return jsonResponse(pedidos);
         }
 
-        // GET /pedido/:id — detalle completo con items
+        // GET /pedido/:id
         if (path.startsWith("/pedido/")) {
           const pedidoId = path.split("/")[2];
           const [pedido, items] = await Promise.all([
-            supabaseQuery(env, "pedidos", `id=eq.${pedidoId}`),
+            supabaseQuery(env, "pedidos",      `id=eq.${pedidoId}`),
             supabaseQuery(env, "items_pedido", `pedido_id=eq.${pedidoId}&order=id.asc`),
           ]);
-          return new Response(JSON.stringify({ pedido: pedido[0], items }), {
-            headers: withCors({ "Content-Type": "application/json" }),
-          });
+          return jsonResponse({ pedido: pedido[0], items });
         }
 
         // GET /auditoria/:pedidoId
@@ -220,81 +366,434 @@ export default {
           const pedidoId = path.split("/")[2];
           const logs = await supabaseQuery(env, "auditoria",
             `pedido_id=eq.${pedidoId}&order=created_at.asc`);
-          return new Response(JSON.stringify(logs), {
-            headers: withCors({ "Content-Type": "application/json" }),
-          });
+          return jsonResponse(logs);
         }
 
-        // GET proxy a GAS (comportamiento original)
+        // GET /cobertura/:vendedor → alertas de cobertura de cartera
+        if (path.startsWith("/cobertura/")) {
+          const vendedor = decodeURIComponent(path.split("/")[2] || "");
+          const data     = await supabaseRPC(env, "get_alertas_cobertura", { p_vendedor: vendedor });
+          return jsonResponse(data || { pendientes: [], resumen: null });
+        }
+
+        // GET /timeline/:clienteId → línea de tiempo de un cliente
+        if (path.startsWith("/timeline/")) {
+          const clienteId = path.split("/")[2];
+          const timeline  = await supabaseQuery(env, "timeline_cliente",
+            `cliente_id=eq.${clienteId}&order=created_at.desc&limit=30`);
+          return jsonResponse(timeline);
+        }
+
+        // GET /tareas/:vendedor → recordatorios pendientes
+        if (path.startsWith("/tareas/")) {
+          const vendedor = decodeURIComponent(path.split("/")[2] || "");
+          const tareas   = await supabaseQuery(env, "tareas",
+            `vendedor=ilike.${encodeURIComponent(vendedor)}&completada=eq.false&order=vence_at.asc.nullslast`);
+          return jsonResponse(tareas);
+        }
+
+        // Fallback GET → proxy a GAS
         const upstream = await fetch(GAS_URL + url.search, {
           method: "GET",
           headers: { "Accept": "application/json" },
           redirect: "follow",
         });
-        const raw = await upstream.text();
+        const raw    = await upstream.text();
         const parsed = tryParseJSON(raw);
-        return new Response(JSON.stringify(parsed || { error: "No JSON" }), {
-          status: upstream.status,
-          headers: withCors({ "Content-Type": "application/json" }),
-        });
+        return jsonResponse(parsed || { error: "No JSON" });
       }
 
       // =========================================================
-      // RUTAS POST
+      // POST
       // =========================================================
       if (method === "POST") {
-        // Leer el body UNA SOLA VEZ como texto y luego parsear
         let bodyText = "";
         let bodyJson = null;
         try {
           bodyText = await request.text();
           bodyJson = tryParseJSON(bodyText);
         } catch (e) {}
-        console.log("[worker] POST recibido - bodyJson keys:", bodyJson ? Object.keys(bodyJson).join(",") : "null/no-json");
 
-        // 🧠 RUTA IA: Gemini (si tiene prompt + sys)
-        if (bodyJson && bodyJson.prompt && bodyJson.sys) {
+        // ── RUTA IA LEGACY (app-pedidos: btnAiOptimize) ──
+        // Mantener para compatibilidad — sin contexto Supabase
+        if (bodyJson && bodyJson.prompt && bodyJson.sys && !bodyJson.accion) {
           const apiKey = env.GEMINI_API_KEY;
-          if (!apiKey) {
-            return new Response(JSON.stringify({ text: "Error: Falta GEMINI_API_KEY." }), {
-              headers: withCors({ "Content-Type": "application/json" }),
+          if (!apiKey) return jsonResponse({ text: "Error: Falta GEMINI_API_KEY." });
+
+          const aiRes  = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: bodyJson.prompt }] }],
+                systemInstruction: { parts: [{ text: bodyJson.sys }] },
+              }),
+            }
+          );
+          const aiData = await aiRes.json();
+          const text   = aiData.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo procesar.";
+          return jsonResponse({ text });
+        }
+
+        // ── RUTAS POR ACCIÓN ──
+        if (bodyJson && bodyJson.accion) {
+          const { accion } = bodyJson;
+
+          // ── LOGIN de vendedor ──
+          if (accion === "login") {
+            const { username, pin } = bodyJson;
+            if (!username || !pin) return jsonResponse({ exito: false, error: "Faltan credenciales" });
+
+            const result = await supabaseQuery(env, "vendedores",
+              `username=eq.${encodeURIComponent(username.toLowerCase())}&pin=eq.${encodeURIComponent(pin)}&activo=eq.true&select=id,nombre,username`
+            );
+            if (!result.length) return jsonResponse({ exito: false, error: "Usuario o PIN incorrecto" });
+
+            return jsonResponse({ exito: true, vendedor: result[0].nombre, username: result[0].username, id: result[0].id });
+          }
+
+          // ── GET_APP_DATA: clientes + zonas + jornada_activa desde Supabase ──
+          if (accion === "get_app_data") {
+            const { vendedor } = bodyJson;
+            if (!vendedor) return jsonResponse({ exito: false, error: "Falta vendedor" });
+
+            const today = getDateAR_();
+            const [data, jornadaRows] = await Promise.all([
+              supabaseRPC(env, "get_vendedor_data", { p_vendedor: vendedor }),
+              supabaseQuery(env, "jornadas",
+                `vendedor=ilike.${encodeURIComponent(vendedor)}&estado=eq.ACTIVA&inicio_fecha=eq.${today}&order=inicio_at.desc&limit=1`
+              ),
+            ]);
+            if (!data) return jsonResponse({ exito: false, error: "Error al obtener datos" });
+
+            let jornada_activa = { activa: false, jornadaId: null, turno: null, zonas: [] };
+            if (jornadaRows.length > 0) {
+              const j = jornadaRows[0];
+              jornada_activa = { activa: true, jornadaId: j.jornada_id, turno: j.turno, zonas: j.zonas || [] };
+            }
+
+            return jsonResponse({
+              exito: true,
+              clientes: data.clientes || [],
+              zonas:    data.zonas    || [],
+              jornada_activa,
+              sugerencia_ia: null,          // fase futura: IA con historial Supabase
+              fecha_servidor: new Date().toISOString(),
             });
           }
 
-          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-          const aiResponse = await fetch(geminiUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: bodyJson.prompt }] }],
-              systemInstruction: { parts: [{ text: bodyJson.sys }] },
-            }),
-          });
+          // ── REGISTRAR VISITA manual (desde la app, no desde la IA) ──
+          if (accion === "registrar_visita") {
+            const { cliente_id, vendedor, tipo, nota, lat, lng } = bodyJson;
+            if (!cliente_id || !vendedor || !tipo) return jsonResponse({ exito: false, error: "Faltan campos" });
 
-          const aiData = await aiResponse.json();
-          const text = aiData.candidates?.[0]?.content?.parts?.[0]?.text
-            || "No se pudo procesar la IA.";
+            await Promise.all([
+              supabaseInsert(env, "visitas", {
+                cliente_id, vendedor, tipo,
+                nota: nota || null,
+                lat:  lat  || null,
+                lng:  lng  || null,
+              }),
+              supabaseInsert(env, "timeline_cliente", {
+                cliente_id, vendedor,
+                tipo,
+                resumen: nota || `Visita: ${tipo}`,
+                origen:  "manual",
+              }),
+            ]);
+            return jsonResponse({ exito: true });
+          }
 
-          return new Response(JSON.stringify({ text }), {
-            headers: withCors({ "Content-Type": "application/json" }),
-          });
-        }
+          // ── CHATBOT IA con contexto real y function calling ──
+          if (accion === "chatbot_ia") {
+            const { vendedor, cliente_id, mensaje, historial } = bodyJson;
+            if (!mensaje)   return jsonResponse({ text: "Escribí tu consulta." });
+            if (!vendedor)  return jsonResponse({ text: "No se identificó el vendedor." });
 
-        // 📦 RUTA ESTADO: actualizar estado de pedido / item
-        // { accion: "marcar_armado"|"marcar_facturado"|"marcar_item", ... }
-        if (bodyJson && bodyJson.accion) {
-          const { accion, pedidoId, itemId, usuario, estado } = bodyJson;
+            const apiKey = env.GEMINI_API_KEY;
+            if (!apiKey)    return jsonResponse({ text: "Error: Falta GEMINI_API_KEY." });
+
+            // 1. Traer contexto completo desde Supabase (1 sola query)
+            const context = await supabaseRPC(env, "build_ia_context", {
+              p_vendedor:   vendedor,
+              p_cliente_id: cliente_id || null,
+            });
+
+            // 2. Construir system prompt enriquecido
+            const sys = buildSystemPrompt(context || {});
+
+            // 3. Armar historial de conversación
+            const contents = [];
+            if (Array.isArray(historial)) {
+              historial.slice(-6).forEach(msg => {   // máx 6 turnos de historial
+                contents.push({
+                  role:  msg.role === "user" ? "user" : "model",
+                  parts: [{ text: msg.text }],
+                });
+              });
+            }
+            contents.push({ role: "user", parts: [{ text: mensaje }] });
+
+            // 4. Llamar a Gemini con function calling habilitado
+            const geminiRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents,
+                  systemInstruction: { parts: [{ text: sys }] },
+                  tools: [{ functionDeclarations: HERRAMIENTAS_IA }],
+                  generationConfig: { maxOutputTokens: 400, temperature: 0.7 },
+                }),
+              }
+            );
+            const geminiData = await geminiRes.json();
+            const parts      = geminiData.candidates?.[0]?.content?.parts || [];
+
+            // 5. Ejecutar function calls que Gemini pidió
+            const accionesTomadas = [];
+            for (const part of parts) {
+              if (part.functionCall) {
+                const resultado = await ejecutarAccionIA(env, part.functionCall.name, part.functionCall.args, vendedor);
+                accionesTomadas.push({
+                  nombre:    part.functionCall.name,
+                  args:      part.functionCall.args,
+                  resultado,
+                });
+              }
+            }
+
+            const textoParte = parts.find(p => p.text);
+            const texto = textoParte?.text
+              || (accionesTomadas.length > 0 ? "✅ Listo, lo registré." : "No pude generar una respuesta.");
+
+            // 6. Registrar en timeline que hubo chat con IA (fire-and-forget)
+            if (cliente_id) {
+              ctx.waitUntil(
+                supabaseInsert(env, "timeline_cliente", {
+                  cliente_id, vendedor,
+                  tipo:    "chat_ia",
+                  resumen: mensaje.slice(0, 100),
+                  origen:  "ia",
+                }).catch(() => {})
+              );
+            }
+
+            return jsonResponse({ text: texto, acciones: accionesTomadas });
+          }
+
+          // ── GUARDAR MEMORIA de conversación (al cerrar el chat) ──
+          if (accion === "guardar_memoria") {
+            const { vendedor, cliente_id, resumen, hechos_clave, acciones_tomadas, turno_count } = bodyJson;
+            if (!vendedor || !resumen) return jsonResponse({ exito: false, error: "Faltan campos" });
+
+            await supabaseInsert(env, "conversation_summaries", {
+              vendedor,
+              cliente_id:       cliente_id || null,
+              resumen,
+              hechos_clave:     hechos_clave     || {},
+              acciones_tomadas: acciones_tomadas || [],
+              turno_count:      turno_count      || 0,
+            });
+            return jsonResponse({ exito: true });
+          }
+
+          // ── GUARDAR TOKEN FCM para push notifications ──
+          if (accion === "save_fcm_token") {
+            const { vendedor, token, dispositivo } = bodyJson;
+            if (!vendedor || !token) return jsonResponse({ exito: false, error: "Faltan campos" });
+
+            await fetch(`${env.SUPABASE_URL}/rest/v1/fcm_tokens?on_conflict=token`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "apikey": env.SUPABASE_SERVICE_KEY,
+                "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+                "Prefer": "return=minimal,resolution=merge-duplicates",
+              },
+              body: JSON.stringify({
+                vendedor,
+                token,
+                dispositivo:  dispositivo || null,
+                activo:       true,
+                updated_at:   new Date().toISOString(),
+              }),
+            });
+            return jsonResponse({ exito: true });
+          }
+
+          // ── GET COBERTURA (también accesible por POST) ──
+          if (accion === "get_cobertura") {
+            const { vendedor } = bodyJson;
+            const data = await supabaseRPC(env, "get_alertas_cobertura", { p_vendedor: vendedor });
+            return jsonResponse({ exito: true, ...(data || { pendientes: [], resumen: null }) });
+          }
+
+          // ── COMPLETAR TAREA ──
+          if (accion === "completar_tarea") {
+            const { tarea_id } = bodyJson;
+            await supabasePatch(env, "tareas", `id=eq.${tarea_id}`, { completada: true });
+            return jsonResponse({ exito: true });
+          }
+
+          // ── PING (chequeo de conectividad desde app-vendedores) ──
+          if (accion === "ping") {
+            return jsonResponse({ exito: true, ts: Date.now() });
+          }
+
+          // ── REGISTRAR MOVIMIENTO (visita individual desde app-vendedores) ──
+          if (accion === "registrar_movimiento") {
+            const { vendedor, clienteId, tipo, motivo, observacion } = bodyJson;
+            const cliente_id = String(clienteId || "");
+            if (!cliente_id || !vendedor) return jsonResponse({ exito: false, error: "Faltan campos" });
+
+            // Mapear tipo GAS → tipo Supabase
+            let tipoSB = "visita";
+            if (tipo === "pedido") tipoSB = "venta";
+            else if (String(motivo || "").toLowerCase().includes("no lleg")) tipoSB = "no_llegue";
+
+            const nota = [motivo, observacion].filter(Boolean).join(" · ") || null;
+
+            await Promise.all([
+              supabaseInsert(env, "visitas", { cliente_id, vendedor: String(vendedor).toUpperCase(), tipo: tipoSB, nota }),
+              supabaseInsert(env, "timeline_cliente", {
+                cliente_id, vendedor: String(vendedor).toUpperCase(),
+                tipo: tipoSB, resumen: nota || `Visita: ${tipoSB}`, origen: "manual",
+              }),
+            ]);
+            return jsonResponse({ exito: true });
+          }
+
+          // ── REGISTRAR BATCH (múltiples visitas — ej: "No llegué" por zona) ──
+          if (accion === "registrar_batch") {
+            const { vendedor, items } = bodyJson;
+            if (!vendedor || !Array.isArray(items)) return jsonResponse({ exito: false, error: "Faltan campos" });
+
+            const ops = items.flatMap(item => {
+              const cliente_id = String(item.clienteId || item.cliente_id || "");
+              if (!cliente_id) return [];
+              let tipoSB = "visita";
+              if (item.tipo === "pedido") tipoSB = "venta";
+              else if (String(item.motivo || "").toLowerCase().includes("no lleg")) tipoSB = "no_llegue";
+              const nota = [item.motivo, item.observacion].filter(Boolean).join(" · ") || null;
+              return [
+                supabaseInsert(env, "visitas", { cliente_id, vendedor: String(vendedor).toUpperCase(), tipo: tipoSB, nota }),
+                supabaseInsert(env, "timeline_cliente", {
+                  cliente_id, vendedor: String(vendedor).toUpperCase(),
+                  tipo: tipoSB, resumen: nota || `Visita: ${tipoSB}`, origen: "manual",
+                }),
+              ];
+            });
+            await Promise.all(ops);
+            return jsonResponse({ exito: true });
+          }
+
+          // ── CLIENTES SEARCH (buscador live en app-vendedores) ──
+          if (accion === "clientes_search") {
+            const { vendedor, q, limit = 8 } = bodyJson;
+            if (!vendedor || !q) return jsonResponse({ exito: true, items: [] });
+            const items = await supabaseRPC(env, "search_clientes", {
+              p_vendedor: vendedor, p_query: q, p_limit: Number(limit) || 8,
+            });
+            return jsonResponse({ exito: true, items: items || [] });
+          }
+
+          // ── CLIENTE LOOKUP (ficha completa + último pedido) ──
+          if (accion === "cliente_lookup") {
+            const { vendedor, clienteId } = bodyJson;
+            if (!vendedor || !clienteId) return jsonResponse({ exito: false, error: "Faltan campos" });
+            const data = await supabaseRPC(env, "cliente_lookup", {
+              p_vendedor: vendedor, p_cliente_id: String(clienteId),
+            });
+            if (!data || !data.cliente) return jsonResponse({ exito: false, error: "Cliente no encontrado" });
+            return jsonResponse({ exito: true, cliente: data.cliente, ultimoPedido: data.ultimoPedido || null, ticket: data.ticket || "" });
+          }
+
+          // ── START JORNADA ──
+          if (accion === "start_jornada") {
+            const { vendedor, zonas } = bodyJson;
+            if (!vendedor) return jsonResponse({ exito: false, error: "Falta vendedor" });
+
+            const today   = getDateAR_();
+            const turno   = getTurnoAR_();
+            const vend    = String(vendedor).toUpperCase();
+
+            // Verificar si ya hay jornada activa para este vendedor/turno/día
+            const existing = await supabaseQuery(env, "jornadas",
+              `vendedor=ilike.${encodeURIComponent(vend)}&turno=eq.${encodeURIComponent(turno)}&estado=eq.ACTIVA&inicio_fecha=eq.${today}&limit=1`
+            );
+            if (existing.length > 0) {
+              const j = existing[0];
+              return jsonResponse({ exito: true, activa: true, jornadaId: j.jornada_id, turno: j.turno, zonas: j.zonas || [] });
+            }
+
+            const jornadaId = `J-${vend}-${today}-${turno.toUpperCase()}-${Date.now()}`;
+            await supabaseInsert(env, "jornadas", {
+              jornada_id:   jornadaId,
+              vendedor:     vend,
+              turno,
+              zonas:        zonas || [],
+              estado:       "ACTIVA",
+              inicio_fecha: today,
+              inicio_at:    new Date().toISOString(),
+            });
+            return jsonResponse({ exito: true, activa: true, jornadaId, turno, zonas: zonas || [] });
+          }
+
+          // ── GET JORNADA ACTIVA ──
+          if (accion === "get_jornada_activa") {
+            const { vendedor } = bodyJson;
+            if (!vendedor) return jsonResponse({ exito: true, activa: false });
+
+            const today  = getDateAR_();
+            const result = await supabaseQuery(env, "jornadas",
+              `vendedor=ilike.${encodeURIComponent(vendedor)}&estado=eq.ACTIVA&inicio_fecha=eq.${today}&order=inicio_at.desc&limit=1`
+            );
+            if (!result.length) return jsonResponse({ exito: true, activa: false });
+            const j = result[0];
+            return jsonResponse({ exito: true, activa: true, jornadaId: j.jornada_id, turno: j.turno, zonas: j.zonas || [] });
+          }
+
+          // ── FINALIZAR JORNADA ──
+          if (accion === "finalizar_jornada") {
+            const { jornadaId, notas } = bodyJson;
+            if (!jornadaId) return jsonResponse({ exito: false, error: "Falta jornadaId" });
+            await supabasePatch(env, "jornadas", `jornada_id=eq.${encodeURIComponent(jornadaId)}`, {
+              estado: "FINALIZADA",
+              fin_at: new Date().toISOString(),
+              notas:  notas || null,
+            });
+            return jsonResponse({ exito: true });
+          }
+
+          // ── GET TURNO STATE (mañana finalizada? para lógica de tarde) ──
+          if (accion === "get_turno_state") {
+            const { vendedor } = bodyJson;
+            const today  = getDateAR_();
+            const turno  = getTurnoAR_();
+            const manana = await supabaseQuery(env, "jornadas",
+              `vendedor=ilike.${encodeURIComponent(vendedor || "")}&turno=eq.Mañana&inicio_fecha=eq.${today}&limit=1`
+            );
+            return jsonResponse({
+              exito: true,
+              turno,
+              manana_finalizada: manana.length > 0 && manana[0].estado === "FINALIZADA",
+              manana_activa:     manana.length > 0 && manana[0].estado === "ACTIVA",
+            });
+          }
+
+          // ── ACCIONES DE DEPÓSITO/FACTURACIÓN (existentes — sin cambio) ──
+          const { pedidoId, itemId, usuario } = bodyJson;
 
           if (accion === "marcar_armado" && pedidoId) {
-            await supabasePatch(env, "pedidos", `id=eq.${pedidoId}`,
-              { estado: "armado" });
+            await supabasePatch(env, "pedidos", `id=eq.${pedidoId}`, { estado: "armado" });
             await supabaseInsert(env, "auditoria", {
               pedido_id: pedidoId, accion: "pedido_armado",
               usuario: usuario || "deposito", detalle: {},
             });
-            return new Response(JSON.stringify({ exito: true }), {
-              headers: withCors({ "Content-Type": "application/json" }),
-            });
+            return jsonResponse({ exito: true });
           }
 
           if (accion === "marcar_item_armado" && itemId) {
@@ -302,9 +801,7 @@ export default {
             await supabasePatch(env, "items_pedido", `id=eq.${itemId}`, {
               armado: true, armado_por: usuario || "A", armado_at: now,
             });
-            return new Response(JSON.stringify({ exito: true }), {
-              headers: withCors({ "Content-Type": "application/json" }),
-            });
+            return jsonResponse({ exito: true });
           }
 
           if (accion === "marcar_item_facturado" && itemId) {
@@ -312,58 +809,44 @@ export default {
             await supabasePatch(env, "items_pedido", `id=eq.${itemId}`, {
               facturado: true, facturado_por: usuario || "C", facturado_at: now,
             });
-            return new Response(JSON.stringify({ exito: true }), {
-              headers: withCors({ "Content-Type": "application/json" }),
-            });
+            return jsonResponse({ exito: true });
           }
 
           if (accion === "marcar_facturado" && pedidoId) {
-            await supabasePatch(env, "pedidos", `id=eq.${pedidoId}`,
-              { estado: "facturado" });
+            await supabasePatch(env, "pedidos", `id=eq.${pedidoId}`, { estado: "facturado" });
             await supabaseInsert(env, "auditoria", {
               pedido_id: pedidoId, accion: "pedido_facturado",
               usuario: usuario || "facturacion", detalle: {},
             });
-            return new Response(JSON.stringify({ exito: true }), {
-              headers: withCors({ "Content-Type": "application/json" }),
-            });
+            return jsonResponse({ exito: true });
           }
 
           if (accion === "auditoria" && pedidoId) {
             await supabaseInsert(env, "auditoria", {
               pedido_id: pedidoId,
-              accion: bodyJson.tipo || "accion",
-              usuario: usuario || "sistema",
-              detalle: bodyJson.detalle || {},
+              accion:    bodyJson.tipo || "accion",
+              usuario:   usuario || "sistema",
+              detalle:   bodyJson.detalle || {},
             });
-            return new Response(JSON.stringify({ exito: true }), {
-              headers: withCors({ "Content-Type": "application/json" }),
-            });
+            return jsonResponse({ exito: true });
           }
         }
 
-        // 🔄 RUTA PEDIDO: Supabase directo con errores visibles
-        // Detectar como pedido si tiene fecha O número de cliente (evita caer al proxy GAS cuando fecha es vacía)
+        // ── RUTA PEDIDO (app-pedidos — sin cambio) ──
         if (bodyJson && (bodyJson.fechaEntrega || bodyJson.fecha_entrega || bodyJson.numeroCliente || bodyJson.cliente)) {
-          console.log("[worker] 📥 PEDIDO RECIBIDO - keys:", Object.keys(bodyJson).join(","));
-          console.log("[worker] fechaEntrega:", bodyJson.fechaEntrega, "| numeroCliente:", bodyJson.numeroCliente, "| sig:", bodyJson.sig);
-          console.log("[worker] clienteNombre:", bodyJson.clienteNombre, "| vendedor:", bodyJson.nombreVendedor);
           const pedidoRow = {
-            sig:           bodyJson.sig || String(Date.now()),
-            vendedor:      (bodyJson.nombreVendedor || bodyJson.vendedor || "").toUpperCase(),
-            cliente_id:    String(bodyJson.numeroCliente || bodyJson.cliente || ""),
-            cliente_nombre:(bodyJson.clienteNombre || bodyJson.cliente_nombre || "").toUpperCase() || null,
-            productos_raw: bodyJson.productos || "",
-            observaciones: bodyJson.observaciones || "",
-            fecha_entrega: bodyJson.fechaEntrega || bodyJson.fecha_entrega || null,
-            fecha_pedido:  bodyJson.timestamp ? new Date(bodyJson.timestamp).toISOString() : new Date().toISOString(),
-            estado:        "pendiente",
+            sig:            bodyJson.sig || String(Date.now()),
+            vendedor:       (bodyJson.nombreVendedor || bodyJson.vendedor || "").toUpperCase(),
+            cliente_id:     String(bodyJson.numeroCliente || bodyJson.cliente || ""),
+            cliente_nombre: (bodyJson.clienteNombre || bodyJson.cliente_nombre || "").toUpperCase() || null,
+            productos_raw:  bodyJson.productos || "",
+            observaciones:  bodyJson.observaciones || "",
+            fecha_entrega:  bodyJson.fechaEntrega || bodyJson.fecha_entrega || null,
+            fecha_pedido:   bodyJson.timestamp ? new Date(bodyJson.timestamp).toISOString() : new Date().toISOString(),
+            estado:         "pendiente",
           };
 
-          console.log("[worker] 🏗️ pedidoRow:", JSON.stringify(pedidoRow));
-          // INSERT directo a Supabase — errores son visibles en la respuesta
-          const sbUrl = `${env.SUPABASE_URL}/rest/v1/pedidos?on_conflict=sig`;
-          const sbRes = await fetch(sbUrl, {
+          const sbRes  = await fetch(`${env.SUPABASE_URL}/rest/v1/pedidos?on_conflict=sig`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -375,60 +858,30 @@ export default {
           });
 
           const sbBody = await sbRes.text();
-          console.log("[worker] 🗄️ Supabase HTTP:", sbRes.status, "| body:", sbBody.slice(0, 300));
 
           if (!sbRes.ok) {
-            // Devolver el error real de Supabase para diagnóstico
-            return new Response(JSON.stringify({
-              status: "supabase_error",
-              http: sbRes.status,
-              detail: sbBody,
-              row_sent: pedidoRow,
-            }), {
-              status: 200, // 200 para que la app no reintente, el error queda visible
-              headers: withCors({ "Content-Type": "application/json" }),
+            return jsonResponse({
+              status: "supabase_error", http: sbRes.status,
+              detail: sbBody, row_sent: pedidoRow,
             });
           }
 
-          // Insertar items
           const parsedSb = tryParseJSON(sbBody);
           const pedidoId = parsedSb?.[0]?.id;
 
-          console.log("[worker] 🆔 pedidoId:", pedidoId);
-          // Si pedidoId es null = Supabase recibió OK pero ignoró por sig duplicado
-          // Significa que el pedido YA estaba en Supabase → igual devolvemos ok
           if (!pedidoId) {
-            console.log("[worker] sig duplicado ignorado por Supabase:", pedidoRow.sig);
-            return new Response(JSON.stringify({ status: "ok", sig: pedidoRow.sig, pedido_id: null, note: "duplicate_already_in_supabase" }), {
-              headers: withCors({ "Content-Type": "application/json" }),
-            });
+            return jsonResponse({ status: "ok", sig: pedidoRow.sig, pedido_id: null, note: "duplicate" });
           }
 
-          if (pedidoId) {
-            const items = (bodyJson.productos || "").split("\n")
-              .map(l => l.trim()).filter(Boolean)
-              .map(linea => {
-                const m = linea.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
-                return m ? { pedido_id: pedidoId, descripcion: m[2].trim(), cantidad: parseFloat(m[1]) }
-                         : { pedido_id: pedidoId, descripcion: linea, cantidad: 1 };
-              });
-            console.log("[worker] 📦 items a insertar:", items.length);
-            if (items.length > 0) {
-              await fetch(`${env.SUPABASE_URL}/rest/v1/items_pedido?pedido_id=eq.${pedidoId}`, {
-                method: "DELETE",
-                headers: { "apikey": env.SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}` },
-              });
-              await fetch(`${env.SUPABASE_URL}/rest/v1/items_pedido`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "apikey": env.SUPABASE_SERVICE_KEY,
-                  "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-                  "Prefer": "return=minimal",
-                },
-                body: JSON.stringify(items),
-              });
-            }
+          // Insertar items
+          const items = parsearProductos(bodyJson.productos);
+          if (items.length > 0) {
+            const itemsRows = items.map(i => ({ pedido_id: pedidoId, descripcion: i.descripcion, cantidad: i.cantidad }));
+            await fetch(`${env.SUPABASE_URL}/rest/v1/items_pedido?pedido_id=eq.${pedidoId}`, {
+              method: "DELETE",
+              headers: { "apikey": env.SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}` },
+            });
+            await supabaseInsert(env, "items_pedido", itemsRows);
           }
 
           // GAS fire-and-forget
@@ -441,31 +894,20 @@ export default {
             }).catch(() => {})
           );
 
-          console.log("[worker] ✅ pedido OK - sig:", pedidoRow.sig, "| id:", pedidoId);
-          return new Response(JSON.stringify({ status: "ok", sig: pedidoRow.sig, pedido_id: pedidoId }), {
-            headers: withCors({ "Content-Type": "application/json" }),
-          });
+          return jsonResponse({ status: "ok", sig: pedidoRow.sig, pedido_id: pedidoId });
         }
 
-        // Fallback: proxy puro a GAS para otros POST no-pedido
+        // Fallback → proxy a GAS
         const upstream = await fetch(GAS_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Accept": "application/json" },
           body: bodyText,
           redirect: "follow",
         });
-        const raw = await upstream.text();
+        const raw    = await upstream.text();
         const parsed = tryParseJSON(raw);
-        if (!parsed) {
-          return new Response(JSON.stringify({ status: "error", message: "GAS no devolvió JSON." }), {
-            status: 502,
-            headers: withCors({ "Content-Type": "application/json" }),
-          });
-        }
-        return new Response(JSON.stringify(parsed), {
-          status: upstream.status,
-          headers: withCors({ "Content-Type": "application/json" }),
-        });
+        if (!parsed) return jsonResponse({ status: "error", message: "GAS no devolvió JSON." }, 502);
+        return jsonResponse(parsed);
       }
 
       return new Response("Method not allowed", { status: 405, headers: baseCorsHeaders });
