@@ -365,9 +365,98 @@ a { text-decoration: none; }
 .fade-up:nth-child(5) { animation-delay: .25s; }
 .fade-up:nth-child(6) { animation-delay: .30s; }
 .fade-up:nth-child(7) { animation-delay: .35s; }
+
+/* ═══════════════════════════════════════════
+   PIN LOGIN OVERLAY
+═══════════════════════════════════════════ */
+#pinOverlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: #F5F5F7;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 24px;
+  padding: 32px;
+}
+#pinOverlay.hidden { display: none; }
+.pin-logo {
+  width: 72px; height: 72px; border-radius: 20px;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 36px;
+  box-shadow: 0 8px 32px rgba(99,102,241,0.35);
+}
+.pin-title {
+  font-size: 22px; font-weight: 800; color: var(--text);
+  text-align: center; line-height: 1.2;
+}
+.pin-sub {
+  font-size: 14px; color: var(--text3);
+  text-align: center; margin-top: -16px;
+}
+.pin-dots {
+  display: flex; gap: 14px;
+}
+.pin-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--text3);
+  background: transparent;
+  transition: background .15s, border-color .15s;
+}
+.pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+.pin-dot.error  { background: var(--red);    border-color: var(--red); }
+.pin-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 12px; width: 100%; max-width: 280px;
+}
+.pin-key {
+  height: 64px; border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  font-size: 22px; font-weight: 700; color: var(--text);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.06);
+  transition: transform .1s, background .1s;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.pin-key:active { transform: scale(.93); background: var(--bg); }
+.pin-key.del { font-size: 18px; }
+.pin-key.empty { background: transparent; border: none; box-shadow: none; pointer-events: none; }
+@keyframes pinShake {
+  0%,100% { transform: translateX(0); }
+  20%,60% { transform: translateX(-8px); }
+  40%,80% { transform: translateX(8px); }
+}
+.pin-dots.shake { animation: pinShake .35s ease; }
 </style>
 </head>
 <body>
+
+<!-- PIN LOGIN OVERLAY -->
+<div id="pinOverlay">
+  <div class="pin-logo">📊</div>
+  <div class="pin-title">Mercado Limpio<br>Analytics</div>
+  <div class="pin-sub">Ingresá tu PIN</div>
+  <div class="pin-dots" id="pinDots">
+    <div class="pin-dot" id="pd0"></div>
+    <div class="pin-dot" id="pd1"></div>
+    <div class="pin-dot" id="pd2"></div>
+    <div class="pin-dot" id="pd3"></div>
+  </div>
+  <div class="pin-grid" id="pinGrid">
+    <button class="pin-key" data-k="1">1</button>
+    <button class="pin-key" data-k="2">2</button>
+    <button class="pin-key" data-k="3">3</button>
+    <button class="pin-key" data-k="4">4</button>
+    <button class="pin-key" data-k="5">5</button>
+    <button class="pin-key" data-k="6">6</button>
+    <button class="pin-key" data-k="7">7</button>
+    <button class="pin-key" data-k="8">8</button>
+    <button class="pin-key" data-k="9">9</button>
+    <div class="pin-key empty"></div>
+    <button class="pin-key" data-k="0">0</button>
+    <button class="pin-key del" data-k="del">⌫</button>
+  </div>
+</div>
 
 <!-- HEADER -->
 <header class="header">
@@ -1054,11 +1143,77 @@ if ("serviceWorker" in navigator) {
 }
 
 // ════════════════════════════════════════════
+// PIN LOGIN
+// ════════════════════════════════════════════
+const PIN_CORRECT = "2817";
+const PIN_LS_KEY  = "ml_analytics_auth";
+
+let pinBuffer = "";
+
+function pinIsAuth() {
+  return localStorage.getItem(PIN_LS_KEY) === "ok";
+}
+
+function pinSetAuth() {
+  localStorage.setItem(PIN_LS_KEY, "ok");
+}
+
+function pinUpdateDots(error) {
+  for (let i = 0; i < 4; i++) {
+    const dot = document.getElementById("pd" + i);
+    dot.className = "pin-dot";
+    if (error)                dot.classList.add("error");
+    else if (i < pinBuffer.length) dot.classList.add("filled");
+  }
+}
+
+function pinKey(k) {
+  if (k === "del") {
+    pinBuffer = pinBuffer.slice(0, -1);
+    pinUpdateDots(false);
+    return;
+  }
+  if (pinBuffer.length >= 4) return;
+  pinBuffer += k;
+  pinUpdateDots(false);
+
+  if (pinBuffer.length === 4) {
+    if (pinBuffer === PIN_CORRECT) {
+      pinSetAuth();
+      document.getElementById("pinOverlay").classList.add("hidden");
+      loadAll();
+    } else {
+      pinUpdateDots(true);
+      const dots = document.getElementById("pinDots");
+      dots.classList.add("shake");
+      dots.addEventListener("animationend", () => dots.classList.remove("shake"), { once: true });
+      setTimeout(() => { pinBuffer = ""; pinUpdateDots(false); }, 600);
+    }
+  }
+}
+
+document.getElementById("pinGrid").addEventListener("click", (e) => {
+  const btn = e.target.closest(".pin-key");
+  if (!btn || !btn.dataset.k) return;
+  pinKey(btn.dataset.k);
+});
+
+// Soporte teclado físico
+document.addEventListener("keydown", (e) => {
+  if (document.getElementById("pinOverlay").classList.contains("hidden")) return;
+  if (e.key >= "0" && e.key <= "9") pinKey(e.key);
+  if (e.key === "Backspace") pinKey("del");
+});
+
+// ════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════
-loadAll();
-// Auto-refresh cada 5 minutos
-setInterval(loadAll, 5 * 60 * 1000);
+if (pinIsAuth()) {
+  document.getElementById("pinOverlay").classList.add("hidden");
+  loadAll();
+}
+// Auto-refresh cada 5 minutos (solo si ya está autenticado)
+setInterval(() => { if (pinIsAuth()) loadAll(); }, 5 * 60 * 1000);
 </script>
 </body>
 </html>

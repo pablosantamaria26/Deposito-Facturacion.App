@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+<title>Mercado Limpio · Stock</title>
+<meta name="theme-color" content="#ffffff"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<style>
+/* ═══════════════════════════════════════════
+   TOKENS & RESET
+═══════════════════════════════════════════ */
+:root {
+  --bg:        #F5F5F7;
+  --surface:   #FFFFFF;
+  --surface2:  #F9F9FB;
+  --border:    rgba(0,0,0,0.06);
+  --text:      #1C1C1E;
+  --text2:     #48484A;
+  --text3:     #8E8E93;
+  --accent:    #6366F1;
+  --accent-s:  rgba(99,102,241,0.10);
+  --green:     #34C759;
+  --green-s:   rgba(52,199,89,0.12);
+  --orange:    #FF9500;
+  --orange-s:  rgba(255,149,0,0.12);
+  --red:       #FF3B30;
+  --red-s:     rgba(255,59,48,0.12);
+  --blue:      #007AFF;
+  --blue-s:    rgba(0,122,255,0.12);
+  --r:         18px;
+  --r-sm:      12px;
+  --shadow:    0 1px 2px rgba(0,0,0,0.03), 0 4px 20px rgba(0,0,0,0.06);
+  --safe-top:  env(safe-area-inset-top, 0px);
+  --safe-bot:  env(safe-area-inset-bottom, 0px);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: none; }
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100svh;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
+button { font-family: inherit; border: none; cursor: pointer; }
+a { text-decoration: none; color: inherit; }
+
+/* ═══════════════════════════════════════════
+   HEADER
+═══════════════════════════════════════════ */
+.header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: calc(var(--safe-top) + 14px) 20px 14px;
+  display: flex; align-items: center; gap: 12px;
+}
+.header-logo {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg, #34C759, #30D158);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(52,199,89,0.35);
+}
+.header-info { flex: 1; min-width: 0; }
+.header-title { font-size: 17px; font-weight: 700; color: var(--text); line-height: 1.2; }
+.header-sub   { font-size: 12px; color: var(--text3); margin-top: 1px; }
+.header-actions { display: flex; gap: 8px; }
+.btn-icon {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--surface2); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; color: var(--text2);
+  transition: transform .15s, background .15s;
+}
+.btn-icon:active { transform: scale(.92); background: var(--border); }
+
+/* ═══════════════════════════════════════════
+   SCROLL & SECTIONS
+═══════════════════════════════════════════ */
+.scroll {
+  padding: 20px 16px calc(var(--safe-bot) + 40px);
+  display: flex; flex-direction: column; gap: 16px;
+}
+.section-label {
+  font-size: 13px; font-weight: 600;
+  color: var(--text3); letter-spacing: .04em;
+  text-transform: uppercase; padding: 0 2px;
+  margin-bottom: -8px;
+}
+
+/* ═══════════════════════════════════════════
+   UPLOAD ZONE
+═══════════════════════════════════════════ */
+.upload-card {
+  background: var(--surface);
+  border-radius: var(--r);
+  border: 2px dashed var(--border);
+  box-shadow: var(--shadow);
+  padding: 28px 20px;
+  text-align: center;
+  transition: border-color .2s, background .2s;
+  cursor: pointer;
+  position: relative;
+}
+.upload-card.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-s);
+}
+.upload-card input[type=file] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}
+.upload-icon { font-size: 40px; margin-bottom: 12px; }
+.upload-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.upload-sub   { font-size: 13px; color: var(--text3); line-height: 1.5; }
+.upload-btn {
+  display: inline-block; margin-top: 16px;
+  padding: 10px 24px; border-radius: 12px;
+  background: var(--accent); color: #fff;
+  font-size: 14px; font-weight: 700;
+  pointer-events: none;
+}
+
+/* Period selector */
+.period-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+.period-label { font-size: 14px; font-weight: 600; flex: 1; }
+.seg-ctrl {
+  display: flex; gap: 0;
+  background: var(--bg); border-radius: 8px; padding: 2px;
+}
+.seg-btn {
+  flex: 1; font-size: 12px; font-weight: 600; color: var(--text3);
+  padding: 5px 14px; border-radius: 6px; background: transparent;
+  transition: background .15s, color .15s; white-space: nowrap;
+}
+.seg-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+
+/* Last upload info */
+.info-banner {
+  background: var(--surface);
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  padding: 14px 16px;
+  display: flex; gap: 12px; align-items: center;
+  box-shadow: var(--shadow);
+}
+.info-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+.info-dot.old { background: var(--orange); }
+.info-text { flex: 1; font-size: 13px; color: var(--text2); line-height: 1.4; }
+.info-text strong { color: var(--text); font-weight: 700; }
+
+/* ═══════════════════════════════════════════
+   KPI STRIP
+═══════════════════════════════════════════ */
+.kpi-strip {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.kpi-mini {
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  padding: 14px 12px;
+  text-align: center;
+  position: relative; overflow: hidden;
+}
+.kpi-mini::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+}
+.kpi-mini.k-accent::before { background: var(--accent); }
+.kpi-mini.k-orange::before { background: var(--orange); }
+.kpi-mini.k-red::before    { background: var(--red); }
+.kpi-mini-val  { font-size: 26px; font-weight: 800; line-height: 1; letter-spacing: -.03em; }
+.kpi-mini-lbl  { font-size: 10px; font-weight: 500; color: var(--text3); margin-top: 4px; line-height: 1.3; }
+
+/* ═══════════════════════════════════════════
+   PROVIDER ACCORDION
+═══════════════════════════════════════════ */
+.prov-card {
+  background: var(--surface);
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.prov-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 18px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .1s;
+}
+.prov-header:active { background: var(--bg); }
+.prov-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.prov-dot.ok     { background: var(--green); }
+.prov-dot.warn   { background: var(--orange); }
+.prov-dot.danger { background: var(--red); }
+.prov-name  { flex: 1; font-size: 16px; font-weight: 700; color: var(--text); }
+.prov-meta  { font-size: 12px; color: var(--text3); margin-top: 2px; }
+.prov-badges { display: flex; gap: 5px; align-items: center; }
+.badge {
+  font-size: 10px; font-weight: 700;
+  padding: 3px 8px; border-radius: 99px;
+}
+.badge-red    { background: var(--red-s);    color: var(--red); }
+.badge-orange { background: var(--orange-s); color: #b36200; }
+.badge-green  { background: var(--green-s);  color: #1a7a33; }
+.badge-accent { background: var(--accent-s); color: var(--accent); }
+.prov-chevron {
+  font-size: 13px; color: var(--text3);
+  transition: transform .25s cubic-bezier(.4,0,.2,1);
+}
+.prov-card.open .prov-chevron { transform: rotate(180deg); }
+
+.prov-body {
+  display: none;
+  border-top: 1px solid var(--border);
+}
+.prov-card.open .prov-body { display: block; }
+
+/* Config row (LT + SS) */
+.config-row {
+  display: flex; gap: 10px;
+  padding: 14px 16px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+.config-field { flex: 1; }
+.config-label {
+  font-size: 10px; font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .05em;
+  margin-bottom: 5px;
+}
+.config-desc {
+  font-size: 10px; color: var(--text3);
+  margin-bottom: 5px; line-height: 1.3;
+}
+.config-input {
+  width: 100%; padding: 8px 10px;
+  border-radius: 8px; border: 1.5px solid var(--border);
+  background: var(--surface); color: var(--text);
+  font-family: inherit; font-size: 14px; font-weight: 700;
+  -webkit-appearance: none; appearance: none;
+}
+.config-input:focus { outline: none; border-color: var(--accent); }
+.config-sub {
+  font-size: 10px; color: var(--text3); margin-top: 4px;
+}
+.config-sub span { font-weight: 700; color: var(--text2); }
+
+/* Article rows */
+.art-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 16px;
+  border-top: 1px solid var(--border);
+}
+.art-status {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.art-status.ok     { background: var(--green); }
+.art-status.warn   { background: var(--orange); }
+.art-status.danger { background: var(--red); }
+.art-main { flex: 1; min-width: 0; }
+.art-name { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.art-meta { font-size: 10px; color: var(--text3); margin-top: 2px; display: flex; gap: 8px; flex-wrap: wrap; }
+.art-meta span { white-space: nowrap; }
+.art-meta .falt-badge {
+  background: var(--red-s); color: var(--red);
+  padding: 1px 5px; border-radius: 99px; font-weight: 700;
+}
+.art-right { text-align: right; flex-shrink: 0; }
+.art-vpd   { font-size: 14px; font-weight: 800; color: var(--text); line-height: 1; }
+.art-pp    { font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+/* Show more button */
+.show-more {
+  width: 100%; padding: 12px;
+  font-size: 13px; font-weight: 600; color: var(--accent);
+  background: transparent; border-top: 1px solid var(--border);
+  transition: background .1s;
+}
+.show-more:active { background: var(--accent-s); }
+
+/* Sugerencia de compra block */
+.compra-block {
+  margin: 12px 16px;
+  background: linear-gradient(135deg, #4338CA 0%, #6366F1 100%);
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: #fff;
+}
+.compra-title { font-size: 12px; font-weight: 700; opacity: .75; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+.compra-list  { font-size: 13px; line-height: 1.8; }
+.compra-list b { font-weight: 800; }
+
+/* ═══════════════════════════════════════════
+   ALERT CARD
+═══════════════════════════════════════════ */
+.alert-item {
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+  display: flex; gap: 12px; align-items: flex-start;
+}
+.alert-item.danger { background: #FFF5F5; border-color: #FED7D7; }
+.alert-item.warn   { background: #FFFBEB; border-color: #FDE68A; }
+.alert-icon { font-size: 22px; flex-shrink: 0; line-height: 1.2; }
+.alert-body { flex: 1; min-width: 0; }
+.alert-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.alert-prov { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.alert-detail { font-size: 12px; color: var(--text2); margin-top: 6px; line-height: 1.5; }
+.alert-right { text-align: right; flex-shrink: 0; }
+.alert-qty { font-size: 20px; font-weight: 800; color: var(--red); }
+.alert-qty-label { font-size: 10px; color: var(--text3); }
+
+/* ═══════════════════════════════════════════
+   EMPTY STATE
+═══════════════════════════════════════════ */
+.empty-state {
+  padding: 40px 20px; text-align: center;
+  background: var(--surface); border-radius: var(--r);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+}
+.empty-icon { font-size: 48px; margin-bottom: 12px; }
+.empty-title { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.empty-sub   { font-size: 14px; color: var(--text3); line-height: 1.5; }
+
+/* ═══════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════ */
+#toastEl {
+  position: fixed; bottom: calc(var(--safe-bot) + 24px); left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: rgba(28,28,30,0.92); color: #fff;
+  padding: 12px 20px; border-radius: 12px;
+  font-size: 14px; font-weight: 500;
+  backdrop-filter: blur(10px); z-index: 9999;
+  transition: transform .3s cubic-bezier(.34,1.56,.64,1), opacity .3s;
+  opacity: 0; white-space: nowrap; max-width: 90vw; text-align: center;
+}
+#toastEl.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+/* ═══════════════════════════════════════════
+   ANIMATIONS
+═══════════════════════════════════════════ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp .4s cubic-bezier(.4,0,.2,1) both; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-logo">📦</div>
+  <div class="header-info">
+    <div class="header-title">Control de Stock</div>
+    <div class="header-sub" id="headerSub">Mercado Limpio</div>
+  </div>
+  <div class="header-actions">
+    <a href="./analytics.html" class="btn-icon" title="Analytics">📊</a>
+    <button class="btn-icon" id="btnClear" title="Limpiar datos" style="font-size:14px">🗑</button>
+  </div>
+</header>
+
+<!-- MAIN -->
+<main class="scroll" id="mainScroll">
+
+  <!-- UPLOAD -->
+  <div class="section-label fade-up">Subir ranking de ventas</div>
+
+  <div class="period-row fade-up">
+    <span class="period-label">Período del archivo</span>
+    <div class="seg-ctrl" id="periodCtrl">
+      <button class="seg-btn active" data-days="7">Semana</button>
+      <button class="seg-btn" data-days="30">Mes</button>
+    </div>
+  </div>
+
+  <div class="upload-card fade-up" id="uploadZone">
+    <input type="file" id="fileInput" accept=".xlsx,.xls" />
+    <div class="upload-icon">📂</div>
+    <div class="upload-title">Arrastrá o tocá para subir</div>
+    <div class="upload-sub">Archivo .xlsx con columnas:<br><strong>Pos. · Artículo (EAN) · Descripción · Cantidad</strong></div>
+    <div class="upload-btn">Elegir archivo</div>
+  </div>
+
+  <!-- DYNAMIC CONTENT (hidden until data loaded) -->
+  <div id="dynamicContent" style="display:none; display:contents">
+
+    <!-- INFO BANNER -->
+    <div class="info-banner fade-up" id="infoBanner" style="display:none">
+      <div class="info-dot" id="infoDot"></div>
+      <div class="info-text" id="infoText"></div>
+    </div>
+
+    <!-- KPI STRIP -->
+    <div class="section-label fade-up" id="kpiLabel" style="display:none">Resumen</div>
+    <div class="kpi-strip fade-up" id="kpiStrip" style="display:none">
+      <div class="kpi-mini k-accent">
+        <div class="kpi-mini-val" id="kpiProveedores">—</div>
+        <div class="kpi-mini-lbl">Proveedores</div>
+      </div>
+      <div class="kpi-mini k-orange">
+        <div class="kpi-mini-val" id="kpiWarn">—</div>
+        <div class="kpi-mini-lbl">Atencion pronto</div>
+      </div>
+      <div class="kpi-mini k-red">
+        <div class="kpi-mini-val" id="kpiDanger">—</div>
+        <div class="kpi-mini-lbl">Pedir ya</div>
+      </div>
+    </div>
+
+    <!-- ALERTAS PRIORITARIAS -->
+    <div class="section-label fade-up" id="alertLabel" style="display:none">Alertas prioritarias</div>
+    <div id="alertList" style="display:none; display:flex; flex-direction:column; gap:10px"></div>
+
+    <!-- PROVEEDORES ACCORDION -->
+    <div class="section-label fade-up" id="provLabel" style="display:none">Por proveedor</div>
+    <div id="provList" style="display:flex; flex-direction:column; gap:10px"></div>
+
+  </div>
+
+  <!-- EMPTY STATE (shown before first upload) -->
+  <div class="empty-state fade-up" id="emptyState">
+    <div class="empty-icon">📊</div>
+    <div class="empty-title">Sin datos todavía</div>
+    <div class="empty-sub">Subí el ranking de ventas semanal unificado para ver el análisis por proveedor, VPD, punto de pedido y sugerencias de compra.</div>
+  </div>
+
+</main>
+
+<div id="toastEl"></div>
+
+<script>
+// ════════════════════════════════════════════
+// CONFIG
+// ════════════════════════════════════════════
+const SB_URL  = "https://gjeyvbidomxzofcdycya.supabase.co";
+const SB_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
+
+// ════════════════════════════════════════════
+// MAPA DE MARCAS → PROVEEDOR
+// Las sub-marcas de un proveedor se agrupan bajo el nombre principal.
+// Editar acá para agregar o corregir agrupaciones.
+// ════════════════════════════════════════════
+const BRAND_MAP = {
+  // ─── ROMYL (incluye todas sus sub-marcas) ───
+  'romyl':        'Romyl',
+  'todoesponja':  'Romyl',
+  'economica':    'Romyl',
+  'boob':         'Romyl',
+  'piragua':      'Romyl',
+  'ideal':        'Romyl',
+  // ─── MAKE ───
+  'make':         'Make',
+  'makefresh':    'Make',
+  // ─── MIS PLAST ───
+  'mis':          'Mis Plast',    // "Mis plast ..."
+  'dif':          'Mis Plast',    // "Dif Plast ..."
+  // ─── LA GAUCHITA ───
+  // (detectado por prefijo de 2 palabras abajo)
+  // ─── BIO BAG ───
+  // (detectado por prefijo de 2 palabras abajo)
+  // ─── RESTO ───
+  'diawara':      'Diawara',
+  'desesplast':   'Desesplast',
+  'samantha':     'Samantha',
+  'fibran':       'Fibran',
+  'colores':      'Colores',
+  'matriplaster': 'Matriplaster',
+  'cs':           'CS',
+  'modoplast':    'Modoplast',
+  'molmar':       'Molmar',
+  'lumilagro':    'Lumilagro',
+  'k&k':          'K&K',
+  'kyk':          'K&K',
+  'carol':        'Carol',
+  'yesi':         'Yesi',
+  'yesy':         'Yesi',
+  'fedata':       'Fedata',
+  'cotton':       'Cotton',
+  'suka':         'Suka',
+  'pop':          'Pop',
+  'coolbazar':    'Coolbazar',
+  'blackstone':   'Blackstone',
+  'durax':        'Durax',
+  'home':         'Home',
+  'sg':           'SG',
+  'melli':        'Melli',
+  'entresol':     'Entresol',
+  'iberia':       'Iberia',
+  'soifer':       'Soifer',
+  'asapractic':   'Asapractic',
+  'tauro':        'Tauro',
+  'secavidrio':   'Secavidrio',
+  'plasser':      'Plasser',
+  'marwiplast':   'Marwiplast',
+  'supy':         'Supy',
+  'nex':          'Nex',
+  'emege':        'Emege',
+  'cimarron':     'Cimarron',
+  'on':           'On',
+};
+
+// Prefijos de dos palabras (tienen prioridad sobre la primera palabra)
+const TWO_WORD_MAP = {
+  'la gauchita': 'La Gauchita',
+  'bio bag':     'Bio Bag',
+  'mis plast':   'Mis Plast',
+  'dif plast':   'Mis Plast',
+};
+
+// LT y SS por defecto por proveedor (días). El usuario los edita en la UI.
+const DEFAULT_CONFIG = {
+  lt: 5,  // días de entrega del proveedor
+  ss: 3,  // días de seguridad (colchón)
+};
+
+// Días de cobertura deseados (cuántos días de stock queremos tener)
+const COBERTURA_DIAS = 30;
+
+// ════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════
+let state = {
+  articles:    [],   // artículos parseados del XLS
+  periodDays:  7,    // 7 (semana) o 30 (mes)
+  uploadedAt:  null, // timestamp del último upload
+  faltantes:   {},   // { normalizedDesc: count } de Supabase
+  provConfig:  {},   // { proveedor: { lt, ss } } — persistido en localStorage
+};
+
+// ════════════════════════════════════════════
+// PERSISTENCIA localStorage
+// ════════════════════════════════════════════
+const LS_KEY = 'ml_stock_v2';
+
+function saveState() {
+  localStorage.setItem(LS_KEY, JSON.stringify({
+    articles:   state.articles,
+    periodDays: state.periodDays,
+    uploadedAt: state.uploadedAt,
+    provConfig: state.provConfig,
+  }));
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    state.articles   = saved.articles   || [];
+    state.periodDays = saved.periodDays || 7;
+    state.uploadedAt = saved.uploadedAt || null;
+    state.provConfig = saved.provConfig || {};
+  } catch(e) { /* ignore */ }
+}
+
+// ════════════════════════════════════════════
+// TOAST
+// ════════════════════════════════════════════
+let _toastTimer;
+function toast(msg) {
+  const el = document.getElementById("toastEl");
+  el.textContent = msg; el.classList.add("show");
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove("show"), 3000);
+}
+
+// ════════════════════════════════════════════
+// DETECCIÓN DE PROVEEDOR
+// ════════════════════════════════════════════
+function detectProveedor(desc) {
+  const lower = desc.toLowerCase().trim();
+
+  // 1. Intentar 2 palabras primero
+  const twoWords = lower.split(' ').slice(0, 2).join(' ');
+  if (TWO_WORD_MAP[twoWords]) return TWO_WORD_MAP[twoWords];
+
+  // 2. Primera palabra
+  const first = lower.split(' ')[0];
+  if (BRAND_MAP[first]) return BRAND_MAP[first];
+
+  // 3. Fallback: capitalize primera palabra
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+// ════════════════════════════════════════════
+// NORMALIZACIÓN PARA CRUCE CON FALTANTES
+// ════════════════════════════════════════════
+function normalize(str) {
+  return str.toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, ' ').trim();
+}
+
+// ════════════════════════════════════════════
+// PARSEO XLSX
+// ════════════════════════════════════════════
+function fixQty(val) {
+  if (typeof val !== 'number') {
+    // Intentar parsear string con separador de miles argentino
+    val = parseFloat(String(val).replace(/\./g, '').replace(',', '.'));
+  }
+  if (isNaN(val)) return 0;
+
+  // Detectar formato con separador de miles (ej: 2.721 → 2721)
+  // Condición: número positivo < 10 con decimales → fue formateado con punto como miles
+  if (val > 0 && val < 100) {
+    const str = val.toString();
+    if (str.includes('.')) {
+      const decimals = str.split('.')[1];
+      // Si tiene 2 o 3 decimales y el resultado × 1000 tiene sentido → convertir
+      if (decimals.length >= 2) {
+        return Math.round(val * 1000);
+      }
+    }
+  }
+  return Math.round(val);
+}
+
+async function parseXLSX(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+        // Buscar fila de encabezado (la que tiene "Descripción" o "Cantidad")
+        let headerIdx = 0;
+        for (let i = 0; i < Math.min(rows.length, 5); i++) {
+          const row = rows[i];
+          if (row && row.some(c => String(c||'').toLowerCase().includes('descripci'))) {
+            headerIdx = i;
+            break;
+          }
+        }
+
+        // Detectar índices de columnas desde el header
+        const header = rows[headerIdx] || [];
+        let colPos  = -1, colEan = -1, colDesc = -1, colQty = -1;
+        header.forEach((h, i) => {
+          const lh = String(h||'').toLowerCase();
+          if (lh.includes('pos'))          colPos  = i;
+          else if (lh.includes('art'))     colEan  = i;
+          else if (lh.includes('desc'))    colDesc = i;
+          else if (lh.includes('cant'))    colQty  = i;
+        });
+
+        // Fallback si no se detectaron columnas: asumir orden fijo
+        if (colDesc < 0) colDesc = 2;
+        if (colQty  < 0) colQty  = 3;
+        if (colEan  < 0) colEan  = 1;
+        if (colPos  < 0) colPos  = 0;
+
+        const articles = [];
+        for (let i = headerIdx + 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row) continue;
+          const desc = String(row[colDesc] || '').trim();
+          const qty  = fixQty(row[colQty]);
+          if (!desc || desc.toLowerCase().includes('pos')) continue;
+
+          articles.push({
+            pos:      Number(row[colPos]) || i,
+            ean:      String(row[colEan] || '').trim(),
+            desc:     desc,
+            qty:      qty,
+            proveedor: detectProveedor(desc),
+          });
+        }
+
+        resolve(articles);
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// ════════════════════════════════════════════
+// CÁLCULOS
+// ════════════════════════════════════════════
+function calcVPD(qty, periodDays) {
+  return qty / periodDays;
+}
+
+function calcPP(vpd, lt, ss) {
+  // Punto de Pedido = (VPD × LT) + (VPD × SS)
+  return (vpd * lt) + (vpd * ss);
+}
+
+function calcSugerido(vpd, lt, ss) {
+  // Comprar para cubrir COBERTURA_DIAS días desde el PP
+  // = stock máximo que queremos tener
+  return vpd * COBERTURA_DIAS;
+}
+
+function alertLevel(vpd, lt, ss) {
+  // Sin stock real, usamos la lógica de "ya deberías haber pedido"
+  // danger = PP alto, warn = cobertura < 15 días
+  const pp = calcPP(vpd, lt, ss);
+  if (pp > vpd * 20) return 'danger'; // necesita > 20 días para repostar
+  if (pp > vpd * 10) return 'warn';
+  return 'ok';
+}
+
+// ════════════════════════════════════════════
+// SUPABASE — cargar faltantes de los últimos 30 días
+// ════════════════════════════════════════════
+async function loadFaltantes() {
+  try {
+    const since = new Date();
+    since.setDate(since.getDate() - 30);
+    const url = `${SB_URL}/rest/v1/items_pedido?es_faltante=eq.true&created_at=gte.${since.toISOString()}&select=descripcion&limit=2000`;
+    const r = await fetch(url, {
+      headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` }
+    });
+    if (!r.ok) return;
+    const rows = await r.json();
+    const map = {};
+    rows.forEach(row => {
+      if (!row.descripcion) return;
+      const key = normalize(row.descripcion);
+      map[key] = (map[key] || 0) + 1;
+    });
+    state.faltantes = map;
+  } catch(e) { /* silencioso */ }
+}
+
+// Buscar faltantes para un artículo (fuzzy: busca si alguna clave contiene palabras del artículo)
+function getFaltantes(desc) {
+  const words = normalize(desc).split(' ').filter(w => w.length > 3);
+  let max = 0;
+  for (const [key, count] of Object.entries(state.faltantes)) {
+    const matches = words.filter(w => key.includes(w)).length;
+    if (matches >= Math.min(2, words.length) && count > max) max = count;
+  }
+  return max;
+}
+
+// ════════════════════════════════════════════
+// RENDERIZADO
+// ════════════════════════════════════════════
+function getProvConfig(proveedor) {
+  return state.provConfig[proveedor] || { lt: DEFAULT_CONFIG.lt, ss: DEFAULT_CONFIG.ss };
+}
+
+function renderAll() {
+  if (!state.articles.length) {
+    document.getElementById('emptyState').style.display = '';
+    ['infoBanner','kpiLabel','kpiStrip','alertLabel','alertList','provLabel'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    document.getElementById('provList').innerHTML = '';
+    return;
+  }
+
+  document.getElementById('emptyState').style.display = 'none';
+
+  // Info banner
+  const banner = document.getElementById('infoBanner');
+  banner.style.display = 'flex';
+  const ageMs  = Date.now() - new Date(state.uploadedAt).getTime();
+  const ageDays = Math.floor(ageMs / 86400000);
+  const dot    = document.getElementById('infoDot');
+  dot.className = 'info-dot' + (ageDays > 7 ? ' old' : '');
+  const periodLabel = state.periodDays === 7 ? 'semana' : 'mes';
+  document.getElementById('infoText').innerHTML =
+    `<strong>${state.articles.length} artículos</strong> · Período: 1 ${periodLabel} · ` +
+    `Subido hace ${ageDays === 0 ? 'hoy' : ageDays + 'd'}`;
+
+  // Agrupar por proveedor
+  const provMap = {};
+  state.articles.forEach(art => {
+    if (!provMap[art.proveedor]) provMap[art.proveedor] = [];
+    provMap[art.proveedor].push(art);
+  });
+
+  // Calcular alertas globales
+  let countWarn = 0, countDanger = 0;
+  const allAlerts = []; // { level, proveedor, art, vpd, pp, faltantes }
+
+  Object.entries(provMap).forEach(([prov, arts]) => {
+    const cfg = getProvConfig(prov);
+    arts.forEach(art => {
+      const vpd   = calcVPD(art.qty, state.periodDays);
+      const pp    = calcPP(vpd, cfg.lt, cfg.ss);
+      const falt  = getFaltantes(art.desc);
+      const level = alertLevel(vpd, cfg.lt, cfg.ss);
+      if (level === 'danger') { countDanger++; allAlerts.push({ level, prov, art, vpd, pp, falt }); }
+      if (level === 'warn')   { countWarn++;   allAlerts.push({ level, prov, art, vpd, pp, falt }); }
+    });
+  });
+
+  // KPI strip
+  ['kpiLabel','kpiStrip'].forEach(id => document.getElementById(id).style.display = '');
+  document.getElementById('kpiProveedores').textContent = Object.keys(provMap).length;
+  document.getElementById('kpiWarn').textContent    = countWarn;
+  document.getElementById('kpiDanger').textContent  = countDanger;
+
+  // Alertas prioritarias (solo danger + los warn con faltantes)
+  const alertContainer = document.getElementById('alertList');
+  const priorityAlerts = allAlerts
+    .filter(a => a.level === 'danger' || (a.level === 'warn' && a.falt > 0))
+    .sort((a, b) => (b.falt - a.falt) || (a.level === 'danger' ? -1 : 1))
+    .slice(0, 10);
+
+  document.getElementById('alertLabel').style.display = priorityAlerts.length ? '' : 'none';
+  alertContainer.style.display = priorityAlerts.length ? 'flex' : 'none';
+  alertContainer.innerHTML = priorityAlerts.map(a => {
+    const sugerido = Math.ceil(calcSugerido(a.vpd, getProvConfig(a.prov).lt, getProvConfig(a.prov).ss));
+    return `
+    <div class="alert-item ${a.level} fade-up">
+      <div class="alert-icon">${a.level === 'danger' ? '🔴' : '🟡'}</div>
+      <div class="alert-body">
+        <div class="alert-name">${a.art.desc}</div>
+        <div class="alert-prov">${a.prov}</div>
+        <div class="alert-detail">
+          VPD: <strong>${a.vpd.toFixed(1)}</strong> un/día ·
+          PP: <strong>${Math.ceil(a.pp)}</strong> un
+          ${a.falt > 0 ? ` · <span style="color:var(--red);font-weight:700">${a.falt} faltantes/mes</span>` : ''}
+        </div>
+      </div>
+      <div class="alert-right">
+        <div class="alert-qty">${sugerido}</div>
+        <div class="alert-qty-label">un a pedir</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Proveedores accordion
+  document.getElementById('provLabel').style.display = '';
+  const provList = document.getElementById('provList');
+
+  // Ordenar proveedores: primero los con danger, luego warn, luego ok; por VPD total desc
+  const provEntries = Object.entries(provMap).map(([prov, arts]) => {
+    const cfg     = getProvConfig(prov);
+    const totalQty = arts.reduce((s, a) => s + a.qty, 0);
+    const dangerCount = arts.filter(a => alertLevel(calcVPD(a.qty, state.periodDays), cfg.lt, cfg.ss) === 'danger').length;
+    const warnCount   = arts.filter(a => alertLevel(calcVPD(a.qty, state.periodDays), cfg.lt, cfg.ss) === 'warn').length;
+    return { prov, arts, cfg, totalQty, dangerCount, warnCount };
+  }).sort((a, b) => {
+    if (b.dangerCount !== a.dangerCount) return b.dangerCount - a.dangerCount;
+    if (b.warnCount !== a.warnCount) return b.warnCount - a.warnCount;
+    return b.totalQty - a.totalQty;
+  });
+
+  provList.innerHTML = provEntries.map(({ prov, arts, cfg, dangerCount, warnCount }) => {
+    const dotClass = dangerCount > 0 ? 'danger' : warnCount > 0 ? 'warn' : 'ok';
+    const pp_lt    = calcPP(1, cfg.lt, cfg.ss); // PP relativo (en días)
+
+    // Top artículos por VPD
+    const sorted = [...arts].sort((a, b) => b.qty - a.qty);
+
+    // Sugerencia de compra: top 5 artículos en alerta
+    const toOrder = sorted
+      .filter(a => {
+        const vpd = calcVPD(a.qty, state.periodDays);
+        return alertLevel(vpd, cfg.lt, cfg.ss) !== 'ok';
+      })
+      .slice(0, 8);
+
+    const compraHTML = toOrder.length
+      ? `<div class="compra-block">
+          <div class="compra-title">Sugerencia de compra (${COBERTURA_DIAS} días)</div>
+          <div class="compra-list">${toOrder.map(a => {
+            const vpd      = calcVPD(a.qty, state.periodDays);
+            const sugerido = Math.ceil(calcSugerido(vpd, cfg.lt, cfg.ss));
+            return `<b>${sugerido}</b> × ${a.desc}`;
+          }).join('<br>')}</div>
+        </div>`
+      : '';
+
+    const rowsHTML = sorted.slice(0, 10).map(art => {
+      const vpd   = calcVPD(art.qty, state.periodDays);
+      const pp    = calcPP(vpd, cfg.lt, cfg.ss);
+      const level = alertLevel(vpd, cfg.lt, cfg.ss);
+      const falt  = getFaltantes(art.desc);
+      return `
+      <div class="art-row">
+        <div class="art-status ${level}"></div>
+        <div class="art-main">
+          <div class="art-name">${art.desc}</div>
+          <div class="art-meta">
+            <span>PP: ${Math.ceil(pp)} un</span>
+            <span>Sugerido: ${Math.ceil(calcSugerido(vpd, cfg.lt, cfg.ss))} un</span>
+            ${falt > 0 ? `<span class="falt-badge">${falt} faltantes</span>` : ''}
+          </div>
+        </div>
+        <div class="art-right">
+          <div class="art-vpd">${vpd.toFixed(1)}</div>
+          <div class="art-pp">un/día</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    const hasMore = sorted.length > 10;
+
+    return `
+    <div class="prov-card" id="prov-${prov.replace(/\W/g,'_')}">
+      <div class="prov-header" onclick="toggleProv(this)">
+        <div class="prov-dot ${dotClass}"></div>
+        <div>
+          <div class="prov-name">${prov}</div>
+          <div class="prov-meta">${arts.length} artículos</div>
+        </div>
+        <div class="prov-badges">
+          ${dangerCount > 0 ? `<span class="badge badge-red">${dangerCount} 🔴</span>` : ''}
+          ${warnCount   > 0 ? `<span class="badge badge-orange">${warnCount} 🟡</span>` : ''}
+          ${dangerCount === 0 && warnCount === 0 ? `<span class="badge badge-green">OK</span>` : ''}
+        </div>
+        <span class="prov-chevron">▾</span>
+      </div>
+      <div class="prov-body">
+        <div class="config-row">
+          <div class="config-field">
+            <div class="config-label">LT — Días de entrega</div>
+            <div class="config-desc">¿Cuántos días tarda en llegar el pedido?</div>
+            <input type="number" min="1" max="60" class="config-input" value="${cfg.lt}"
+              onchange="updateConfig('${prov}','lt',this.value)"
+              oninput="updateConfigPreview(this,'${prov}')"/>
+            <div class="config-sub">PP actual: <span id="pp-preview-${prov.replace(/\W/g,'_')}"><strong>${pp_lt.toFixed(0)}</strong> días de venta</span></div>
+          </div>
+          <div class="config-field">
+            <div class="config-label">SS — Días de seguridad</div>
+            <div class="config-desc">Colchón ante atrasos o picos de demanda</div>
+            <input type="number" min="0" max="30" class="config-input" value="${cfg.ss}"
+              onchange="updateConfig('${prov}','ss',this.value)"
+              oninput="updateConfigPreview(this,'${prov}')"/>
+            <div class="config-sub">Cobertura objetivo: <strong>${COBERTURA_DIAS}</strong> días</div>
+          </div>
+        </div>
+        ${compraHTML}
+        ${rowsHTML}
+        ${hasMore ? `<button class="show-more" onclick="showAll('${prov}',this)">Ver todos los ${sorted.length} artículos ▾</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════════
+// INTERACTIVIDAD UI
+// ════════════════════════════════════════════
+function toggleProv(header) {
+  header.closest('.prov-card').classList.toggle('open');
+}
+
+function updateConfig(prov, field, val) {
+  if (!state.provConfig[prov]) state.provConfig[prov] = { ...DEFAULT_CONFIG };
+  state.provConfig[prov][field] = parseInt(val) || 0;
+  saveState();
+  renderAll();
+}
+
+function updateConfigPreview(input, prov) {
+  // Vista previa del PP sin re-render completo
+  const card   = input.closest('.prov-card');
+  const ltInput = card.querySelectorAll('.config-input')[0];
+  const ssInput = card.querySelectorAll('.config-input')[1];
+  const lt = parseInt(ltInput.value) || 0;
+  const ss = parseInt(ssInput.value) || 0;
+  const pp = lt + ss;
+  const preview = card.querySelector('[id^="pp-preview-"]');
+  if (preview) preview.innerHTML = `<strong>${pp}</strong> días de venta`;
+}
+
+function showAll(prov, btn) {
+  const cfg    = getProvConfig(prov);
+  const arts   = state.articles.filter(a => a.proveedor === prov);
+  const sorted = [...arts].sort((a, b) => b.qty - a.qty);
+
+  const extraHTML = sorted.slice(10).map(art => {
+    const vpd   = calcVPD(art.qty, state.periodDays);
+    const pp    = calcPP(vpd, cfg.lt, cfg.ss);
+    const level = alertLevel(vpd, cfg.lt, cfg.ss);
+    const falt  = getFaltantes(art.desc);
+    return `
+    <div class="art-row">
+      <div class="art-status ${level}"></div>
+      <div class="art-main">
+        <div class="art-name">${art.desc}</div>
+        <div class="art-meta">
+          <span>PP: ${Math.ceil(pp)} un</span>
+          <span>Sugerido: ${Math.ceil(calcSugerido(vpd, cfg.lt, cfg.ss))} un</span>
+          ${falt > 0 ? `<span class="falt-badge">${falt} faltantes</span>` : ''}
+        </div>
+      </div>
+      <div class="art-right">
+        <div class="art-vpd">${vpd.toFixed(1)}</div>
+        <div class="art-pp">un/día</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  btn.insertAdjacentHTML('beforebegin', extraHTML);
+  btn.remove();
+}
+
+// ════════════════════════════════════════════
+// PERIOD SELECTOR
+// ════════════════════════════════════════════
+document.getElementById('periodCtrl').addEventListener('click', (e) => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn) return;
+  document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  state.periodDays = parseInt(btn.dataset.days);
+  if (state.articles.length) { saveState(); renderAll(); }
+});
+
+// ════════════════════════════════════════════
+// FILE UPLOAD
+// ════════════════════════════════════════════
+const uploadZone = document.getElementById('uploadZone');
+const fileInput  = document.getElementById('fileInput');
+
+uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', ()  => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+fileInput.addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if (f) handleFile(f);
+  e.target.value = ''; // reset para poder subir el mismo archivo de nuevo
+});
+
+async function handleFile(file) {
+  if (!file.name.match(/\.xlsx?$/i)) {
+    toast('Solo se aceptan archivos .xlsx o .xls');
+    return;
+  }
+  toast('Procesando archivo...');
+  try {
+    const articles = await parseXLSX(file);
+    if (!articles.length) { toast('No se encontraron artículos en el archivo'); return; }
+
+    state.articles   = articles;
+    state.uploadedAt = new Date().toISOString();
+    saveState();
+
+    // Cargar faltantes de Supabase en paralelo
+    await loadFaltantes();
+
+    renderAll();
+    toast(`✅ ${articles.length} artículos cargados`);
+  } catch(err) {
+    console.error(err);
+    toast('Error al leer el archivo. Verificá el formato.');
+  }
+}
+
+// ════════════════════════════════════════════
+// LIMPIAR DATOS
+// ════════════════════════════════════════════
+document.getElementById('btnClear').addEventListener('click', () => {
+  if (!confirm('¿Borrar todos los datos cargados?')) return;
+  state.articles = [];
+  state.uploadedAt = null;
+  saveState();
+  renderAll();
+  toast('Datos borrados');
+});
+
+// ════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════
+async function init() {
+  loadState();
+
+  // Sincronizar selector de período
+  document.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.dataset.days) === state.periodDays);
+  });
+
+  document.getElementById('headerSub').textContent =
+    new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  if (state.articles.length) {
+    await loadFaltantes();
+  }
+
+  renderAll();
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,15 +1,13 @@
-// === Service Worker v48 — Pedidos ML (final PWA GitHub) ===
+// === Service Worker v52 — Pedidos ML (App-Pedidos-ML) ===
 
-const CACHE_NAME = "pedidos-ml-v48";
+const CACHE_NAME = "pedidos-ml-v52";
 const OFFLINE_URLS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
-  "./logo.jpeg",
-  "./analytics.html",
-  "./manifest-analytics.webmanifest",
-  "./analytics-icon-192.png",
-  "./analytics-icon-512.png"
+  "./icon-192.png",
+  "./icon-512.png",
+  "./stock.html",
 ];
 
 // 🟢 INSTALACIÓN
