@@ -88,10 +88,35 @@ a { text-decoration: none; }
 .btn-icon:active { transform: scale(.92); background: var(--border); }
 
 /* ═══════════════════════════════════════════
+   BOTTOM NAV
+═══════════════════════════════════════════ */
+.bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+  background: rgba(255,255,255,0.88);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-top: 1px solid var(--border);
+  display: flex;
+  padding-bottom: var(--safe-bot);
+}
+.nav-item {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 10px 0 8px;
+  font-size: 10px; font-weight: 600; color: var(--text3);
+  text-decoration: none;
+  transition: color .15s;
+  gap: 3px;
+  -webkit-tap-highlight-color: transparent;
+}
+.nav-item .nav-icon { font-size: 22px; line-height: 1; }
+.nav-item.active { color: var(--accent); }
+
+/* ═══════════════════════════════════════════
    SCROLL CONTAINER
 ═══════════════════════════════════════════ */
 .scroll {
-  padding: 20px 16px calc(var(--safe-bot) + 32px);
+  padding: 20px 16px calc(var(--safe-bot) + 80px);
   display: flex; flex-direction: column; gap: 16px;
 }
 
@@ -565,6 +590,16 @@ a { text-decoration: none; }
 </main>
 
 <div id="toastEl"></div>
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav">
+  <a href="./analytics.html" class="nav-item active">
+    <span class="nav-icon">📊</span>Analytics
+  </a>
+  <a href="./stock.html" class="nav-item">
+    <span class="nav-icon">📦</span>Stock
+  </a>
+</nav>
 
 <script>
 // ════════════════════════════════════════════
