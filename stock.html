@@ -391,6 +391,38 @@ a { text-decoration: none; color: inherit; }
 .hist-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-s); }
 
 /* ═══════════════════════════════════════════
+   SYNC STATUS
+═══════════════════════════════════════════ */
+.sync-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface); border-radius: var(--r-sm);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+}
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
+.sync-dot.ok  { background: var(--green); }
+.sync-dot.err { background: var(--red); }
+.sync-text { flex: 1; font-size: 12px; color: var(--text2); }
+.btn-sync {
+  font-size: 12px; font-weight: 700; color: var(--accent);
+  padding: 6px 12px; border-radius: 8px;
+  background: var(--accent-s); border: none;
+  transition: opacity .15s;
+}
+.btn-sync:active { opacity: .7; }
+
+/* Botón exportar Excel dentro del prov-card */
+.btn-export-prov {
+  display: flex; align-items: center; gap: 6px;
+  margin: 0 16px 14px;
+  padding: 10px 14px; border-radius: 10px;
+  background: var(--green-s); border: 1px solid rgba(52,199,89,0.25);
+  font-size: 13px; font-weight: 700; color: #1a7a33;
+  transition: opacity .15s;
+}
+.btn-export-prov:active { opacity: .7; }
+
+/* ═══════════════════════════════════════════
    EMPTY STATE
 ═══════════════════════════════════════════ */
 .empty-state {
@@ -437,6 +469,7 @@ a { text-decoration: none; color: inherit; }
     <div class="header-sub" id="headerSub">Mercado Limpio</div>
   </div>
   <div class="header-actions">
+    <button class="btn-icon" id="btnSync" title="Sincronizar con nube" style="font-size:15px">☁</button>
     <button class="btn-icon" id="btnClear" title="Limpiar datos" style="font-size:14px">🗑</button>
   </div>
 </header>
@@ -466,6 +499,13 @@ a { text-decoration: none; color: inherit; }
   <!-- DYNAMIC CONTENT (hidden until data loaded) -->
   <div id="dynamicContent" style="display:none; display:contents">
 
+    <!-- SYNC STATUS -->
+    <div class="sync-row fade-up" id="syncRow" style="display:none">
+      <div class="sync-dot" id="syncDot"></div>
+      <div class="sync-text" id="syncText">Sin sincronizar</div>
+      <button class="btn-sync" id="btnSyncInline">Sincronizar ☁</button>
+    </div>
+
     <!-- INFO BANNER -->
     <div class="info-banner fade-up" id="infoBanner" style="display:none">
       <div class="info-dot" id="infoDot"></div>
@@ -491,6 +531,11 @@ a { text-decoration: none; color: inherit; }
         <div class="kpi-mini-lbl">Pedir ya</div>
       </div>
     </div>
+
+    <!-- EXPORTAR TODO -->
+    <button class="btn-export-prov fade-up" id="btnExportAll" style="display:none; margin:0" onclick="exportAllExcel()">
+      📥 Exportar Excel completo (todos los proveedores)
+    </button>
 
     <!-- ALERTAS PRIORITARIAS -->
     <div class="section-label fade-up" id="alertLabel" style="display:none">Alertas prioritarias</div>
@@ -823,6 +868,78 @@ function getTrend(art, periodDays, prevMap) {
 }
 
 // ════════════════════════════════════════════
+// SUPABASE — sync de períodos (para ver desde celu)
+// Tabla requerida: stock_periodos (id TEXT PK, data JSONB, updated_at TIMESTAMPTZ)
+// ════════════════════════════════════════════
+async function sbStock(method, body) {
+  const r = await fetch(`${SB_URL}/rest/v1/stock_periodos`, {
+    method,
+    headers: {
+      apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`,
+      'Content-Type': 'application/json',
+      'Prefer': method === 'POST' ? 'resolution=merge-duplicates' : '',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return r;
+}
+
+async function saveToSupabase() {
+  setSyncStatus('saving');
+  try {
+    const payload = {
+      id: 'main',
+      data: { periodos: state.periodos, provConfig: state.provConfig },
+      updated_at: new Date().toISOString(),
+    };
+    const r = await sbStock('POST', payload);
+    if (!r.ok) throw new Error(await r.text());
+    state.lastSync = new Date().toISOString();
+    setSyncStatus('ok');
+    toast('☁ Datos sincronizados — ya podés ver desde el celu');
+  } catch(e) {
+    console.error(e);
+    setSyncStatus('err');
+    toast('Error al sincronizar. ¿Creaste la tabla stock_periodos?');
+  }
+}
+
+async function loadFromSupabase() {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/stock_periodos?id=eq.main&select=data,updated_at`, {
+      headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` }
+    });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (!rows.length) return null;
+    return rows[0];
+  } catch(e) { return null; }
+}
+
+function setSyncStatus(status) {
+  const dot  = document.getElementById('syncDot');
+  const text = document.getElementById('syncText');
+  if (!dot || !text) return;
+  if (status === 'ok') {
+    dot.className = 'sync-dot ok';
+    const d = new Date().toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
+    text.textContent = `Sincronizado a las ${d} — visible desde el celu`;
+  } else if (status === 'err') {
+    dot.className = 'sync-dot err';
+    text.textContent = 'Error de sincronización';
+  } else if (status === 'saving') {
+    dot.className = 'sync-dot';
+    text.textContent = 'Sincronizando...';
+  } else if (status === 'cloud') {
+    dot.className = 'sync-dot ok';
+    text.textContent = 'Datos cargados desde la nube';
+  } else {
+    dot.className = 'sync-dot';
+    text.textContent = 'Sin sincronizar todavía';
+  }
+}
+
+// ════════════════════════════════════════════
 // SUPABASE — cargar faltantes de los últimos 30 días
 // ════════════════════════════════════════════
 async function loadFaltantes() {
@@ -854,6 +971,183 @@ function getFaltantes(desc) {
     if (matches >= Math.min(2, words.length) && count > max) max = count;
   }
   return max;
+}
+
+// ════════════════════════════════════════════
+// EXPORTAR EXCEL
+// ════════════════════════════════════════════
+
+// Colores de estilo (ARGB sin #)
+const XLS_COLORS = {
+  headerBg:   'FF4338CA', // violeta oscuro
+  headerFg:   'FFFFFFFF', // blanco
+  sugerBg:    'FFD1FAE5', // verde claro
+  bultosBg:   'FFFEF3C7', // amarillo pálido (usuario llena)
+  resultBg:   'FFE0E7FF', // azul índigo claro (fórmula resultado)
+  resultFg:   'FF3730A3', // índigo oscuro
+  zebraBg:    'FFF9F9FB', // gris muy suave para filas pares
+  borderClr:  'FFD1D5DB', // gris borde
+};
+
+function xlsStyle(opts = {}) {
+  const s = {};
+  if (opts.bold || opts.headerFg || opts.resultFg) {
+    s.font = {
+      bold:  !!opts.bold,
+      color: opts.headerFg ? { rgb: XLS_COLORS.headerFg }
+           : opts.resultFg ? { rgb: XLS_COLORS.resultFg }
+           : undefined,
+      sz: opts.sz || 11,
+    };
+  }
+  if (opts.bg) {
+    s.fill = { patternType: 'solid', fgColor: { rgb: opts.bg } };
+  }
+  if (opts.center) {
+    s.alignment = { horizontal: 'center', vertical: 'center', wrapText: !!opts.wrap };
+  } else if (opts.wrap) {
+    s.alignment = { wrapText: true, vertical: 'top' };
+  }
+  s.border = {
+    top:    { style: 'thin', color: { rgb: XLS_COLORS.borderClr } },
+    bottom: { style: 'thin', color: { rgb: XLS_COLORS.borderClr } },
+    left:   { style: 'thin', color: { rgb: XLS_COLORS.borderClr } },
+    right:  { style: 'thin', color: { rgb: XLS_COLORS.borderClr } },
+  };
+  return s;
+}
+
+function buildProvSheet(arts, periodDays, prevMap) {
+  // Cabecera
+  const headers = ['Pos.', 'EAN', 'Descripción', `Vendidas (${periodDays}d)`, 'VPD (u/día)', 'Sugerido (u)', 'Un. por bulto', 'Bultos a pedir'];
+  const ws = {};
+  const ref = (c, r) => XLSX.utils.encode_cell({ c, r });
+
+  // Fila 0 — instrucción
+  const instruccion = 'Completá la columna "Un. por bulto" con las unidades que trae cada caja del proveedor. La columna "Bultos a pedir" se calcula sola.';
+  ws[ref(0, 0)] = {
+    v: instruccion, t: 's',
+    s: xlsStyle({ bg: 'FFFFF8E1', bold: false, wrap: true }),
+  };
+  // Merge instrucción fila 0 cols 0-7
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
+
+  // Fila 1 — headers
+  headers.forEach((h, c) => {
+    ws[ref(c, 1)] = {
+      v: h, t: 's',
+      s: xlsStyle({ bg: XLS_COLORS.headerBg, headerFg: true, bold: true, center: true }),
+    };
+  });
+
+  // Filas de datos (desde fila 2 = row index 2, fórmulas en Excel row 3+)
+  const sorted = [...arts].sort((a, b) => b.qty - a.qty);
+  sorted.forEach((art, i) => {
+    const r       = i + 2;           // índice array (0-based)
+    const excelR  = r + 1;           // fila Excel 1-based (fila 1=header en Excel es row index 1 → Excel row 2)
+    // Columna G es 'Un. por bulto' (índice 6), fórmula en col H (índice 7)
+    const colSug  = XLSX.utils.encode_col(5); // F
+    const colBulto = XLSX.utils.encode_col(6); // G
+    const colRes  = XLSX.utils.encode_col(7); // H
+    const zebra   = i % 2 === 1;
+    const vpd     = art.qty > 0 ? art.qty / periodDays : 0;
+    const sugerido = Math.ceil(vpd * COBERTURA_DIAS);
+    const trend   = prevMap ? getTrend(art, periodDays, prevMap) : null;
+    const descCell = trend && trend.label && trend.label !== '→'
+      ? `${art.desc}  [${trend.label}]`
+      : art.desc;
+
+    // Pos
+    ws[ref(0, r)] = { v: art.qty > 0 ? art.pos : '-', t: art.qty > 0 ? 'n' : 's',
+      s: xlsStyle({ bg: zebra ? XLS_COLORS.zebraBg : undefined, center: true }) };
+    // EAN
+    ws[ref(1, r)] = { v: art.ean, t: 's',
+      s: xlsStyle({ bg: zebra ? XLS_COLORS.zebraBg : undefined }) };
+    // Descripción
+    ws[ref(2, r)] = { v: descCell, t: 's',
+      s: xlsStyle({ bg: zebra ? XLS_COLORS.zebraBg : undefined, wrap: true }) };
+    // Vendidas
+    ws[ref(3, r)] = { v: Math.round(art.qty), t: 'n',
+      s: xlsStyle({ bg: zebra ? XLS_COLORS.zebraBg : undefined, center: true }) };
+    // VPD
+    ws[ref(4, r)] = { v: parseFloat(vpd.toFixed(2)), t: 'n',
+      s: xlsStyle({ bg: zebra ? XLS_COLORS.zebraBg : undefined, center: true }) };
+    // Sugerido
+    ws[ref(5, r)] = { v: sugerido, t: 'n',
+      s: xlsStyle({ bg: XLS_COLORS.sugerBg, bold: true, center: true }) };
+    // Un. por bulto — vacío, usuario completa
+    ws[ref(6, r)] = { v: '', t: 's',
+      s: xlsStyle({ bg: XLS_COLORS.bultosBg, center: true }) };
+    // Bultos a pedir — fórmula
+    // =IF(G3="","",CEILING(F3/G3,1))  (Excel 1-based: data row 2 en array = fila excelR en Excel)
+    ws[ref(7, r)] = {
+      f: `IF(${colBulto}${excelR + 1}="","← completar",CEILING(${colSug}${excelR + 1}/${colBulto}${excelR + 1},1))`,
+      t: 'n',
+      s: xlsStyle({ bg: XLS_COLORS.resultBg, resultFg: true, bold: true, center: true }),
+    };
+  });
+
+  // Rango de la hoja
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: sorted.length + 1, c: 7 } });
+
+  // Anchos de columna
+  ws['!cols'] = [
+    { wch: 6 },   // Pos.
+    { wch: 16 },  // EAN
+    { wch: 42 },  // Descripción
+    { wch: 14 },  // Vendidas
+    { wch: 12 },  // VPD
+    { wch: 14 },  // Sugerido
+    { wch: 14 },  // Un. por bulto  ← usuario llena
+    { wch: 16 },  // Bultos a pedir
+  ];
+
+  // Fila 0 alta (instrucción)
+  ws['!rows'] = [{ hpt: 36 }, { hpt: 32 }];
+
+  return ws;
+}
+
+function exportProvExcel(prov) {
+  const periodo = currentPeriodo();
+  if (!periodo) { toast('No hay datos cargados'); return; }
+  const prev    = prevPeriodo();
+  const prevMap = buildPrevMap(prev);
+  const arts    = periodo.articles.filter(a => a.proveedor === prov);
+  if (!arts.length) return;
+
+  const wb = XLSX.utils.book_new();
+  const ws = buildProvSheet(arts, periodo.periodDays, prevMap);
+  XLSX.utils.book_append_sheet(wb, ws, prov.slice(0, 31)); // nombre sheet max 31 chars
+
+  const filename = `Stock ${prov} - ${periodo.label}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  toast(`📥 Descargado: ${filename}`);
+}
+
+function exportAllExcel() {
+  const periodo = currentPeriodo();
+  if (!periodo) { toast('No hay datos cargados'); return; }
+  const prev    = prevPeriodo();
+  const prevMap = buildPrevMap(prev);
+
+  const provMap = {};
+  periodo.articles.forEach(a => {
+    if (!provMap[a.proveedor]) provMap[a.proveedor] = [];
+    provMap[a.proveedor].push(a);
+  });
+
+  const wb = XLSX.utils.book_new();
+  Object.entries(provMap)
+    .sort((a, b) => b[1].reduce((s, x) => s + x.qty, 0) - a[1].reduce((s, x) => s + x.qty, 0))
+    .forEach(([prov, arts]) => {
+      const ws = buildProvSheet(arts, periodo.periodDays, prevMap);
+      XLSX.utils.book_append_sheet(wb, ws, prov.slice(0, 31));
+    });
+
+  const filename = `Stock completo - ${periodo.label}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  toast(`📥 Exportado: ${filename}`);
 }
 
 // ════════════════════════════════════════════
@@ -896,13 +1190,19 @@ function renderAll() {
 
   if (!periodo) {
     document.getElementById('emptyState').style.display = '';
-    ['infoBanner','kpiLabel','kpiStrip','alertLabel','alertList','provLabel','historyRow'].forEach(id => {
+    ['infoBanner','kpiLabel','kpiStrip','alertLabel','alertList','provLabel','historyRow','syncRow','btnExportAll'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.style.display = 'none';
     });
     document.getElementById('provList').innerHTML = '';
     return;
   }
+
+  // Mostrar sync row y export all
+  const syncRow = document.getElementById('syncRow');
+  if (syncRow) syncRow.style.display = 'flex';
+  const btnExpAll = document.getElementById('btnExportAll');
+  if (btnExpAll) btnExpAll.style.display = '';
 
   document.getElementById('emptyState').style.display = 'none';
 
@@ -1066,6 +1366,9 @@ function renderAll() {
         ${compraHTML}
         ${firstRows}
         ${hasMore ? `<button class="show-more" onclick="showAll('${prov}',this)">Ver todos los ${sorted.length} artículos ▾</button>` : ''}
+        <button class="btn-export-prov" onclick="exportProvExcel('${prov.replace(/'/g,"\\'")}')">
+          📥 Exportar Excel — ${prov}
+        </button>
       </div>
     </div>`;
   }).join('');
@@ -1188,13 +1491,19 @@ async function handleFile(file) {
     state.viewPeriod = 0; // mostrar siempre el más nuevo
     saveState();
 
-    await loadFaltantes();
+    await Promise.all([loadFaltantes(), saveToSupabase()]);
     renderAll();
   } catch(err) {
     console.error(err);
     toast('Error al leer el archivo. Verificá el formato.');
   }
 }
+
+// ════════════════════════════════════════════
+// BOTONES SYNC
+// ════════════════════════════════════════════
+document.getElementById('btnSync').addEventListener('click', saveToSupabase);
+document.getElementById('btnSyncInline').addEventListener('click', saveToSupabase);
 
 // ════════════════════════════════════════════
 // LIMPIAR DATOS
@@ -1225,7 +1534,26 @@ async function init() {
     new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
 
   if (state.periodos.length) {
+    // Hay datos locales — cargar faltantes
     await loadFaltantes();
+  } else {
+    // Sin datos locales (ej: celu) → intentar cargar desde Supabase
+    toast('Buscando datos en la nube...');
+    const remote = await loadFromSupabase();
+    if (remote && remote.data) {
+      state.periodos   = remote.data.periodos   || [];
+      state.provConfig = remote.data.provConfig || {};
+      if (state.periodos.length) {
+        saveState(); // guardar local para próxima vez offline
+        setSyncStatus('cloud');
+        await loadFaltantes();
+        toast(`☁ ${state.periodos.length} período(s) cargados desde la nube`);
+      } else {
+        toast('Sin datos en la nube todavía. Subí el archivo desde la PC.');
+      }
+    } else {
+      toast('Sin datos locales ni en la nube.');
+    }
   }
 
   renderAll();
