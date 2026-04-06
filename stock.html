@@ -1433,90 +1433,58 @@ function exportProvExcel(prov) {
 function exportMakeOrder() {
   const periodo = currentPeriodo();
   if (!periodo) { toast('No hay datos cargados'); return; }
-
   if (!state.makeListaRaw) {
-    toast('Subí la LISTA DE MAKE primero para exportar la Nota de Pedido');
+    toast('Subí la LISTA DE MAKE primero');
     return;
   }
 
-  const arts = periodo.articles
-    .filter(a => a.proveedor === 'Make' && a.qty > 0);
-  if (!arts.length) { toast('No hay artículos Make en el período actual'); return; }
-
-  // ── Construir mapa EAN/code → bultos a pedir ──
-  // Clave: code4 (EAN.slice(-5,-1))
-  const pedidoMap = {}; // code4 → bultos
-  arts.forEach(art => {
-    const vpd    = art.qty / periodo.periodDays;
-    const sug    = Math.ceil(vpd * COBERTURA_DIAS);
-    const uxb    = getMakeBultos(art.ean);
-    if (uxb > 0 && sug > 0) {
+  // ── 1. Calcular mapa code4 → bultos (solo los que tienen venta + bulto conocido) ──
+  const pedidoMap = {};
+  periodo.articles
+    .filter(a => a.proveedor === 'Make' && a.qty > 0)
+    .forEach(art => {
+      const uxb  = getMakeBultos(art.ean);
+      if (!uxb) return;
+      const sug    = Math.ceil((art.qty / periodo.periodDays) * COBERTURA_DIAS);
       const bultos = Math.ceil(sug / uxb);
       const code   = eanToMakeCode(art.ean);
-      if (code) pedidoMap[code] = bultos;
-    }
-  });
+      if (code && bultos > 0) pedidoMap[code] = bultos;
+    });
 
-  // ── Leer el archivo original desde base64 ──
-  const binary  = atob(state.makeListaRaw);
-  const bytes   = new Uint8Array(binary.length);
+  // ── 2. Abrir el archivo original desde base64 ──
+  const binary = atob(state.makeListaRaw);
+  const bytes  = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const wb = XLSX.read(bytes, { type: 'array' });
 
-  // cellXf: leer con estilos para preservar formato
-  const wb = XLSX.read(bytes, { type: 'array', cellStyles: true, cellFormula: true });
-
-  // ── Trabajar sobre hoja NOTA DE PEDIDO ──
+  // ── 3. Encontrar la hoja NOTA DE PEDIDO ──
   const sheetName = wb.SheetNames.find(n => n.toUpperCase().includes('NOTA')) || wb.SheetNames[1];
   const ws = wb.Sheets[sheetName];
-
-  // Leer todas las filas para encontrar las que tienen código
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
 
+  // ── 4. Escribir SOLO en columna E donde hay código + bultos. Nada más. ──
   let totalBultos = 0, rowsWritten = 0;
-
   rows.forEach((row, rowIdx) => {
     if (!row) return;
-    const code = String(row[1] || '').trim();
-    if (!/^\d{4}$/.test(code)) return; // solo filas con código de 4 dígitos
-
-    const bultos = pedidoMap[code] || null;
-
-    // Dirección de la celda E (columna 4, 0-based → col E en Excel)
-    const cellAddr = XLSX.utils.encode_cell({ c: 4, r: rowIdx });
-
-    if (bultos && bultos > 0) {
-      // Escribir el valor numérico, preservando el estilo existente si lo hay
-      const existingCell = ws[cellAddr];
-      ws[cellAddr] = {
-        t: 'n',
-        v: bultos,
-        ...(existingCell?.s ? { s: existingCell.s } : {}),
-      };
-      totalBultos += bultos;
-      rowsWritten++;
-    } else {
-      // Artículo sin datos de venta: asegurar que la celda esté vacía (no null)
-      // para que la fórmula de IMPORTE devuelva 0 y no error
-      if (!ws[cellAddr]) {
-        ws[cellAddr] = { t: 'n', v: 0 };
-      }
-    }
+    const code   = String(row[1] || '').trim();
+    if (!/^\d{4}$/.test(code)) return;
+    const bultos = pedidoMap[code];
+    if (!bultos) return; // no tocar filas sin pedido
+    const addr = XLSX.utils.encode_cell({ c: 4, r: rowIdx }); // col E
+    ws[addr] = { t: 'n', v: bultos };
+    totalBultos += bultos;
+    rowsWritten++;
   });
 
-  // ── Forzar recálculo de las fórmulas al abrir ──
+  // ── 5. Forzar recálculo al abrir en Excel ──
   if (!wb.Workbook) wb.Workbook = {};
-  if (!wb.Workbook.CalcPr) wb.Workbook.CalcPr = {};
-  wb.Workbook.CalcPr.fullCalcOnLoad = true;
+  wb.Workbook.CalcPr = { fullCalcOnLoad: true };
 
-  // ── Descargar ──
-  const today    = new Date().toLocaleDateString('es-AR').replace(/\//g,'-');
-  const label    = periodo.label;
-  // Usar el nombre original del archivo con sufijo de período
+  // ── 6. Descargar con nombre del original + sufijo ──
+  const today    = new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
   const origName = state.makeListaName.replace(/\.xlsx?$/i, '');
-  const filename = `${origName} — Pedido ${label} — ${today}.xlsx`;
-
-  XLSX.writeFile(wb, filename);
-  toast(`📥 ${rowsWritten} artículos escritos · ${totalBultos} bultos totales`);
+  XLSX.writeFile(wb, `${origName} — Pedido ${periodo.label} — ${today}.xlsx`);
+  toast(`✅ ${rowsWritten} artículos · ${totalBultos} bultos totales`);
 }
 
 function exportAllExcel() {
