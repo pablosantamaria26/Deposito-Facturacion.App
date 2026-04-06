@@ -1399,8 +1399,12 @@ function renderMakeOrderBlock(arts, periodDays) {
       <input type="file" accept=".xlsx,.xls" onchange="handleMakeFile(this,'stock')"/>
     </label>
   </div>
+  <div style="padding:8px 12px 4px">
+    <input id="makeSearch" type="search" placeholder="Buscar por nombre o código..." oninput="filterMakeTable(this.value)"
+      style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-size:13px;outline:none"/>
+  </div>
   <div class="make-table-wrap">
-    <table class="make-table">
+    <table class="make-table" id="makeTable">
       <thead><tr>
         <th style="width:28px"></th>
         <th>Descripción</th>
@@ -1416,6 +1420,16 @@ function renderMakeOrderBlock(arts, periodDays) {
       <tbody>${rows}</tbody>
     </table>
   </div>`;
+}
+
+function filterMakeTable(query) {
+  const q = query.trim().toLowerCase();
+  const tbody = document.querySelector('#makeTable tbody');
+  if (!tbody) return;
+  tbody.querySelectorAll('tr').forEach(tr => {
+    const text = tr.textContent.toLowerCase();
+    tr.style.display = !q || text.includes(q) ? '' : 'none';
+  });
 }
 
 async function handleMakeFile(input, tipo) {
