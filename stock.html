@@ -359,6 +359,38 @@ a { text-decoration: none; color: inherit; }
 .alert-qty-label { font-size: 10px; color: var(--text3); }
 
 /* ═══════════════════════════════════════════
+   TREND BADGES
+═══════════════════════════════════════════ */
+.trend-badge {
+  display: inline-block;
+  font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: 99px;
+}
+.trend-up   { background: var(--green-s);  color: #1a7a33; }
+.trend-down { background: var(--red-s);    color: #c0392b; }
+.trend-flat { background: var(--accent-s); color: var(--accent); }
+.trend-new  { background: var(--blue-s);   color: var(--blue); }
+
+/* ═══════════════════════════════════════════
+   HISTORIAL DE PERÍODOS
+═══════════════════════════════════════════ */
+.history-row {
+  display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.history-row::-webkit-scrollbar { display: none; }
+.hist-btn {
+  flex-shrink: 0; padding: 8px 14px; border-radius: 10px;
+  background: var(--surface); border: 1.5px solid var(--border);
+  font-size: 11px; font-weight: 600; color: var(--text2);
+  text-align: center; line-height: 1.4;
+  transition: border-color .15s, color .15s;
+  cursor: pointer;
+}
+.hist-btn small { font-weight: 400; color: var(--text3); display: block; }
+.hist-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-s); }
+
+/* ═══════════════════════════════════════════
    EMPTY STATE
 ═══════════════════════════════════════════ */
 .empty-state {
@@ -440,6 +472,9 @@ a { text-decoration: none; color: inherit; }
       <div class="info-text" id="infoText"></div>
     </div>
 
+    <!-- HISTORIAL DE PERÍODOS -->
+    <div class="history-row fade-up" id="historyRow" style="display:none"></div>
+
     <!-- KPI STRIP -->
     <div class="section-label fade-up" id="kpiLabel" style="display:none">Resumen</div>
     <div class="kpi-strip fade-up" id="kpiStrip" style="display:none">
@@ -492,8 +527,10 @@ a { text-decoration: none; color: inherit; }
 // ════════════════════════════════════════════
 // CONFIG
 // ════════════════════════════════════════════
-const SB_URL  = "https://gjeyvbidomxzofcdycya.supabase.co";
-const SB_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
+const SB_URL        = "https://gjeyvbidomxzofcdycya.supabase.co";
+const SB_ANON       = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
+const MAX_PERIODOS  = 6;   // cuántos períodos guardamos en memoria
+const COBERTURA_DIAS = 30; // días de stock objetivo para la sugerencia de compra
 
 // ════════════════════════════════════════════
 // MAPA DE MARCAS → PROVEEDOR
@@ -568,35 +605,32 @@ const TWO_WORD_MAP = {
 };
 
 // LT y SS por defecto por proveedor (días). El usuario los edita en la UI.
-const DEFAULT_CONFIG = {
-  lt: 5,  // días de entrega del proveedor
-  ss: 3,  // días de seguridad (colchón)
-};
-
-// Días de cobertura deseados (cuántos días de stock queremos tener)
-const COBERTURA_DIAS = 30;
+const DEFAULT_CONFIG = { lt: 5, ss: 3 };
 
 // ════════════════════════════════════════════
 // STATE
+// periodos: array de períodos cargados, más nuevo al final
+//   cada uno: { label, uploadedAt, periodDays, articles: [{pos,ean,desc,qty,proveedor}] }
 // ════════════════════════════════════════════
 let state = {
-  articles:    [],   // artículos parseados del XLS
-  periodDays:  7,    // 7 (semana) o 30 (mes)
-  uploadedAt:  null, // timestamp del último upload
-  faltantes:   {},   // { normalizedDesc: count } de Supabase
-  provConfig:  {},   // { proveedor: { lt, ss } } — persistido en localStorage
+  periodos:   [],  // historial de períodos subidos
+  faltantes:  {},  // { normalizedDesc: count } de Supabase
+  provConfig: {},  // { proveedor: { lt, ss } } — persistido en localStorage
+  viewPeriod: 0,   // índice del período activo (0 = más nuevo)
 };
+
+// Atajos al período activo
+function currentPeriodo() { return state.periodos[state.periodos.length - 1 - state.viewPeriod] || null; }
+function prevPeriodo()    { return state.periodos[state.periodos.length - 2 - state.viewPeriod] || null; }
 
 // ════════════════════════════════════════════
 // PERSISTENCIA localStorage
 // ════════════════════════════════════════════
-const LS_KEY = 'ml_stock_v2';
+const LS_KEY = 'ml_stock_v3';
 
 function saveState() {
   localStorage.setItem(LS_KEY, JSON.stringify({
-    articles:   state.articles,
-    periodDays: state.periodDays,
-    uploadedAt: state.uploadedAt,
+    periodos:   state.periodos,
     provConfig: state.provConfig,
   }));
 }
@@ -605,10 +639,19 @@ function loadState() {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return;
+    // Migrar formato viejo (v2) si existe
     const saved = JSON.parse(raw);
-    state.articles   = saved.articles   || [];
-    state.periodDays = saved.periodDays || 7;
-    state.uploadedAt = saved.uploadedAt || null;
+    if (saved.articles && !saved.periodos) {
+      // formato viejo: convertir a un solo período
+      state.periodos = [{
+        label:      'Período anterior',
+        uploadedAt: saved.uploadedAt || new Date().toISOString(),
+        periodDays: saved.periodDays || 30,
+        articles:   saved.articles   || [],
+      }];
+    } else {
+      state.periodos = saved.periodos  || [];
+    }
     state.provConfig = saved.provConfig || {};
   } catch(e) { /* ignore */ }
 }
@@ -656,21 +699,15 @@ function normalize(str) {
 // ════════════════════════════════════════════
 function fixQty(val) {
   if (typeof val !== 'number') {
-    // Intentar parsear string con separador de miles argentino
     val = parseFloat(String(val).replace(/\./g, '').replace(',', '.'));
   }
-  if (isNaN(val)) return 0;
+  if (isNaN(val) || val < 0) return 0; // negativos = devoluciones → ignorar
 
-  // Detectar formato con separador de miles (ej: 2.721 → 2721)
-  // Condición: número positivo < 10 con decimales → fue formateado con punto como miles
-  if (val > 0 && val < 100) {
+  // Separador de miles con punto (ej: 1.356 → 1356, 2.721 → 2721)
+  if (val > 0 && val < 10) {
     const str = val.toString();
-    if (str.includes('.')) {
-      const decimals = str.split('.')[1];
-      // Si tiene 2 o 3 decimales y el resultado × 1000 tiene sentido → convertir
-      if (decimals.length >= 2) {
-        return Math.round(val * 1000);
-      }
+    if (str.includes('.') && str.split('.')[1].length >= 2) {
+      return Math.round(val * 1000);
     }
   }
   return Math.round(val);
@@ -740,28 +777,49 @@ async function parseXLSX(file) {
 // ════════════════════════════════════════════
 // CÁLCULOS
 // ════════════════════════════════════════════
-function calcVPD(qty, periodDays) {
-  return qty / periodDays;
-}
+function calcVPD(qty, periodDays) { return qty / periodDays; }
 
-function calcPP(vpd, lt, ss) {
-  // Punto de Pedido = (VPD × LT) + (VPD × SS)
-  return (vpd * lt) + (vpd * ss);
-}
+function calcPP(vpd, lt, ss) { return (vpd * lt) + (vpd * ss); }
 
-function calcSugerido(vpd, lt, ss) {
-  // Comprar para cubrir COBERTURA_DIAS días desde el PP
-  // = stock máximo que queremos tener
-  return vpd * COBERTURA_DIAS;
-}
+function calcSugerido(vpd) { return vpd * COBERTURA_DIAS; }
 
 function alertLevel(vpd, lt, ss) {
-  // Sin stock real, usamos la lógica de "ya deberías haber pedido"
-  // danger = PP alto, warn = cobertura < 15 días
+  if (vpd === 0) return 'ok';
   const pp = calcPP(vpd, lt, ss);
-  if (pp > vpd * 20) return 'danger'; // necesita > 20 días para repostar
+  if (pp > vpd * 20) return 'danger';
   if (pp > vpd * 10) return 'warn';
   return 'ok';
+}
+
+// Construir mapa EAN→qty del período anterior para detectar tendencias
+function buildPrevMap(periodo) {
+  if (!periodo) return {};
+  const map = {};
+  periodo.articles.forEach(a => {
+    // clave: EAN si es largo (≥8 dígitos), sino desc normalizada
+    const key = a.ean && a.ean.length >= 8 ? a.ean : normalize(a.desc);
+    map[key] = { qty: a.qty, days: periodo.periodDays };
+  });
+  return map;
+}
+
+// Devuelve la tendencia comparando qty actual vs período anterior
+// retorna: { pct: número, label: '↑12%' | '↓5%' | 'nuevo' | '' }
+function getTrend(art, periodDays, prevMap) {
+  if (!prevMap || Object.keys(prevMap).length === 0) return null;
+  const key = art.ean && art.ean.length >= 8 ? art.ean : normalize(art.desc);
+  const prev = prevMap[key];
+  if (!prev) return { pct: null, label: 'nuevo', css: 'trend-new' };
+
+  // Normalizar a VPD para comparar períodos de distinta duración
+  const vpdCurr = art.qty / periodDays;
+  const vpdPrev = prev.qty / prev.days;
+  if (vpdPrev === 0) return { pct: null, label: 'nuevo', css: 'trend-new' };
+
+  const pct = Math.round(((vpdCurr - vpdPrev) / vpdPrev) * 100);
+  if (Math.abs(pct) < 5) return { pct, label: '→', css: 'trend-flat' };
+  if (pct > 0) return { pct, label: `↑${pct}%`, css: 'trend-up' };
+  return { pct, label: `↓${Math.abs(pct)}%`, css: 'trend-down' };
 }
 
 // ════════════════════════════════════════════
@@ -805,10 +863,40 @@ function getProvConfig(proveedor) {
   return state.provConfig[proveedor] || { lt: DEFAULT_CONFIG.lt, ss: DEFAULT_CONFIG.ss };
 }
 
+function artRowHTML(art, periodDays, cfg, prevMap) {
+  const vpd   = calcVPD(art.qty, periodDays);
+  const pp    = calcPP(vpd, cfg.lt, cfg.ss);
+  const level = alertLevel(vpd, cfg.lt, cfg.ss);
+  const falt  = getFaltantes(art.desc);
+  const trend = getTrend(art, periodDays, prevMap);
+  const trendHTML = trend
+    ? `<span class="trend-badge ${trend.css}">${trend.label}</span>`
+    : '';
+  return `
+  <div class="art-row">
+    <div class="art-status ${level}"></div>
+    <div class="art-main">
+      <div class="art-name">${art.desc}</div>
+      <div class="art-meta">
+        <span>${Math.round(art.qty)} un · VPD ${vpd.toFixed(1)}</span>
+        <span>PP: ${Math.ceil(pp)} · Pedir: ${Math.ceil(calcSugerido(vpd))}</span>
+        ${falt > 0 ? `<span class="falt-badge">${falt} faltantes</span>` : ''}
+        ${trendHTML}
+      </div>
+    </div>
+    <div class="art-right">
+      <div class="art-vpd">${vpd.toFixed(1)}</div>
+      <div class="art-pp">un/día</div>
+    </div>
+  </div>`;
+}
+
 function renderAll() {
-  if (!state.articles.length) {
+  const periodo = currentPeriodo();
+
+  if (!periodo) {
     document.getElementById('emptyState').style.display = '';
-    ['infoBanner','kpiLabel','kpiStrip','alertLabel','alertList','provLabel'].forEach(id => {
+    ['infoBanner','kpiLabel','kpiStrip','alertLabel','alertList','provLabel','historyRow'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.style.display = 'none';
     });
@@ -818,33 +906,49 @@ function renderAll() {
 
   document.getElementById('emptyState').style.display = 'none';
 
-  // Info banner
-  const banner = document.getElementById('infoBanner');
-  banner.style.display = 'flex';
-  const ageMs  = Date.now() - new Date(state.uploadedAt).getTime();
-  const ageDays = Math.floor(ageMs / 86400000);
-  const dot    = document.getElementById('infoDot');
-  dot.className = 'info-dot' + (ageDays > 7 ? ' old' : '');
-  const periodLabel = state.periodDays === 7 ? 'semana' : 'mes';
-  document.getElementById('infoText').innerHTML =
-    `<strong>${state.articles.length} artículos</strong> · Período: 1 ${periodLabel} · ` +
-    `Subido hace ${ageDays === 0 ? 'hoy' : ageDays + 'd'}`;
+  const { articles, periodDays, uploadedAt, label } = periodo;
+  const prev    = prevPeriodo();
+  const prevMap = buildPrevMap(prev);
 
-  // Agrupar por proveedor
+  // ── Historial de períodos ──
+  const histEl = document.getElementById('historyRow');
+  if (histEl && state.periodos.length > 1) {
+    histEl.style.display = 'flex';
+    histEl.innerHTML = state.periodos.map((p, i) => {
+      const idx = state.periodos.length - 1 - i; // 0 = más nuevo
+      const isActive = idx === state.viewPeriod;
+      const date = new Date(p.uploadedAt).toLocaleDateString('es-AR', { day:'2-digit', month:'short' });
+      return `<button class="hist-btn ${isActive ? 'active' : ''}" onclick="switchView(${idx})">${p.label}<br><small>${date}</small></button>`;
+    }).reverse().join('');
+  } else if (histEl) {
+    histEl.style.display = 'none';
+  }
+
+  // ── Info banner ──
+  const ageMs   = Date.now() - new Date(uploadedAt).getTime();
+  const ageDays = Math.floor(ageMs / 86400000);
+  document.getElementById('infoBanner').style.display = 'flex';
+  document.getElementById('infoDot').className = 'info-dot' + (ageDays > 35 ? ' old' : '');
+  document.getElementById('infoText').innerHTML =
+    `<strong>${label}</strong> · ${articles.length} artículos · ${periodDays === 7 ? '1 semana' : '1 mes'}` +
+    (prev ? ` · comparando con <em>${prev.label}</em>` : '') +
+    (ageDays > 0 ? ` · subido hace ${ageDays}d` : ' · subido hoy');
+
+  // ── Agrupar por proveedor ──
   const provMap = {};
-  state.articles.forEach(art => {
+  articles.forEach(art => {
     if (!provMap[art.proveedor]) provMap[art.proveedor] = [];
     provMap[art.proveedor].push(art);
   });
 
-  // Calcular alertas globales
+  // ── KPIs y alertas globales ──
   let countWarn = 0, countDanger = 0;
-  const allAlerts = []; // { level, proveedor, art, vpd, pp, faltantes }
+  const allAlerts = [];
 
   Object.entries(provMap).forEach(([prov, arts]) => {
     const cfg = getProvConfig(prov);
     arts.forEach(art => {
-      const vpd   = calcVPD(art.qty, state.periodDays);
+      const vpd   = calcVPD(art.qty, periodDays);
       const pp    = calcPP(vpd, cfg.lt, cfg.ss);
       const falt  = getFaltantes(art.desc);
       const level = alertLevel(vpd, cfg.lt, cfg.ss);
@@ -853,13 +957,12 @@ function renderAll() {
     });
   });
 
-  // KPI strip
   ['kpiLabel','kpiStrip'].forEach(id => document.getElementById(id).style.display = '');
   document.getElementById('kpiProveedores').textContent = Object.keys(provMap).length;
-  document.getElementById('kpiWarn').textContent    = countWarn;
-  document.getElementById('kpiDanger').textContent  = countDanger;
+  document.getElementById('kpiWarn').textContent   = countWarn;
+  document.getElementById('kpiDanger').textContent = countDanger;
 
-  // Alertas prioritarias (solo danger + los warn con faltantes)
+  // ── Alertas prioritarias ──
   const alertContainer = document.getElementById('alertList');
   const priorityAlerts = allAlerts
     .filter(a => a.level === 'danger' || (a.level === 'warn' && a.falt > 0))
@@ -869,17 +972,18 @@ function renderAll() {
   document.getElementById('alertLabel').style.display = priorityAlerts.length ? '' : 'none';
   alertContainer.style.display = priorityAlerts.length ? 'flex' : 'none';
   alertContainer.innerHTML = priorityAlerts.map(a => {
-    const sugerido = Math.ceil(calcSugerido(a.vpd, getProvConfig(a.prov).lt, getProvConfig(a.prov).ss));
+    const sugerido = Math.ceil(calcSugerido(a.vpd));
+    const trend    = getTrend(a.art, periodDays, prevMap);
     return `
     <div class="alert-item ${a.level} fade-up">
       <div class="alert-icon">${a.level === 'danger' ? '🔴' : '🟡'}</div>
       <div class="alert-body">
-        <div class="alert-name">${a.art.desc}</div>
+        <div class="alert-name">${a.art.desc} ${trend ? `<span class="trend-badge ${trend.css}">${trend.label}</span>` : ''}</div>
         <div class="alert-prov">${a.prov}</div>
         <div class="alert-detail">
-          VPD: <strong>${a.vpd.toFixed(1)}</strong> un/día ·
-          PP: <strong>${Math.ceil(a.pp)}</strong> un
-          ${a.falt > 0 ? ` · <span style="color:var(--red);font-weight:700">${a.falt} faltantes/mes</span>` : ''}
+          VPD <strong>${a.vpd.toFixed(1)}</strong> ·
+          PP <strong>${Math.ceil(a.pp)}</strong> un
+          ${a.falt > 0 ? ` · <span style="color:var(--red);font-weight:700">${a.falt} faltantes</span>` : ''}
         </div>
       </div>
       <div class="alert-right">
@@ -889,76 +993,44 @@ function renderAll() {
     </div>`;
   }).join('');
 
-  // Proveedores accordion
+  // ── Proveedores accordion ──
   document.getElementById('provLabel').style.display = '';
-  const provList = document.getElementById('provList');
 
-  // Ordenar proveedores: primero los con danger, luego warn, luego ok; por VPD total desc
   const provEntries = Object.entries(provMap).map(([prov, arts]) => {
-    const cfg     = getProvConfig(prov);
+    const cfg      = getProvConfig(prov);
     const totalQty = arts.reduce((s, a) => s + a.qty, 0);
-    const dangerCount = arts.filter(a => alertLevel(calcVPD(a.qty, state.periodDays), cfg.lt, cfg.ss) === 'danger').length;
-    const warnCount   = arts.filter(a => alertLevel(calcVPD(a.qty, state.periodDays), cfg.lt, cfg.ss) === 'warn').length;
+    const dangerCount = arts.filter(a => alertLevel(calcVPD(a.qty, periodDays), cfg.lt, cfg.ss) === 'danger').length;
+    const warnCount   = arts.filter(a => alertLevel(calcVPD(a.qty, periodDays), cfg.lt, cfg.ss) === 'warn').length;
     return { prov, arts, cfg, totalQty, dangerCount, warnCount };
   }).sort((a, b) => {
     if (b.dangerCount !== a.dangerCount) return b.dangerCount - a.dangerCount;
-    if (b.warnCount !== a.warnCount) return b.warnCount - a.warnCount;
+    if (b.warnCount   !== a.warnCount)   return b.warnCount   - a.warnCount;
     return b.totalQty - a.totalQty;
   });
 
-  provList.innerHTML = provEntries.map(({ prov, arts, cfg, dangerCount, warnCount }) => {
+  document.getElementById('provList').innerHTML = provEntries.map(({ prov, arts, cfg, dangerCount, warnCount }) => {
     const dotClass = dangerCount > 0 ? 'danger' : warnCount > 0 ? 'warn' : 'ok';
-    const pp_lt    = calcPP(1, cfg.lt, cfg.ss); // PP relativo (en días)
+    const sorted   = [...arts].sort((a, b) => b.qty - a.qty);
 
-    // Top artículos por VPD
-    const sorted = [...arts].sort((a, b) => b.qty - a.qty);
-
-    // Sugerencia de compra: top 5 artículos en alerta
-    const toOrder = sorted
-      .filter(a => {
-        const vpd = calcVPD(a.qty, state.periodDays);
-        return alertLevel(vpd, cfg.lt, cfg.ss) !== 'ok';
-      })
-      .slice(0, 8);
-
+    const toOrder = sorted.filter(a => alertLevel(calcVPD(a.qty, periodDays), cfg.lt, cfg.ss) !== 'ok');
     const compraHTML = toOrder.length
       ? `<div class="compra-block">
-          <div class="compra-title">Sugerencia de compra (${COBERTURA_DIAS} días)</div>
+          <div class="compra-title">Sugerencia de compra — ${COBERTURA_DIAS} días de cobertura</div>
           <div class="compra-list">${toOrder.map(a => {
-            const vpd      = calcVPD(a.qty, state.periodDays);
-            const sugerido = Math.ceil(calcSugerido(vpd, cfg.lt, cfg.ss));
-            return `<b>${sugerido}</b> × ${a.desc}`;
+            const vpd = calcVPD(a.qty, periodDays);
+            const trend = getTrend(a, periodDays, prevMap);
+            const trendStr = trend ? ` <span class="trend-badge ${trend.css}">${trend.label}</span>` : '';
+            return `<b>${Math.ceil(calcSugerido(vpd))}</b> × ${a.desc}${trendStr}`;
           }).join('<br>')}</div>
         </div>`
       : '';
 
-    const rowsHTML = sorted.slice(0, 10).map(art => {
-      const vpd   = calcVPD(art.qty, state.periodDays);
-      const pp    = calcPP(vpd, cfg.lt, cfg.ss);
-      const level = alertLevel(vpd, cfg.lt, cfg.ss);
-      const falt  = getFaltantes(art.desc);
-      return `
-      <div class="art-row">
-        <div class="art-status ${level}"></div>
-        <div class="art-main">
-          <div class="art-name">${art.desc}</div>
-          <div class="art-meta">
-            <span>PP: ${Math.ceil(pp)} un</span>
-            <span>Sugerido: ${Math.ceil(calcSugerido(vpd, cfg.lt, cfg.ss))} un</span>
-            ${falt > 0 ? `<span class="falt-badge">${falt} faltantes</span>` : ''}
-          </div>
-        </div>
-        <div class="art-right">
-          <div class="art-vpd">${vpd.toFixed(1)}</div>
-          <div class="art-pp">un/día</div>
-        </div>
-      </div>`;
-    }).join('');
-
-    const hasMore = sorted.length > 10;
+    const firstRows = sorted.slice(0, 10).map(a => artRowHTML(a, periodDays, cfg, prevMap)).join('');
+    const hasMore   = sorted.length > 10;
+    const provId    = prov.replace(/\W/g, '_');
 
     return `
-    <div class="prov-card" id="prov-${prov.replace(/\W/g,'_')}">
+    <div class="prov-card" id="prov-${provId}">
       <div class="prov-header" onclick="toggleProv(this)">
         <div class="prov-dot ${dotClass}"></div>
         <div>
@@ -976,15 +1048,15 @@ function renderAll() {
         <div class="config-row">
           <div class="config-field">
             <div class="config-label">LT — Días de entrega</div>
-            <div class="config-desc">¿Cuántos días tarda en llegar el pedido?</div>
+            <div class="config-desc">¿Cuántos días tarda en llegar?</div>
             <input type="number" min="1" max="60" class="config-input" value="${cfg.lt}"
               onchange="updateConfig('${prov}','lt',this.value)"
               oninput="updateConfigPreview(this,'${prov}')"/>
-            <div class="config-sub">PP actual: <span id="pp-preview-${prov.replace(/\W/g,'_')}"><strong>${pp_lt.toFixed(0)}</strong> días de venta</span></div>
+            <div class="config-sub">PP = <span id="pp-preview-${provId}"><strong>${cfg.lt + cfg.ss}</strong></span> días de venta</div>
           </div>
           <div class="config-field">
             <div class="config-label">SS — Días de seguridad</div>
-            <div class="config-desc">Colchón ante atrasos o picos de demanda</div>
+            <div class="config-desc">Colchón ante atrasos o picos</div>
             <input type="number" min="0" max="30" class="config-input" value="${cfg.ss}"
               onchange="updateConfig('${prov}','ss',this.value)"
               oninput="updateConfigPreview(this,'${prov}')"/>
@@ -992,7 +1064,7 @@ function renderAll() {
           </div>
         </div>
         ${compraHTML}
-        ${rowsHTML}
+        ${firstRows}
         ${hasMore ? `<button class="show-more" onclick="showAll('${prov}',this)">Ver todos los ${sorted.length} artículos ▾</button>` : ''}
       </div>
     </div>`;
@@ -1026,47 +1098,33 @@ function updateConfigPreview(input, prov) {
 }
 
 function showAll(prov, btn) {
-  const cfg    = getProvConfig(prov);
-  const arts   = state.articles.filter(a => a.proveedor === prov);
-  const sorted = [...arts].sort((a, b) => b.qty - a.qty);
-
-  const extraHTML = sorted.slice(10).map(art => {
-    const vpd   = calcVPD(art.qty, state.periodDays);
-    const pp    = calcPP(vpd, cfg.lt, cfg.ss);
-    const level = alertLevel(vpd, cfg.lt, cfg.ss);
-    const falt  = getFaltantes(art.desc);
-    return `
-    <div class="art-row">
-      <div class="art-status ${level}"></div>
-      <div class="art-main">
-        <div class="art-name">${art.desc}</div>
-        <div class="art-meta">
-          <span>PP: ${Math.ceil(pp)} un</span>
-          <span>Sugerido: ${Math.ceil(calcSugerido(vpd, cfg.lt, cfg.ss))} un</span>
-          ${falt > 0 ? `<span class="falt-badge">${falt} faltantes</span>` : ''}
-        </div>
-      </div>
-      <div class="art-right">
-        <div class="art-vpd">${vpd.toFixed(1)}</div>
-        <div class="art-pp">un/día</div>
-      </div>
-    </div>`;
-  }).join('');
-
+  const cfg     = getProvConfig(prov);
+  const periodo = currentPeriodo();
+  const prev    = prevPeriodo();
+  const prevMap = buildPrevMap(prev);
+  const arts    = periodo.articles.filter(a => a.proveedor === prov);
+  const sorted  = [...arts].sort((a, b) => b.qty - a.qty);
+  const extraHTML = sorted.slice(10).map(a => artRowHTML(a, periodo.periodDays, cfg, prevMap)).join('');
   btn.insertAdjacentHTML('beforebegin', extraHTML);
   btn.remove();
 }
 
+function switchView(idx) {
+  state.viewPeriod = idx;
+  renderAll();
+}
+
 // ════════════════════════════════════════════
-// PERIOD SELECTOR
+// PERIOD SELECTOR (para el archivo que vas a subir)
 // ════════════════════════════════════════════
+let pendingPeriodDays = 30; // default mes para Art. marzo
+
 document.getElementById('periodCtrl').addEventListener('click', (e) => {
   const btn = e.target.closest('.seg-btn');
   if (!btn) return;
   document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  state.periodDays = parseInt(btn.dataset.days);
-  if (state.articles.length) { saveState(); renderAll(); }
+  pendingPeriodDays = parseInt(btn.dataset.days);
 });
 
 // ════════════════════════════════════════════
@@ -1090,6 +1148,13 @@ fileInput.addEventListener('change', (e) => {
   e.target.value = ''; // reset para poder subir el mismo archivo de nuevo
 });
 
+// Extraer label legible desde el nombre del archivo
+// "Art. marzo 2026.xlsx" → "Marzo 2026", "Semana 14 2026.xlsx" → "Semana 14 2026"
+function labelFromFilename(name) {
+  const clean = name.replace(/\.xlsx?$/i, '').replace(/^Art\.\s*/i, '').trim();
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
+
 async function handleFile(file) {
   if (!file.name.match(/\.xlsx?$/i)) {
     toast('Solo se aceptan archivos .xlsx o .xls');
@@ -1100,15 +1165,31 @@ async function handleFile(file) {
     const articles = await parseXLSX(file);
     if (!articles.length) { toast('No se encontraron artículos en el archivo'); return; }
 
-    state.articles   = articles;
-    state.uploadedAt = new Date().toISOString();
+    const label = labelFromFilename(file.name);
+
+    // Si ya existe un período con el mismo label → reemplazarlo (re-subida del mismo mes)
+    const existIdx = state.periodos.findIndex(p => p.label === label);
+    const nuevoPeriodo = {
+      label,
+      uploadedAt: new Date().toISOString(),
+      periodDays: pendingPeriodDays,
+      articles,
+    };
+
+    if (existIdx >= 0) {
+      state.periodos[existIdx] = nuevoPeriodo;
+      toast(`✅ "${label}" actualizado — ${articles.length} artículos`);
+    } else {
+      state.periodos.push(nuevoPeriodo);
+      if (state.periodos.length > MAX_PERIODOS) state.periodos.shift(); // rotar
+      toast(`✅ "${label}" cargado — ${articles.length} artículos`);
+    }
+
+    state.viewPeriod = 0; // mostrar siempre el más nuevo
     saveState();
 
-    // Cargar faltantes de Supabase en paralelo
     await loadFaltantes();
-
     renderAll();
-    toast(`✅ ${articles.length} artículos cargados`);
   } catch(err) {
     console.error(err);
     toast('Error al leer el archivo. Verificá el formato.');
@@ -1119,12 +1200,12 @@ async function handleFile(file) {
 // LIMPIAR DATOS
 // ════════════════════════════════════════════
 document.getElementById('btnClear').addEventListener('click', () => {
-  if (!confirm('¿Borrar todos los datos cargados?')) return;
-  state.articles = [];
-  state.uploadedAt = null;
+  if (!confirm('¿Borrar todos los períodos guardados?')) return;
+  state.periodos   = [];
+  state.viewPeriod = 0;
   saveState();
   renderAll();
-  toast('Datos borrados');
+  toast('Historial borrado');
 });
 
 // ════════════════════════════════════════════
@@ -1133,15 +1214,17 @@ document.getElementById('btnClear').addEventListener('click', () => {
 async function init() {
   loadState();
 
-  // Sincronizar selector de período
+  // Selector de período apunta al más nuevo por defecto
+  const lastDays = currentPeriodo()?.periodDays || 30;
+  pendingPeriodDays = lastDays;
   document.querySelectorAll('.seg-btn').forEach(btn => {
-    btn.classList.toggle('active', parseInt(btn.dataset.days) === state.periodDays);
+    btn.classList.toggle('active', parseInt(btn.dataset.days) === lastDays);
   });
 
   document.getElementById('headerSub').textContent =
     new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  if (state.articles.length) {
+  if (state.periodos.length) {
     await loadFaltantes();
   }
 
