@@ -741,6 +741,7 @@ let state = {
   makeLista:     {},   // { code4: { desc, uxb, precio, categoria } } — de LISTA DE MAKE
   makeListaRaw:  null, // base64 del archivo LISTA DE MAKE original (para escribir sobre él)
   makeListaName: '',   // nombre del archivo original para sugerirlo al descargar
+  makeStock:     {},   // { code4: { unidades: number, esX: bool } } — de Stock Make.xlsx
 };
 
 // Atajos al período activo
@@ -760,6 +761,7 @@ function saveState() {
     makeLista:     state.makeLista,
     makeListaRaw:  state.makeListaRaw,
     makeListaName: state.makeListaName,
+    makeStock:     state.makeStock,
   }));
 }
 
@@ -785,6 +787,7 @@ function loadState() {
     state.makeLista     = saved.makeLista     || {};
     state.makeListaRaw  = saved.makeListaRaw  || null;
     state.makeListaName = saved.makeListaName || '';
+    state.makeStock     = saved.makeStock     || {};
   } catch(e) { /* ignore */ }
 }
 
@@ -983,6 +986,7 @@ async function saveToSupabase() {
         makeLista:     state.makeLista,
         makeListaRaw:  state.makeListaRaw,
         makeListaName: state.makeListaName,
+        makeStock:     state.makeStock,
       },
       updated_at: new Date().toISOString(),
     };
@@ -1159,44 +1163,145 @@ function getMakeLista(ean) {
   return code ? (state.makeLista[code] || null) : null;
 }
 
+// Obtener stock actual en UNIDADES para un artículo Make (por code4)
+// Reglas del archivo Stock Make.xlsx:
+//   "x"  → 0 unidades, sin stock
+//   "6B", "1B", "2B" → N bultos × uxb = unidades
+//   "01B" → 1 bulto × uxb
+//   "24", "53", "7" → unidades sueltas (piezas, no bultos)
+function getMakeStockUnidades(ean, uxb) {
+  const code = eanToMakeCode(ean);
+  if (!code) return null;
+  const s = state.makeStock[code];
+  if (!s) return null;            // artículo no está en el archivo de stock
+  if (s.esX) return 0;           // marcado con "x" = sin stock
+
+  if (s.esBultos) {
+    // Número seguido de B → convertir a unidades
+    return uxb > 0 ? s.cantidad * uxb : s.cantidad; // si no tenemos uxb, usar como referencia
+  } else {
+    // Número solo → unidades sueltas
+    return s.cantidad;
+  }
+}
+
+async function parseMakeStock(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb   = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+        const map  = {}; // code4 → { cantidad, esBultos, esX }
+        rows.forEach(r => {
+          if (!r || !r[0]) return;
+          const code = String(r[0]).trim();
+          if (!/^\d{4}$/.test(code)) return;
+          const raw = String(r[2] || '').trim();
+          if (!raw || raw === '') {
+            map[code] = { cantidad: 0, esBultos: false, esX: false };
+            return;
+          }
+          const lower = raw.toLowerCase();
+          if (lower === 'x') {
+            map[code] = { cantidad: 0, esBultos: false, esX: true };
+            return;
+          }
+          // Detectar formato "NB" o "NNB" → bultos
+          const matchB = lower.match(/^0*(\d+)b$/);
+          if (matchB) {
+            map[code] = { cantidad: parseInt(matchB[1]), esBultos: true, esX: false };
+            return;
+          }
+          // Número solo → unidades sueltas
+          const n = parseFloat(raw);
+          if (!isNaN(n)) {
+            map[code] = { cantidad: Math.round(n), esBultos: false, esX: false };
+            return;
+          }
+          map[code] = { cantidad: 0, esBultos: false, esX: false };
+        });
+        resolve(map);
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// Calcular bultos a pedir para un artículo Make considerando el stock actual
+// Devuelve { bultos, sugerido_u, stock_u, faltante_u }
+function calcMakePedido(art, periodDays) {
+  const uxb      = getMakeBultos(art.ean);
+  if (!uxb) return null; // sin referencia de bulto no podemos calcular
+  const vpd      = art.qty / periodDays;
+  const sugerido = Math.ceil(vpd * COBERTURA_DIAS); // unidades para 30 días
+  const stockU   = getMakeStockUnidades(art.ean, uxb); // null = sin dato, 0 = sin stock
+  const stockConocido = stockU !== null;
+  // Demanda real = sugerido - stock disponible (si lo sabemos)
+  const faltante = stockConocido ? Math.max(0, sugerido - stockU) : sugerido;
+  const bultos   = faltante > 0 ? Math.ceil(faltante / uxb) : 0;
+  return { bultos, sugerido_u: sugerido, stock_u: stockU, faltante_u: faltante, uxb, stockConocido };
+}
+
 // Renderizar bloque de pedido Make con bultos
 function renderMakeOrderBlock(arts, periodDays) {
   const hasBultos  = Object.keys(state.makeBultos).length > 0;
   const hasLista   = Object.keys(state.makeLista).length > 0;
+  const hasStock   = Object.keys(state.makeStock).length > 0;
   const cfg        = getProvConfig('Make');
 
   // Archivos subidos
   const bultosLabel = hasBultos ? '✓ Bultos cargados' : '📂 Subir BULTOS MAKE.xlsx';
   const listaLabel  = hasLista  ? '✓ Lista de precios cargada' : '📂 Subir LISTA DE MAKE.xlsx';
 
-  // Ordenar artículos por cantidad vendida desc
-  const sorted = [...arts].sort((a, b) => b.qty - a.qty).filter(a => a.qty > 0);
+  // Solo artículos que trabajamos: con ventas en el período actual
+  // (Si no vendiste nada en el período, no lo trabajás → no pedir)
+  const sorted = [...arts]
+    .filter(a => a.qty > 0)
+    .sort((a, b) => b.qty - a.qty);
 
   // Total bultos y monto estimado
   let totalBultos = 0, totalMonto = 0;
   sorted.forEach(a => {
-    const vpd      = a.qty / periodDays;
-    const sugerido = Math.ceil(vpd * COBERTURA_DIAS);
-    const uxb      = getMakeBultos(a.ean);
-    if (uxb > 0) {
-      const bultos = Math.ceil(sugerido / uxb);
-      totalBultos += bultos;
+    const p = calcMakePedido(a, periodDays);
+    if (p && p.bultos > 0) {
+      totalBultos += p.bultos;
       const info = getMakeLista(a.ean);
-      if (info && info.precio > 0) totalMonto += bultos * uxb * info.precio;
+      if (info?.precio > 0) totalMonto += p.bultos * p.uxb * info.precio;
     }
   });
 
-  const rows = sorted.map((art, i) => {
-    const vpd      = art.qty / periodDays;
-    const sugerido = Math.ceil(vpd * COBERTURA_DIAS);
-    const uxb      = getMakeBultos(art.ean);
-    const bultos   = uxb > 0 ? Math.ceil(sugerido / uxb) : null;
-    const info     = getMakeLista(art.ean);
-    const code     = eanToMakeCode(art.ean);
-    const falt     = getFaltantes(art.desc);
-    const level    = alertLevel(vpd, cfg.lt, cfg.ss);
-    const dotClass = level === 'danger' ? 'dot-danger' : level === 'warn' ? 'dot-warn' : 'dot-ok';
-    const dot      = level === 'danger' ? '🔴' : level === 'warn' ? '🟡' : '🟢';
+  const stockLabel = hasStock
+    ? `<span style="color:var(--green);font-size:10px;font-weight:700">✓ Stock cargado</span>`
+    : `<span style="color:var(--orange);font-size:10px">Sin stock → pedido basado solo en ventas</span>`;
+
+  const rows = sorted.map((art) => {
+    const p       = calcMakePedido(art, periodDays);
+    const info    = getMakeLista(art.ean);
+    const code    = eanToMakeCode(art.ean);
+    const falt    = getFaltantes(art.desc);
+    const vpd     = art.qty / periodDays;
+    const level   = alertLevel(vpd, cfg.lt, cfg.ss);
+    const dot     = level === 'danger' ? '🔴' : level === 'warn' ? '🟡' : '🟢';
+
+    // Columna stock
+    let stockCell = '<td class="td-num" style="color:var(--text3)">—</td>';
+    if (p && p.stockConocido) {
+      const esX = p.stock_u === 0 && state.makeStock[code]?.esX;
+      stockCell = `<td class="td-num" style="font-weight:600;color:${p.stock_u === 0 ? 'var(--red)' : '#065F46'}">
+        ${esX ? 'X' : p.stock_u}
+      </td>`;
+    }
+
+    // Columna bultos a pedir
+    let bultosCell = '<td class="td-num" style="color:var(--text3)">—</td>';
+    if (p) {
+      bultosCell = p.bultos > 0
+        ? `<td class="td-bultos-val">${p.bultos}</td>`
+        : `<td class="td-num" style="color:var(--green);font-weight:700">OK</td>`;
+    }
 
     return `<tr>
       <td class="td-num">${dot}</td>
@@ -1206,11 +1311,12 @@ function renderMakeOrderBlock(arts, periodDays) {
       </td>
       <td class="td-num">${Math.round(art.qty)}</td>
       <td class="td-num">${vpd.toFixed(1)}</td>
-      <td class="td-sug">${sugerido}</td>
-      <td class="td-num" style="font-weight:700">${uxb > 0 ? uxb : '<span style="color:var(--text3)">—</span>'}</td>
-      <td class="${bultos !== null ? 'td-bultos-val' : 'td-num'}">${bultos !== null ? bultos : '<span style="color:var(--text3)">—</span>'}</td>
-      ${info && info.precio > 0
-        ? `<td class="td-num" style="font-size:11px">$${(info.precio * (uxb||1)).toLocaleString('es-AR',{maximumFractionDigits:0})}</td>`
+      <td class="td-sug">${p ? p.sugerido_u : '—'}</td>
+      ${stockCell}
+      <td class="td-num" style="font-weight:700">${p?.uxb || '<span style="color:var(--text3)">—</span>'}</td>
+      ${bultosCell}
+      ${info?.precio > 0 && p?.uxb
+        ? `<td class="td-num" style="font-size:11px">$${(info.precio * p.uxb).toLocaleString('es-AR',{maximumFractionDigits:0})}</td>`
         : `<td class="td-num" style="color:var(--text3)">—</td>`}
       ${falt > 0 ? `<td class="td-falt">${falt}x</td>` : '<td></td>'}
     </tr>`;
@@ -1219,22 +1325,33 @@ function renderMakeOrderBlock(arts, periodDays) {
   const totalMontoStr = totalMonto > 0
     ? `· Est. $${Math.round(totalMonto).toLocaleString('es-AR')}` : '';
 
+  const totalMontoStr = totalMonto > 0
+    ? ` · Est. $${Math.round(totalMonto).toLocaleString('es-AR')}` : '';
+  const hasStockLabel = hasStock ? '✓ Stock cargado' : '📂 Subir Stock Make.xlsx';
+
   return `
   <div class="make-order-header">
     <div>
       <div class="make-order-title">Pedido Make en Bultos</div>
-      <div class="make-order-sub">${totalBultos > 0 ? `${totalBultos} bultos totales ${totalMontoStr}` : 'Cargá BULTOS MAKE para ver bultos'}</div>
+      <div class="make-order-sub">
+        ${totalBultos > 0 ? `${totalBultos} bultos a pedir${totalMontoStr}` : 'Cargá los archivos Make para ver el pedido'}
+        ${hasStock ? ' · <span style="color:#4ade80">stock incluido</span>' : ''}
+      </div>
     </div>
     <button class="btn-make-export" onclick="exportMakeOrder()">📥 Nota de Pedido</button>
   </div>
   <div class="make-upload-row">
     <label class="make-upload-btn ${hasBultos ? 'loaded' : ''}">
-      ${bultosLabel}
+      ${hasBultos ? '✓ Bultos cargados' : '📂 BULTOS MAKE.xlsx'}
       <input type="file" accept=".xlsx,.xls" onchange="handleMakeFile(this,'bultos')"/>
     </label>
     <label class="make-upload-btn ${hasLista ? 'loaded' : ''}">
-      ${listaLabel}
+      ${hasLista ? '✓ Lista de precios cargada' : '📂 LISTA DE MAKE.xlsx'}
       <input type="file" accept=".xlsx,.xls" onchange="handleMakeFile(this,'lista')"/>
+    </label>
+    <label class="make-upload-btn ${hasStock ? 'loaded' : ''}">
+      ${hasStockLabel}
+      <input type="file" accept=".xlsx,.xls" onchange="handleMakeFile(this,'stock')"/>
     </label>
   </div>
   <div class="make-table-wrap">
@@ -1244,8 +1361,9 @@ function renderMakeOrderBlock(arts, periodDays) {
         <th>Descripción</th>
         <th class="center">Vend.</th>
         <th class="center">VPD</th>
-        <th class="center">Sug. u</th>
-        <th class="center">Un/bulto</th>
+        <th class="center">Sug.u</th>
+        <th class="center">Stock</th>
+        <th class="center">UxB</th>
         <th class="center">Bultos</th>
         <th class="center">$/bulto</th>
         <th class="center">Falt.</th>
@@ -1259,16 +1377,20 @@ async function handleMakeFile(input, tipo) {
   const file = input.files[0];
   if (!file) return;
   input.value = '';
-  toast(`Cargando ${tipo === 'bultos' ? 'BULTOS MAKE' : 'LISTA DE MAKE'}...`);
+  const labels = { bultos: 'BULTOS MAKE', lista: 'LISTA DE MAKE', stock: 'STOCK MAKE' };
+  toast(`Cargando ${labels[tipo] || tipo}...`);
   try {
     if (tipo === 'bultos') {
       state.makeBultos = await parseBultosMake(file);
-      const n = Object.keys(state.makeBultos).length;
-      toast(`✅ ${n} artículos con bultos cargados`);
-    } else {
+      toast(`✅ ${Object.keys(state.makeBultos).length} artículos con bultos`);
+    } else if (tipo === 'lista') {
       state.makeLista = await parseListaMake(file);
-      const n = Object.keys(state.makeLista).length;
-      toast(`✅ Lista Make: ${n} artículos con precio`);
+      toast(`✅ Lista Make: ${Object.keys(state.makeLista).length} artículos con precio`);
+    } else if (tipo === 'stock') {
+      state.makeStock = await parseMakeStock(file);
+      const sinStock   = Object.values(state.makeStock).filter(s => s.esX).length;
+      const conStock   = Object.values(state.makeStock).filter(s => !s.esX && s.cantidad > 0).length;
+      toast(`✅ Stock: ${conStock} con mercadería · ${sinStock} sin stock`);
     }
     saveState();
     renderAll();
@@ -1438,17 +1560,15 @@ function exportMakeOrder() {
     return;
   }
 
-  // ── 1. Calcular mapa code4 → bultos (solo los que tienen venta + bulto conocido) ──
+  // ── 1. Calcular mapa code4 → bultos usando calcMakePedido (incluye stock) ──
+  // Solo artículos con ventas en el período (los que trabajamos)
   const pedidoMap = {};
   periodo.articles
     .filter(a => a.proveedor === 'Make' && a.qty > 0)
     .forEach(art => {
-      const uxb  = getMakeBultos(art.ean);
-      if (!uxb) return;
-      const sug    = Math.ceil((art.qty / periodo.periodDays) * COBERTURA_DIAS);
-      const bultos = Math.ceil(sug / uxb);
-      const code   = eanToMakeCode(art.ean);
-      if (code && bultos > 0) pedidoMap[code] = bultos;
+      const p    = calcMakePedido(art, periodo.periodDays);
+      const code = eanToMakeCode(art.ean);
+      if (p && code && p.bultos > 0) pedidoMap[code] = p.bultos;
     });
 
   // ── 2. Abrir el archivo original desde base64 ──
@@ -1910,6 +2030,7 @@ async function init() {
       state.makeLista     = remote.data.makeLista     || {};
       state.makeListaRaw  = remote.data.makeListaRaw  || null;
       state.makeListaName = remote.data.makeListaName || '';
+      state.makeStock     = remote.data.makeStock     || {};
       if (state.periodos.length) {
         saveState(); // guardar local para próxima vez offline
         setSyncStatus('cloud');
