@@ -737,8 +737,10 @@ let state = {
   provConfig: {},  // { proveedor: { lt, ss } } — persistido en localStorage
   viewPeriod: 0,   // índice del período activo (0 = más nuevo)
   // Make específico
-  makeBultos: {},  // { ean: unitsPerBulto } — de BULTOS MAKE.xlsx
-  makeLista:  {},  // { code4: { desc, uxb, precio } } — de LISTA DE MAKE
+  makeBultos:    {},   // { ean: unitsPerBulto } — de BULTOS MAKE.xlsx
+  makeLista:     {},   // { code4: { desc, uxb, precio, categoria } } — de LISTA DE MAKE
+  makeListaRaw:  null, // base64 del archivo LISTA DE MAKE original (para escribir sobre él)
+  makeListaName: '',   // nombre del archivo original para sugerirlo al descargar
 };
 
 // Atajos al período activo
@@ -752,10 +754,12 @@ const LS_KEY = 'ml_stock_v3';
 
 function saveState() {
   localStorage.setItem(LS_KEY, JSON.stringify({
-    periodos:   state.periodos,
-    provConfig: state.provConfig,
-    makeBultos: state.makeBultos,
-    makeLista:  state.makeLista,
+    periodos:      state.periodos,
+    provConfig:    state.provConfig,
+    makeBultos:    state.makeBultos,
+    makeLista:     state.makeLista,
+    makeListaRaw:  state.makeListaRaw,
+    makeListaName: state.makeListaName,
   }));
 }
 
@@ -776,9 +780,11 @@ function loadState() {
     } else {
       state.periodos = saved.periodos  || [];
     }
-    state.provConfig = saved.provConfig || {};
-    state.makeBultos = saved.makeBultos || {};
-    state.makeLista  = saved.makeLista  || {};
+    state.provConfig    = saved.provConfig    || {};
+    state.makeBultos    = saved.makeBultos    || {};
+    state.makeLista     = saved.makeLista     || {};
+    state.makeListaRaw  = saved.makeListaRaw  || null;
+    state.makeListaName = saved.makeListaName || '';
   } catch(e) { /* ignore */ }
 }
 
@@ -970,8 +976,14 @@ async function saveToSupabase() {
   try {
     const payload = {
       id: 'main',
-      data: { periodos: state.periodos, provConfig: state.provConfig,
-              makeBultos: state.makeBultos, makeLista: state.makeLista },
+      data: {
+        periodos:      state.periodos,
+        provConfig:    state.provConfig,
+        makeBultos:    state.makeBultos,
+        makeLista:     state.makeLista,
+        makeListaRaw:  state.makeListaRaw,
+        makeListaName: state.makeListaName,
+      },
       updated_at: new Date().toISOString(),
     };
     const r = await sbStock('POST', payload);
@@ -1094,29 +1106,40 @@ async function parseListaMake(file) {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const wb   = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-        // Preferir hoja "LISTA MAKE", sino la primera
-        const sheetName = wb.SheetNames.find(n => n.toUpperCase().includes('LISTA')) || wb.SheetNames[0];
-        const ws   = wb.Sheets[sheetName];
+        const bytes = new Uint8Array(e.target.result);
+        const wb    = XLSX.read(bytes, { type: 'array' });
+
+        // Parsear hoja LISTA MAKE → mapa code4 → {desc, uxb, precio, categoria}
+        const listSheet = wb.SheetNames.find(n => n.toUpperCase().includes('LISTA')) || wb.SheetNames[0];
+        const ws   = wb.Sheets[listSheet];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-        const map  = {}; // code4 → { desc, uxb, precio, categoria }
+        const map  = {};
         let currentCat = '';
         rows.forEach(r => {
           if (!r) return;
           const col1 = String(r[1] || '').trim();
           if (/^\d{4}$/.test(col1)) {
-            // Es un artículo
             map[col1] = {
               desc:      String(r[2] || '').trim(),
               uxb:       Number(r[3]) || 0,
               precio:    Number(r[4]) || 0,
               categoria: currentCat,
             };
-          } else if (col1 && col1.length > 2 && isNaN(col1)) {
-            // Es una categoría
+          } else if (col1 && col1.length > 2 && isNaN(Number(col1))) {
             currentCat = col1;
           }
         });
+
+        // Guardar bytes en base64 para poder escribir sobre el archivo original al exportar
+        // Convertir Uint8Array → base64 en chunks para no romper el stack
+        let binary = '';
+        const chunkSize = 8192;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+        }
+        state.makeListaRaw  = btoa(binary);
+        state.makeListaName = file.name;
+
         resolve(map);
       } catch(err) { reject(err); }
     };
@@ -1410,116 +1433,90 @@ function exportProvExcel(prov) {
 function exportMakeOrder() {
   const periodo = currentPeriodo();
   if (!periodo) { toast('No hay datos cargados'); return; }
+
+  if (!state.makeListaRaw) {
+    toast('Subí la LISTA DE MAKE primero para exportar la Nota de Pedido');
+    return;
+  }
+
   const arts = periodo.articles
-    .filter(a => a.proveedor === 'Make' && a.qty > 0)
-    .sort((a, b) => b.qty - a.qty);
+    .filter(a => a.proveedor === 'Make' && a.qty > 0);
   if (!arts.length) { toast('No hay artículos Make en el período actual'); return; }
 
-  const cfg        = getProvConfig('Make');
-  const hasBultos  = Object.keys(state.makeBultos).length > 0;
-  const hasLista   = Object.keys(state.makeLista).length > 0;
-  const prev       = prevPeriodo();
-  const prevMap    = buildPrevMap(prev);
-
-  const wb = XLSX.utils.book_new();
-  const ws = {};
-  const ref = (c, r) => XLSX.utils.encode_cell({ c, r });
-
-  // ── Encabezado ──
-  const today = new Date().toLocaleDateString('es-AR');
-  ws[ref(0,0)] = { v: `NOTA DE PEDIDO MAKE — ${periodo.label} — ${today}`, t: 's',
-    s: { font: { bold: true, sz: 14, color: { rgb: 'FFFFFFFF' } },
-         fill: { patternType: 'solid', fgColor: { rgb: 'FF1C1C1E' } },
-         alignment: { horizontal: 'left' } } };
-  ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:7} }];
-
-  // ── Headers ──
-  const cols = ['Código','Descripción','Categoría','Vend.','VPD','Sug. u','Un/bulto','Bultos a pedir','$/bulto','Tendencia','Faltantes'];
-  cols.forEach((h, c) => {
-    ws[ref(c,1)] = { v: h, t: 's',
-      s: { font: { bold: true, color: { rgb: 'FFFFFFFF' } },
-           fill: { patternType: 'solid', fgColor: { rgb: 'FF4338CA' } },
-           alignment: { horizontal: 'center' },
-           border: { bottom: { style: 'medium', color: { rgb: 'FF000000' } } } } };
-  });
-
-  let totalBultos = 0, totalMonto = 0;
-
-  arts.forEach((art, i) => {
-    const r      = i + 2;
-    const zebra  = i % 2 === 1;
-    const bg     = zebra ? 'FFF9F9FB' : 'FFFFFFFF';
+  // ── Construir mapa EAN/code → bultos a pedir ──
+  // Clave: code4 (EAN.slice(-5,-1))
+  const pedidoMap = {}; // code4 → bultos
+  arts.forEach(art => {
     const vpd    = art.qty / periodo.periodDays;
     const sug    = Math.ceil(vpd * COBERTURA_DIAS);
     const uxb    = getMakeBultos(art.ean);
-    const bultos = uxb > 0 ? Math.ceil(sug / uxb) : null;
-    const info   = getMakeLista(art.ean);
-    const code   = eanToMakeCode(art.ean);
-    const falt   = getFaltantes(art.desc);
-    const trend  = getTrend(art, periodo.periodDays, prevMap);
-    const precio = info?.precio || 0;
-    const montoBulto = precio * (uxb || 0);
-
-    if (bultos) { totalBultos += bultos; totalMonto += bultos * (uxb||0) * precio; }
-
-    const baseStyle = (extra={}) => ({
-      fill: { patternType: 'solid', fgColor: { rgb: bg } },
-      border: { bottom: { style: 'thin', color: { rgb: 'FFE5E7EB' } } },
-      ...extra,
-    });
-
-    ws[ref(0,r)] = { v: code || art.ean.slice(-8), t: 's', s: baseStyle({ alignment: { horizontal: 'center' }, font: { bold: true } }) };
-    ws[ref(1,r)] = { v: art.desc, t: 's', s: baseStyle({ alignment: { wrapText: true } }) };
-    ws[ref(2,r)] = { v: info?.categoria || '', t: 's', s: baseStyle({ font: { color: { rgb: 'FF6B7280' } } }) };
-    ws[ref(3,r)] = { v: Math.round(art.qty), t: 'n', s: baseStyle({ alignment: { horizontal: 'center' } }) };
-    ws[ref(4,r)] = { v: parseFloat(vpd.toFixed(1)), t: 'n', s: baseStyle({ alignment: { horizontal: 'center' } }) };
-    ws[ref(5,r)] = { v: sug, t: 'n',
-      s: { fill: { patternType: 'solid', fgColor: { rgb: 'FFD1FAE5' } },
-           font: { bold: true }, alignment: { horizontal: 'center' },
-           border: { bottom: { style: 'thin', color: { rgb: 'FFE5E7EB' } } } } };
-    ws[ref(6,r)] = { v: uxb || '', t: uxb ? 'n' : 's',
-      s: baseStyle({ alignment: { horizontal: 'center' } }) };
-    ws[ref(7,r)] = { v: bultos ?? '', t: bultos ? 'n' : 's',
-      s: { fill: { patternType: 'solid', fgColor: { rgb: bultos ? 'FFE0E7FF' : bg } },
-           font: { bold: !!bultos, color: { rgb: bultos ? 'FF3730A3' : 'FF9CA3AF' } },
-           alignment: { horizontal: 'center' },
-           border: { bottom: { style: 'thin', color: { rgb: 'FFE5E7EB' } } } } };
-    ws[ref(8,r)] = { v: montoBulto > 0 ? Math.round(montoBulto) : '', t: montoBulto ? 'n' : 's',
-      s: baseStyle({ alignment: { horizontal: 'right' } }) };
-    ws[ref(9,r)] = { v: trend?.label || '', t: 's',
-      s: baseStyle({ alignment: { horizontal: 'center' },
-           font: { color: { rgb: trend?.css === 'trend-up' ? 'FF065F46' : trend?.css === 'trend-down' ? 'FFB91C1C' : 'FF4B5563' } } }) };
-    ws[ref(10,r)] = { v: falt || '', t: falt ? 'n' : 's',
-      s: { fill: { patternType: 'solid', fgColor: { rgb: falt > 0 ? 'FFFEE2E2' : bg } },
-           font: { bold: falt > 0, color: { rgb: falt > 0 ? 'FFB91C1C' : 'FF000000' } },
-           alignment: { horizontal: 'center' },
-           border: { bottom: { style: 'thin', color: { rgb: 'FFE5E7EB' } } } } };
+    if (uxb > 0 && sug > 0) {
+      const bultos = Math.ceil(sug / uxb);
+      const code   = eanToMakeCode(art.ean);
+      if (code) pedidoMap[code] = bultos;
+    }
   });
 
-  // ── Fila de totales ──
-  const rTot = arts.length + 2;
-  ws[ref(0,rTot)] = { v: 'TOTALES', t: 's',
-    s: { font: { bold: true, sz: 12 }, fill: { patternType: 'solid', fgColor: { rgb: 'FF1C1C1E' } },
-         font: { bold: true, color: { rgb: 'FFFFFFFF' } } } };
-  ws[ref(7,rTot)] = { v: totalBultos, t: 'n',
-    s: { font: { bold: true, sz: 13, color: { rgb: 'FFFFFFFF' } },
-         fill: { patternType: 'solid', fgColor: { rgb: 'FF3730A3' } },
-         alignment: { horizontal: 'center' } } };
-  ws[ref(8,rTot)] = { v: Math.round(totalMonto), t: 'n',
-    s: { font: { bold: true, color: { rgb: 'FFFFFFFF' } },
-         fill: { patternType: 'solid', fgColor: { rgb: 'FF1C1C1E' } },
-         alignment: { horizontal: 'right' } } };
+  // ── Leer el archivo original desde base64 ──
+  const binary  = atob(state.makeListaRaw);
+  const bytes   = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
-  ws['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:rTot,c:10} });
-  ws['!cols'] = [
-    {wch:8},{wch:40},{wch:18},{wch:8},{wch:7},{wch:8},{wch:9},{wch:10},{wch:11},{wch:9},{wch:7}
-  ];
-  ws['!rows'] = [{ hpt: 28 }, { hpt: 24 }];
+  // cellXf: leer con estilos para preservar formato
+  const wb = XLSX.read(bytes, { type: 'array', cellStyles: true, cellFormula: true });
 
-  XLSX.utils.book_append_sheet(wb, ws, 'Pedido Make');
-  const filename = `Nota Pedido Make - ${periodo.label}.xlsx`;
+  // ── Trabajar sobre hoja NOTA DE PEDIDO ──
+  const sheetName = wb.SheetNames.find(n => n.toUpperCase().includes('NOTA')) || wb.SheetNames[1];
+  const ws = wb.Sheets[sheetName];
+
+  // Leer todas las filas para encontrar las que tienen código
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+  let totalBultos = 0, rowsWritten = 0;
+
+  rows.forEach((row, rowIdx) => {
+    if (!row) return;
+    const code = String(row[1] || '').trim();
+    if (!/^\d{4}$/.test(code)) return; // solo filas con código de 4 dígitos
+
+    const bultos = pedidoMap[code] || null;
+
+    // Dirección de la celda E (columna 4, 0-based → col E en Excel)
+    const cellAddr = XLSX.utils.encode_cell({ c: 4, r: rowIdx });
+
+    if (bultos && bultos > 0) {
+      // Escribir el valor numérico, preservando el estilo existente si lo hay
+      const existingCell = ws[cellAddr];
+      ws[cellAddr] = {
+        t: 'n',
+        v: bultos,
+        ...(existingCell?.s ? { s: existingCell.s } : {}),
+      };
+      totalBultos += bultos;
+      rowsWritten++;
+    } else {
+      // Artículo sin datos de venta: asegurar que la celda esté vacía (no null)
+      // para que la fórmula de IMPORTE devuelva 0 y no error
+      if (!ws[cellAddr]) {
+        ws[cellAddr] = { t: 'n', v: 0 };
+      }
+    }
+  });
+
+  // ── Forzar recálculo de las fórmulas al abrir ──
+  if (!wb.Workbook) wb.Workbook = {};
+  if (!wb.Workbook.CalcPr) wb.Workbook.CalcPr = {};
+  wb.Workbook.CalcPr.fullCalcOnLoad = true;
+
+  // ── Descargar ──
+  const today    = new Date().toLocaleDateString('es-AR').replace(/\//g,'-');
+  const label    = periodo.label;
+  // Usar el nombre original del archivo con sufijo de período
+  const origName = state.makeListaName.replace(/\.xlsx?$/i, '');
+  const filename = `${origName} — Pedido ${label} — ${today}.xlsx`;
+
   XLSX.writeFile(wb, filename);
-  toast(`📥 ${filename} — ${totalBultos} bultos`);
+  toast(`📥 ${rowsWritten} artículos escritos · ${totalBultos} bultos totales`);
 }
 
 function exportAllExcel() {
@@ -1941,8 +1938,10 @@ async function init() {
     if (remote && remote.data) {
       state.periodos   = remote.data.periodos   || [];
       state.provConfig = remote.data.provConfig || {};
-      state.makeBultos = remote.data.makeBultos || {};
-      state.makeLista  = remote.data.makeLista  || {};
+      state.makeBultos    = remote.data.makeBultos    || {};
+      state.makeLista     = remote.data.makeLista     || {};
+      state.makeListaRaw  = remote.data.makeListaRaw  || null;
+      state.makeListaName = remote.data.makeListaName || '';
       if (state.periodos.length) {
         saveState(); // guardar local para próxima vez offline
         setSyncStatus('cloud');
