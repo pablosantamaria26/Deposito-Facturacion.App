@@ -423,6 +423,80 @@ a { text-decoration: none; color: inherit; }
 .btn-export-prov:active { opacity: .7; }
 
 /* ═══════════════════════════════════════════
+   MAKE — PEDIDO EN BULTOS
+═══════════════════════════════════════════ */
+.make-upload-row {
+  display: flex; gap: 8px; padding: 12px 16px;
+  background: var(--surface2); border-bottom: 1px solid var(--border);
+  flex-wrap: wrap; align-items: center;
+}
+.make-upload-btn {
+  flex: 1; min-width: 140px;
+  padding: 9px 12px; border-radius: 10px;
+  background: var(--surface); border: 1.5px dashed var(--border);
+  font-size: 12px; font-weight: 600; color: var(--text2);
+  text-align: center; cursor: pointer; position: relative;
+  transition: border-color .15s, background .15s;
+}
+.make-upload-btn.loaded {
+  border-color: var(--green); background: var(--green-s); color: #1a7a33;
+}
+.make-upload-btn input[type=file] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}
+.make-table-wrap { overflow-x: auto; }
+.make-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 12px;
+}
+.make-table th {
+  background: #1C1C1E; color: #fff;
+  padding: 8px 10px; text-align: left;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.make-table th.center { text-align: center; }
+.make-table td {
+  padding: 8px 10px; border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.make-table tr:nth-child(even) td { background: var(--surface2); }
+.make-table .td-desc { max-width: 200px; }
+.make-table .td-code {
+  font-size: 11px; color: var(--text3); white-space: nowrap;
+}
+.make-table .td-num { text-align: center; white-space: nowrap; }
+.make-table .td-sug {
+  text-align: center; font-weight: 700;
+  background: #D1FAE5; color: #065F46; white-space: nowrap;
+}
+.make-table .td-bultos-val {
+  text-align: center; font-size: 13px; font-weight: 800;
+  background: #E0E7FF; color: #3730A3; white-space: nowrap;
+}
+.make-table .td-falt {
+  text-align: center; font-size: 11px; font-weight: 700;
+  color: var(--red); white-space: nowrap;
+}
+.make-table .dot-warn   { color: var(--orange); }
+.make-table .dot-danger { color: var(--red); }
+.make-table .dot-ok     { color: var(--green); }
+.make-order-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  background: #1C1C1E;
+}
+.make-order-title { font-size: 14px; font-weight: 800; color: #fff; flex: 1; }
+.make-order-sub   { font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 2px; }
+.btn-make-export {
+  padding: 8px 14px; border-radius: 10px;
+  background: #fff; color: #1C1C1E;
+  font-size: 12px; font-weight: 800;
+  white-space: nowrap; flex-shrink: 0;
+  transition: opacity .15s;
+}
+.btn-make-export:active { opacity: .7; }
+
+/* ═══════════════════════════════════════════
    EMPTY STATE
 ═══════════════════════════════════════════ */
 .empty-state {
@@ -662,6 +736,9 @@ let state = {
   faltantes:  {},  // { normalizedDesc: count } de Supabase
   provConfig: {},  // { proveedor: { lt, ss } } — persistido en localStorage
   viewPeriod: 0,   // índice del período activo (0 = más nuevo)
+  // Make específico
+  makeBultos: {},  // { ean: unitsPerBulto } — de BULTOS MAKE.xlsx
+  makeLista:  {},  // { code4: { desc, uxb, precio } } — de LISTA DE MAKE
 };
 
 // Atajos al período activo
@@ -677,6 +754,8 @@ function saveState() {
   localStorage.setItem(LS_KEY, JSON.stringify({
     periodos:   state.periodos,
     provConfig: state.provConfig,
+    makeBultos: state.makeBultos,
+    makeLista:  state.makeLista,
   }));
 }
 
@@ -698,6 +777,8 @@ function loadState() {
       state.periodos = saved.periodos  || [];
     }
     state.provConfig = saved.provConfig || {};
+    state.makeBultos = saved.makeBultos || {};
+    state.makeLista  = saved.makeLista  || {};
   } catch(e) { /* ignore */ }
 }
 
@@ -889,7 +970,8 @@ async function saveToSupabase() {
   try {
     const payload = {
       id: 'main',
-      data: { periodos: state.periodos, provConfig: state.provConfig },
+      data: { periodos: state.periodos, provConfig: state.provConfig,
+              makeBultos: state.makeBultos, makeLista: state.makeLista },
       updated_at: new Date().toISOString(),
     };
     const r = await sbStock('POST', payload);
@@ -971,6 +1053,206 @@ function getFaltantes(desc) {
     if (matches >= Math.min(2, words.length) && count > max) max = count;
   }
   return max;
+}
+
+// ════════════════════════════════════════════
+// MAKE — PARSEO DE ARCHIVOS ESPECÍFICOS
+// ════════════════════════════════════════════
+
+// EAN → código interno Make (últimos 5 dígitos menos el último)
+function eanToMakeCode(ean) {
+  const s = String(ean || '').trim();
+  if (s.length < 5) return '';
+  return s.slice(-5, -1);
+}
+
+async function parseBultosMake(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb   = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+        const map  = {};
+        rows.forEach(r => {
+          if (!r) return;
+          const ean    = String(r[1] || '').trim();
+          const bultos = Number(r[6]);
+          if (ean.length >= 8 && bultos > 0) map[ean] = bultos;
+        });
+        resolve(map);
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+async function parseListaMake(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb   = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        // Preferir hoja "LISTA MAKE", sino la primera
+        const sheetName = wb.SheetNames.find(n => n.toUpperCase().includes('LISTA')) || wb.SheetNames[0];
+        const ws   = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+        const map  = {}; // code4 → { desc, uxb, precio, categoria }
+        let currentCat = '';
+        rows.forEach(r => {
+          if (!r) return;
+          const col1 = String(r[1] || '').trim();
+          if (/^\d{4}$/.test(col1)) {
+            // Es un artículo
+            map[col1] = {
+              desc:      String(r[2] || '').trim(),
+              uxb:       Number(r[3]) || 0,
+              precio:    Number(r[4]) || 0,
+              categoria: currentCat,
+            };
+          } else if (col1 && col1.length > 2 && isNaN(col1)) {
+            // Es una categoría
+            currentCat = col1;
+          }
+        });
+        resolve(map);
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// Obtener bultos para un artículo Make por EAN
+function getMakeBultos(ean) {
+  return state.makeBultos[String(ean).trim()] || 0;
+}
+
+// Obtener info de lista Make por EAN
+function getMakeLista(ean) {
+  const code = eanToMakeCode(ean);
+  return code ? (state.makeLista[code] || null) : null;
+}
+
+// Renderizar bloque de pedido Make con bultos
+function renderMakeOrderBlock(arts, periodDays) {
+  const hasBultos  = Object.keys(state.makeBultos).length > 0;
+  const hasLista   = Object.keys(state.makeLista).length > 0;
+  const cfg        = getProvConfig('Make');
+
+  // Archivos subidos
+  const bultosLabel = hasBultos ? '✓ Bultos cargados' : '📂 Subir BULTOS MAKE.xlsx';
+  const listaLabel  = hasLista  ? '✓ Lista de precios cargada' : '📂 Subir LISTA DE MAKE.xlsx';
+
+  // Ordenar artículos por cantidad vendida desc
+  const sorted = [...arts].sort((a, b) => b.qty - a.qty).filter(a => a.qty > 0);
+
+  // Total bultos y monto estimado
+  let totalBultos = 0, totalMonto = 0;
+  sorted.forEach(a => {
+    const vpd      = a.qty / periodDays;
+    const sugerido = Math.ceil(vpd * COBERTURA_DIAS);
+    const uxb      = getMakeBultos(a.ean);
+    if (uxb > 0) {
+      const bultos = Math.ceil(sugerido / uxb);
+      totalBultos += bultos;
+      const info = getMakeLista(a.ean);
+      if (info && info.precio > 0) totalMonto += bultos * uxb * info.precio;
+    }
+  });
+
+  const rows = sorted.map((art, i) => {
+    const vpd      = art.qty / periodDays;
+    const sugerido = Math.ceil(vpd * COBERTURA_DIAS);
+    const uxb      = getMakeBultos(art.ean);
+    const bultos   = uxb > 0 ? Math.ceil(sugerido / uxb) : null;
+    const info     = getMakeLista(art.ean);
+    const code     = eanToMakeCode(art.ean);
+    const falt     = getFaltantes(art.desc);
+    const level    = alertLevel(vpd, cfg.lt, cfg.ss);
+    const dotClass = level === 'danger' ? 'dot-danger' : level === 'warn' ? 'dot-warn' : 'dot-ok';
+    const dot      = level === 'danger' ? '🔴' : level === 'warn' ? '🟡' : '🟢';
+
+    return `<tr>
+      <td class="td-num">${dot}</td>
+      <td class="td-desc">
+        <div style="font-weight:600;font-size:12px;line-height:1.3">${art.desc}</div>
+        ${code ? `<div class="td-code">Cód: ${code}${info ? ` · ${info.categoria}` : ''}</div>` : ''}
+      </td>
+      <td class="td-num">${Math.round(art.qty)}</td>
+      <td class="td-num">${vpd.toFixed(1)}</td>
+      <td class="td-sug">${sugerido}</td>
+      <td class="td-num" style="font-weight:700">${uxb > 0 ? uxb : '<span style="color:var(--text3)">—</span>'}</td>
+      <td class="${bultos !== null ? 'td-bultos-val' : 'td-num'}">${bultos !== null ? bultos : '<span style="color:var(--text3)">—</span>'}</td>
+      ${info && info.precio > 0
+        ? `<td class="td-num" style="font-size:11px">$${(info.precio * (uxb||1)).toLocaleString('es-AR',{maximumFractionDigits:0})}</td>`
+        : `<td class="td-num" style="color:var(--text3)">—</td>`}
+      ${falt > 0 ? `<td class="td-falt">${falt}x</td>` : '<td></td>'}
+    </tr>`;
+  }).join('');
+
+  const totalMontoStr = totalMonto > 0
+    ? `· Est. $${Math.round(totalMonto).toLocaleString('es-AR')}` : '';
+
+  return `
+  <div class="make-order-header">
+    <div>
+      <div class="make-order-title">Pedido Make en Bultos</div>
+      <div class="make-order-sub">${totalBultos > 0 ? `${totalBultos} bultos totales ${totalMontoStr}` : 'Cargá BULTOS MAKE para ver bultos'}</div>
+    </div>
+    <button class="btn-make-export" onclick="exportMakeOrder()">📥 Nota de Pedido</button>
+  </div>
+  <div class="make-upload-row">
+    <label class="make-upload-btn ${hasBultos ? 'loaded' : ''}">
+      ${bultosLabel}
+      <input type="file" accept=".xlsx,.xls" onchange="handleMakeFile(this,'bultos')"/>
+    </label>
+    <label class="make-upload-btn ${hasLista ? 'loaded' : ''}">
+      ${listaLabel}
+      <input type="file" accept=".xlsx,.xls" onchange="handleMakeFile(this,'lista')"/>
+    </label>
+  </div>
+  <div class="make-table-wrap">
+    <table class="make-table">
+      <thead><tr>
+        <th style="width:28px"></th>
+        <th>Descripción</th>
+        <th class="center">Vend.</th>
+        <th class="center">VPD</th>
+        <th class="center">Sug. u</th>
+        <th class="center">Un/bulto</th>
+        <th class="center">Bultos</th>
+        <th class="center">$/bulto</th>
+        <th class="center">Falt.</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+async function handleMakeFile(input, tipo) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  toast(`Cargando ${tipo === 'bultos' ? 'BULTOS MAKE' : 'LISTA DE MAKE'}...`);
+  try {
+    if (tipo === 'bultos') {
+      state.makeBultos = await parseBultosMake(file);
+      const n = Object.keys(state.makeBultos).length;
+      toast(`✅ ${n} artículos con bultos cargados`);
+    } else {
+      state.makeLista = await parseListaMake(file);
+      const n = Object.keys(state.makeLista).length;
+      toast(`✅ Lista Make: ${n} artículos con precio`);
+    }
+    saveState();
+    renderAll();
+  } catch(err) {
+    console.error(err);
+    toast('Error al leer el archivo Make');
+  }
 }
 
 // ════════════════════════════════════════════
@@ -1123,6 +1405,121 @@ function exportProvExcel(prov) {
   const filename = `Stock ${prov} - ${periodo.label}.xlsx`;
   XLSX.writeFile(wb, filename);
   toast(`📥 Descargado: ${filename}`);
+}
+
+function exportMakeOrder() {
+  const periodo = currentPeriodo();
+  if (!periodo) { toast('No hay datos cargados'); return; }
+  const arts = periodo.articles
+    .filter(a => a.proveedor === 'Make' && a.qty > 0)
+    .sort((a, b) => b.qty - a.qty);
+  if (!arts.length) { toast('No hay artículos Make en el período actual'); return; }
+
+  const cfg        = getProvConfig('Make');
+  const hasBultos  = Object.keys(state.makeBultos).length > 0;
+  const hasLista   = Object.keys(state.makeLista).length > 0;
+  const prev       = prevPeriodo();
+  const prevMap    = buildPrevMap(prev);
+
+  const wb = XLSX.utils.book_new();
+  const ws = {};
+  const ref = (c, r) => XLSX.utils.encode_cell({ c, r });
+
+  // ── Encabezado ──
+  const today = new Date().toLocaleDateString('es-AR');
+  ws[ref(0,0)] = { v: `NOTA DE PEDIDO MAKE — ${periodo.label} — ${today}`, t: 's',
+    s: { font: { bold: true, sz: 14, color: { rgb: 'FFFFFFFF' } },
+         fill: { patternType: 'solid', fgColor: { rgb: 'FF1C1C1E' } },
+         alignment: { horizontal: 'left' } } };
+  ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:7} }];
+
+  // ── Headers ──
+  const cols = ['Código','Descripción','Categoría','Vend.','VPD','Sug. u','Un/bulto','Bultos a pedir','$/bulto','Tendencia','Faltantes'];
+  cols.forEach((h, c) => {
+    ws[ref(c,1)] = { v: h, t: 's',
+      s: { font: { bold: true, color: { rgb: 'FFFFFFFF' } },
+           fill: { patternType: 'solid', fgColor: { rgb: 'FF4338CA' } },
+           alignment: { horizontal: 'center' },
+           border: { bottom: { style: 'medium', color: { rgb: 'FF000000' } } } } };
+  });
+
+  let totalBultos = 0, totalMonto = 0;
+
+  arts.forEach((art, i) => {
+    const r      = i + 2;
+    const zebra  = i % 2 === 1;
+    const bg     = zebra ? 'FFF9F9FB' : 'FFFFFFFF';
+    const vpd    = art.qty / periodo.periodDays;
+    const sug    = Math.ceil(vpd * COBERTURA_DIAS);
+    const uxb    = getMakeBultos(art.ean);
+    const bultos = uxb > 0 ? Math.ceil(sug / uxb) : null;
+    const info   = getMakeLista(art.ean);
+    const code   = eanToMakeCode(art.ean);
+    const falt   = getFaltantes(art.desc);
+    const trend  = getTrend(art, periodo.periodDays, prevMap);
+    const precio = info?.precio || 0;
+    const montoBulto = precio * (uxb || 0);
+
+    if (bultos) { totalBultos += bultos; totalMonto += bultos * (uxb||0) * precio; }
+
+    const baseStyle = (extra={}) => ({
+      fill: { patternType: 'solid', fgColor: { rgb: bg } },
+      border: { bottom: { style: 'thin', color: { rgb: 'FFE5E7EB' } } },
+      ...extra,
+    });
+
+    ws[ref(0,r)] = { v: code || art.ean.slice(-8), t: 's', s: baseStyle({ alignment: { horizontal: 'center' }, font: { bold: true } }) };
+    ws[ref(1,r)] = { v: art.desc, t: 's', s: baseStyle({ alignment: { wrapText: true } }) };
+    ws[ref(2,r)] = { v: info?.categoria || '', t: 's', s: baseStyle({ font: { color: { rgb: 'FF6B7280' } } }) };
+    ws[ref(3,r)] = { v: Math.round(art.qty), t: 'n', s: baseStyle({ alignment: { horizontal: 'center' } }) };
+    ws[ref(4,r)] = { v: parseFloat(vpd.toFixed(1)), t: 'n', s: baseStyle({ alignment: { horizontal: 'center' } }) };
+    ws[ref(5,r)] = { v: sug, t: 'n',
+      s: { fill: { patternType: 'solid', fgColor: { rgb: 'FFD1FAE5' } },
+           font: { bold: true }, alignment: { horizontal: 'center' },
+           border: { bottom: { style: 'thin', color: { rgb: 'FFE5E7EB' } } } } };
+    ws[ref(6,r)] = { v: uxb || '', t: uxb ? 'n' : 's',
+      s: baseStyle({ alignment: { horizontal: 'center' } }) };
+    ws[ref(7,r)] = { v: bultos ?? '', t: bultos ? 'n' : 's',
+      s: { fill: { patternType: 'solid', fgColor: { rgb: bultos ? 'FFE0E7FF' : bg } },
+           font: { bold: !!bultos, color: { rgb: bultos ? 'FF3730A3' : 'FF9CA3AF' } },
+           alignment: { horizontal: 'center' },
+           border: { bottom: { style: 'thin', color: { rgb: 'FFE5E7EB' } } } } };
+    ws[ref(8,r)] = { v: montoBulto > 0 ? Math.round(montoBulto) : '', t: montoBulto ? 'n' : 's',
+      s: baseStyle({ alignment: { horizontal: 'right' } }) };
+    ws[ref(9,r)] = { v: trend?.label || '', t: 's',
+      s: baseStyle({ alignment: { horizontal: 'center' },
+           font: { color: { rgb: trend?.css === 'trend-up' ? 'FF065F46' : trend?.css === 'trend-down' ? 'FFB91C1C' : 'FF4B5563' } } }) };
+    ws[ref(10,r)] = { v: falt || '', t: falt ? 'n' : 's',
+      s: { fill: { patternType: 'solid', fgColor: { rgb: falt > 0 ? 'FFFEE2E2' : bg } },
+           font: { bold: falt > 0, color: { rgb: falt > 0 ? 'FFB91C1C' : 'FF000000' } },
+           alignment: { horizontal: 'center' },
+           border: { bottom: { style: 'thin', color: { rgb: 'FFE5E7EB' } } } } };
+  });
+
+  // ── Fila de totales ──
+  const rTot = arts.length + 2;
+  ws[ref(0,rTot)] = { v: 'TOTALES', t: 's',
+    s: { font: { bold: true, sz: 12 }, fill: { patternType: 'solid', fgColor: { rgb: 'FF1C1C1E' } },
+         font: { bold: true, color: { rgb: 'FFFFFFFF' } } } };
+  ws[ref(7,rTot)] = { v: totalBultos, t: 'n',
+    s: { font: { bold: true, sz: 13, color: { rgb: 'FFFFFFFF' } },
+         fill: { patternType: 'solid', fgColor: { rgb: 'FF3730A3' } },
+         alignment: { horizontal: 'center' } } };
+  ws[ref(8,rTot)] = { v: Math.round(totalMonto), t: 'n',
+    s: { font: { bold: true, color: { rgb: 'FFFFFFFF' } },
+         fill: { patternType: 'solid', fgColor: { rgb: 'FF1C1C1E' } },
+         alignment: { horizontal: 'right' } } };
+
+  ws['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:rTot,c:10} });
+  ws['!cols'] = [
+    {wch:8},{wch:40},{wch:18},{wch:8},{wch:7},{wch:8},{wch:9},{wch:10},{wch:11},{wch:9},{wch:7}
+  ];
+  ws['!rows'] = [{ hpt: 28 }, { hpt: 24 }];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Pedido Make');
+  const filename = `Nota Pedido Make - ${periodo.label}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  toast(`📥 ${filename} — ${totalBultos} bultos`);
 }
 
 function exportAllExcel() {
@@ -1364,6 +1761,7 @@ function renderAll() {
           </div>
         </div>
         ${compraHTML}
+        ${prov === 'Make' ? renderMakeOrderBlock(arts, periodDays) : ''}
         ${firstRows}
         ${hasMore ? `<button class="show-more" onclick="showAll('${prov}',this)">Ver todos los ${sorted.length} artículos ▾</button>` : ''}
         <button class="btn-export-prov" onclick="exportProvExcel('${prov.replace(/'/g,"\\'")}')">
@@ -1543,6 +1941,8 @@ async function init() {
     if (remote && remote.data) {
       state.periodos   = remote.data.periodos   || [];
       state.provConfig = remote.data.provConfig || {};
+      state.makeBultos = remote.data.makeBultos || {};
+      state.makeLista  = remote.data.makeLista  || {};
       if (state.periodos.length) {
         saveState(); // guardar local para próxima vez offline
         setSyncStatus('cloud');
