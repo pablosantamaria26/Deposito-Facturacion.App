@@ -1323,9 +1323,6 @@ function renderMakeOrderBlock(arts, periodDays) {
   }).join('');
 
   const totalMontoStr = totalMonto > 0
-    ? `· Est. $${Math.round(totalMonto).toLocaleString('es-AR')}` : '';
-
-  const totalMontoStr = totalMonto > 0
     ? ` · Est. $${Math.round(totalMonto).toLocaleString('es-AR')}` : '';
   const hasStockLabel = hasStock ? '✓ Stock cargado' : '📂 Subir Stock Make.xlsx';
 
