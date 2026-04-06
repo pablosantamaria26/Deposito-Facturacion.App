@@ -742,6 +742,7 @@ let state = {
   makeListaRaw:  null, // base64 del archivo LISTA DE MAKE original (para escribir sobre él)
   makeListaName: '',   // nombre del archivo original para sugerirlo al descargar
   makeStock:     {},   // { code4: { unidades: number, esX: bool } } — de Stock Make.xlsx
+  makeListaDescIdx: {}, // word → [code4, ...] — índice por palabras para fallback de matching
 };
 
 // Atajos al período activo
@@ -1144,6 +1145,18 @@ async function parseListaMake(file) {
         state.makeListaRaw  = btoa(binary);
         state.makeListaName = file.name;
 
+        // Construir índice palabra → [code4] para matching por descripción
+        const descIdx = {};
+        Object.entries(map).forEach(([code4, info]) => {
+          if (!info.desc) return;
+          const words = normalize(info.desc).split(' ').filter(w => w.length > 3);
+          words.forEach(w => {
+            if (!descIdx[w]) descIdx[w] = [];
+            descIdx[w].push(code4);
+          });
+        });
+        state.makeListaDescIdx = descIdx;
+
         resolve(map);
       } catch(err) { reject(err); }
     };
@@ -1152,35 +1165,69 @@ async function parseListaMake(file) {
   });
 }
 
-// Obtener bultos para un artículo Make por EAN
+// Buscar code4 por palabras clave en la descripción (fallback cuando EAN no matchea)
+function findCode4ByDesc(desc) {
+  if (!desc || !Object.keys(state.makeListaDescIdx).length) return null;
+  const words = normalize(desc).split(' ').filter(w => w.length > 3);
+  if (!words.length) return null;
+  const scores = {};
+  words.forEach(w => {
+    (state.makeListaDescIdx[w] || []).forEach(code4 => {
+      scores[code4] = (scores[code4] || 0) + 1;
+    });
+  });
+  const minMatch = Math.min(2, words.length);
+  const best = Object.entries(scores)
+    .filter(([, s]) => s >= minMatch)
+    .sort((a, b) => b[1] - a[1]);
+  return best.length ? best[0][0] : null;
+}
+
+// Resolver { uxb, code4 } para un artículo Make con 3 estrategias de fallback:
+//   1. EAN directo en BULTOS MAKE.xlsx
+//   2. code4 (desde EAN) en LISTA DE MAKE (que también tiene uxb)
+//   3. Matching por palabras clave en descripción de LISTA DE MAKE
+function getMakeBultosResolved(ean, desc) {
+  // Estrategia 1: EAN directo
+  const fromBultos = state.makeBultos[String(ean).trim()];
+  if (fromBultos) return { uxb: fromBultos, code4: eanToMakeCode(ean) };
+
+  // Estrategia 2: code4 desde EAN → buscar en LISTA DE MAKE
+  const code4 = eanToMakeCode(ean);
+  if (code4 && state.makeLista[code4]?.uxb > 0) {
+    return { uxb: state.makeLista[code4].uxb, code4 };
+  }
+
+  // Estrategia 3: matching por descripción → LISTA DE MAKE
+  const matched = findCode4ByDesc(desc);
+  if (matched && state.makeLista[matched]?.uxb > 0) {
+    return { uxb: state.makeLista[matched].uxb, code4: matched };
+  }
+
+  return null;
+}
+
+// Compatibilidad: wrapper simple para usos que solo necesitan uxb
 function getMakeBultos(ean) {
   return state.makeBultos[String(ean).trim()] || 0;
 }
 
-// Obtener info de lista Make por EAN
-function getMakeLista(ean) {
-  const code = eanToMakeCode(ean);
+// Obtener info de lista Make por EAN o code4 resuelto
+function getMakeLista(ean, resolvedCode4) {
+  const code = resolvedCode4 || eanToMakeCode(ean);
   return code ? (state.makeLista[code] || null) : null;
 }
 
-// Obtener stock actual en UNIDADES para un artículo Make (por code4)
-// Reglas del archivo Stock Make.xlsx:
-//   "x"  → 0 unidades, sin stock
-//   "6B", "1B", "2B" → N bultos × uxb = unidades
-//   "01B" → 1 bulto × uxb
-//   "24", "53", "7" → unidades sueltas (piezas, no bultos)
-function getMakeStockUnidades(ean, uxb) {
-  const code = eanToMakeCode(ean);
-  if (!code) return null;
-  const s = state.makeStock[code];
+// Obtener stock actual en UNIDADES para un artículo Make
+// Acepta code4 directamente (resuelto por getMakeBultosResolved)
+function getMakeStockUnidades(code4, uxb) {
+  if (!code4) return null;
+  const s = state.makeStock[code4];
   if (!s) return null;            // artículo no está en el archivo de stock
   if (s.esX) return 0;           // marcado con "x" = sin stock
-
   if (s.esBultos) {
-    // Número seguido de B → convertir a unidades
-    return uxb > 0 ? s.cantidad * uxb : s.cantidad; // si no tenemos uxb, usar como referencia
+    return uxb > 0 ? s.cantidad * uxb : s.cantidad;
   } else {
-    // Número solo → unidades sueltas
     return s.cantidad;
   }
 }
@@ -1231,18 +1278,19 @@ async function parseMakeStock(file) {
 }
 
 // Calcular bultos a pedir para un artículo Make considerando el stock actual
-// Devuelve { bultos, sugerido_u, stock_u, faltante_u }
+// Devuelve { bultos, sugerido_u, stock_u, faltante_u, uxb, stockConocido, code4 }
 function calcMakePedido(art, periodDays) {
-  const uxb      = getMakeBultos(art.ean);
-  if (!uxb) return null; // sin referencia de bulto no podemos calcular
+  const resolved = getMakeBultosResolved(art.ean, art.desc);
+  if (!resolved) return null; // sin referencia de bulto no podemos calcular
+  const { uxb, code4 } = resolved;
   const vpd      = art.qty / periodDays;
   const sugerido = Math.ceil(vpd * COBERTURA_DIAS); // unidades para 30 días
-  const stockU   = getMakeStockUnidades(art.ean, uxb); // null = sin dato, 0 = sin stock
+  const stockU   = getMakeStockUnidades(code4, uxb); // null = sin dato, 0 = sin stock
   const stockConocido = stockU !== null;
   // Demanda real = sugerido - stock disponible (si lo sabemos)
   const faltante = stockConocido ? Math.max(0, sugerido - stockU) : sugerido;
   const bultos   = faltante > 0 ? Math.ceil(faltante / uxb) : 0;
-  return { bultos, sugerido_u: sugerido, stock_u: stockU, faltante_u: faltante, uxb, stockConocido };
+  return { bultos, sugerido_u: sugerido, stock_u: stockU, faltante_u: faltante, uxb, stockConocido, code4 };
 }
 
 // Renderizar bloque de pedido Make con bultos
@@ -1279,8 +1327,8 @@ function renderMakeOrderBlock(arts, periodDays) {
 
   const rows = sorted.map((art) => {
     const p       = calcMakePedido(art, periodDays);
-    const info    = getMakeLista(art.ean);
-    const code    = eanToMakeCode(art.ean);
+    const code    = p?.code4 || eanToMakeCode(art.ean); // usar code4 resuelto (puede venir de desc matching)
+    const info    = getMakeLista(art.ean, code);
     const falt    = getFaltantes(art.desc);
     const vpd     = art.qty / periodDays;
     const level   = alertLevel(vpd, cfg.lt, cfg.ss);
@@ -1289,7 +1337,7 @@ function renderMakeOrderBlock(arts, periodDays) {
     // Columna stock
     let stockCell = '<td class="td-num" style="color:var(--text3)">—</td>';
     if (p && p.stockConocido) {
-      const esX = p.stock_u === 0 && state.makeStock[code]?.esX;
+      const esX = p.stock_u === 0 && state.makeStock[p.code4]?.esX;
       stockCell = `<td class="td-num" style="font-weight:600;color:${p.stock_u === 0 ? 'var(--red)' : '#065F46'}">
         ${esX ? 'X' : p.stock_u}
       </td>`;
@@ -1564,7 +1612,7 @@ function exportMakeOrder() {
     .filter(a => a.proveedor === 'Make' && a.qty > 0)
     .forEach(art => {
       const p    = calcMakePedido(art, periodo.periodDays);
-      const code = eanToMakeCode(art.ean);
+      const code = p?.code4 || eanToMakeCode(art.ean); // usar code4 resuelto (desc matching incluido)
       if (p && code && p.bultos > 0) pedidoMap[code] = p.bultos;
     });
 
