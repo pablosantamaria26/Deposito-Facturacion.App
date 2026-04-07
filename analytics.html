@@ -766,41 +766,53 @@ let globalPeriod = "semana"; // "semana" | "mes"
 
 // ════════════════════════════════════════════
 // RESUMEN COMPARATIVO SIMPLE
+// Usa "últimos N días" vs "N días anteriores"
+// → siempre hay datos, no depende de vistas SQL
 // ════════════════════════════════════════════
 async function loadResumenComparativo(period) {
   const isSemana = period === "semana";
-  const view = isSemana ? "v_comparacion_semanas" : "v_comparacion_meses";
-  const periodoNombre   = isSemana ? "esta semana"    : "este mes";
-  const periodoAnterior = isSemana ? "la semana pasada" : "el mes pasado";
+  const dias     = isSemana ? 7 : 30;
+  const periodoNombre   = isSemana ? "últimos 7 días"  : "últimos 30 días";
+  const periodoAnterior = isSemana ? "los 7 días anteriores" : "los 30 días anteriores";
 
   document.getElementById("compLabel").textContent =
     isSemana ? "¿Cómo vamos esta semana?" : "¿Cómo vamos este mes?";
 
-  const rows = await sbGet(view, "limit=1");
-  if (!rows.length) {
-    document.getElementById("resumenStack").innerHTML =
-      `<div class="rcard"><div class="rcard-titulo">Sin datos aún</div></div>`;
-    return;
-  }
-  const d = rows[0];
+  // Traemos pedidos e ítems de los últimos 2 períodos de una vez
+  const desdeDoble = makeISO(dias * 2);
+  const corte      = new Date(makeISO(dias)); // divide actual vs anterior
 
-  const actual   = d.pedidos_actual   ?? 0;
-  const anterior = d.pedidos_anterior ?? 0;
+  const [todosPedidos, todosItems] = await Promise.all([
+    sbGet("pedidos",
+      `created_at=gte.${desdeDoble}&select=id,estado,created_at&limit=2000`),
+    sbGet("items_pedido",
+      `created_at=gte.${desdeDoble}&select=es_faltante,created_at&limit=5000`)
+  ]);
+
+  // Dividir en período actual y anterior por fecha de corte
+  const pedActual   = todosPedidos.filter(p => new Date(p.created_at) >= corte);
+  const pedAnterior = todosPedidos.filter(p => new Date(p.created_at) <  corte);
+  const itmActual   = todosItems.filter(i => new Date(i.created_at) >= corte);
+  const itmAnterior = todosItems.filter(i => new Date(i.created_at) <  corte);
+
+  const actual   = pedActual.length;
+  const anterior = pedAnterior.length;
   const difPed   = actual - anterior;
 
-  const faltActual   = d.faltantes_actual   ?? 0;
-  const faltAnterior = d.faltantes_anterior ?? 0;
-  const difFalt      = faltActual - faltAnterior;
+  const faltActualN   = itmActual.filter(i => i.es_faltante).length;
+  const faltAnteriorN = itmAnterior.filter(i => i.es_faltante).length;
+  const difFalt = faltActualN - faltAnteriorN;
 
-  const tasaActual = d.items_actual > 0
-    ? Math.round((faltActual / d.items_actual) * 100) : 0;
+  // Tasa de faltantes = faltantes / total ítems del período actual
+  const tasaActual = itmActual.length > 0
+    ? Math.round((faltActualN / itmActual.length) * 100) : 0;
 
-  // VENTAS: veredicto
+  // — VEREDICTO VENTAS —
   let vVentasCls, vVentasIcon, vVentasTexto, vVentasDetalle;
   if (anterior === 0) {
     vVentasCls = "neutro"; vVentasIcon = "📊";
-    vVentasTexto = "Primera semana registrada";
-    vVentasDetalle = "No hay semana anterior para comparar";
+    vVentasTexto = "Sin datos anteriores para comparar";
+    vVentasDetalle = "A medida que pasen los días habrá comparación";
   } else if (difPed > 0) {
     vVentasCls = "bien"; vVentasIcon = "✅";
     vVentasTexto = "Vendiste MÁS que " + periodoAnterior;
@@ -815,9 +827,9 @@ async function loadResumenComparativo(period) {
     vVentasDetalle = "Sin cambios respecto al período anterior";
   }
 
-  // FALTANTES: veredicto + semáforo de normalidad
+  // — VEREDICTO FALTANTES —
   let vFaltCls, vFaltIcon, vFaltTexto, vFaltDetalle;
-  if (faltAnterior === 0 && anterior === 0) {
+  if (faltAnteriorN === 0 && anterior === 0) {
     vFaltCls = "neutro"; vFaltIcon = "📊";
     vFaltTexto = "Sin datos anteriores";
     vFaltDetalle = "No hay período anterior para comparar";
@@ -835,14 +847,17 @@ async function loadResumenComparativo(period) {
     vFaltDetalle = "Sin cambios en faltantes";
   }
 
-  // Semáforo de normalidad (< 8% = normal, 8-14% = atención, ≥ 15% = crítico)
+  // — SEMÁFORO DE NORMALIDAD (< 8% ok, 8-14% atención, ≥ 15% crítico) —
   let normalCls, normalTexto;
-  if (tasaActual < 8) {
+  if (itmActual.length === 0) {
+    normalCls = "neutro";
+    normalTexto = "Sin artículos registrados en el período";
+  } else if (tasaActual < 8) {
     normalCls = "bien";
-    normalTexto = `✅ Dentro de lo normal — la tasa de ${tasaActual}% es aceptable (el límite es 8%)`;
+    normalTexto = `✅ Dentro de lo normal — ${tasaActual}% de artículos faltaron (el límite aceptable es 8%)`;
   } else if (tasaActual < 15) {
     normalCls = "mal";
-    normalTexto = `⚠️ Un poco alto — ${tasaActual}% de artículos faltaron. Lo normal es menos del 8%`;
+    normalTexto = `⚠️ Por encima de lo normal — ${tasaActual}% de artículos faltaron. Lo aceptable es menos del 8%`;
   } else {
     normalCls = "mal";
     normalTexto = `🔴 Crítico — ${tasaActual}% de artículos faltaron. Revisá el stock urgente`;
@@ -850,7 +865,7 @@ async function loadResumenComparativo(period) {
 
   document.getElementById("resumenStack").innerHTML = `
     <div class="rcard">
-      <div class="rcard-titulo">📦 Pedidos ${periodoNombre}</div>
+      <div class="rcard-titulo">📦 Pedidos — ${periodoNombre}</div>
       <div class="rcard-numero">${actual}</div>
       <div class="rcard-sub">pedidos recibidos</div>
       <div class="veredicto ${vVentasCls}">
@@ -864,8 +879,8 @@ async function loadResumenComparativo(period) {
     </div>
 
     <div class="rcard">
-      <div class="rcard-titulo">⚠️ Faltantes ${periodoNombre}</div>
-      <div class="rcard-numero">${faltActual}</div>
+      <div class="rcard-titulo">⚠️ Faltantes — ${periodoNombre}</div>
+      <div class="rcard-numero">${faltActualN}</div>
       <div class="rcard-sub">artículos que faltaron</div>
       <div class="veredicto ${vFaltCls}">
         <span class="veredicto-icon">${vFaltIcon}</span>
@@ -877,56 +892,86 @@ async function loadResumenComparativo(period) {
       <div class="veredicto ${normalCls}" style="margin-top:4px">
         <div class="veredicto-texto" style="font-size:13px">${normalTexto}</div>
       </div>
-      <div class="rcard-ref">${periodoAnterior}: ${faltAnterior} faltantes</div>
+      <div class="rcard-ref">${periodoAnterior}: ${faltAnteriorN} faltantes</div>
     </div>
   `;
 }
 
 // ════════════════════════════════════════════
 // VENDEDORES SIMPLE
+// Usa "últimos N días" vs "N días anteriores"
+// → no depende de vistas SQL
 // ════════════════════════════════════════════
 async function loadVendedoresSimple(period) {
-  const rows = await sbGet("v_rendimiento_vendedores_detalle", "limit=10");
   const el = document.getElementById("vendedoresStack");
-  if (!rows.length) {
-    el.innerHTML = `<div class="rcard"><div class="rcard-titulo">Sin datos de vendedores</div></div>`;
+  const isSemana = period === "semana";
+  const dias = isSemana ? 7 : 30;
+  const periodoAnterior = isSemana ? "los 7 días anteriores" : "los 30 días anteriores";
+  const medallas = ["🥇", "🥈", "🥉"];
+
+  const desdeDoble = makeISO(dias * 2);
+  const corte      = new Date(makeISO(dias));
+
+  // Un solo fetch con vendedor + fecha
+  const [todosPed, todosItm] = await Promise.all([
+    sbGet("pedidos",
+      `created_at=gte.${desdeDoble}&vendedor=neq.null&select=vendedor,created_at,id&limit=2000`),
+    sbGet("items_pedido",
+      `es_faltante=eq.true&created_at=gte.${desdeDoble}&select=pedido_id,created_at&limit=3000`)
+  ]);
+
+  if (!todosPed.length) {
+    el.innerHTML = `<div class="rcard"><div class="rcard-titulo">Sin pedidos registrados</div></div>`;
     return;
   }
 
-  const isSemana = period === "semana";
-  const periodoAnterior = isSemana ? "la semana pasada" : "el mes pasado";
-  const medallas = ["🥇", "🥈", "🥉"];
+  // Mapa pedido → vendedor para cruzar faltantes
+  const pedVend = {};
+  todosPed.forEach(p => { pedVend[p.id] = (p.vendedor || "").trim().toLowerCase(); });
 
-  el.innerHTML = rows.map((r, i) => {
-    const pedidos = isSemana ? r.pedidos_semana_actual  : r.pedidos_mes_actual;
-    const pedAnt  = isSemana ? r.pedidos_semana_anterior : r.pedidos_mes_anterior;
-    const dif     = pedidos - pedAnt;
-    const faltant = isSemana ? r.faltantes_semana : r.faltantes_mes;
+  // Agrupar por vendedor: período actual vs anterior
+  // toLowerCase() para que "MARTIN" y "martin" cuenten como el mismo
+  const byVend = {};
+  todosPed.forEach(p => {
+    const v = (p.vendedor || "").trim().toLowerCase();
+    if (!v) return;
+    if (!byVend[v]) byVend[v] = { actual: 0, anterior: 0, faltActual: 0 };
+    if (new Date(p.created_at) >= corte) byVend[v].actual++;
+    else                                  byVend[v].anterior++;
+  });
+
+  // Agregar faltantes del período actual
+  todosItm.forEach(itm => {
+    if (new Date(itm.created_at) < corte) return;
+    const v = pedVend[itm.pedido_id];
+    if (v && byVend[v]) byVend[v].faltActual++;
+  });
+
+  const sorted = Object.entries(byVend)
+    .sort((a, b) => b[1].actual - a[1].actual);
+
+  el.innerHTML = sorted.map(([nombre, d], i) => {
+    const dif = d.actual - d.anterior;
+    const faltInfo = d.faltActual > 0
+      ? ` · ${d.faltActual} faltante${d.faltActual !== 1 ? "s" : ""}` : "";
 
     let vcls, vtexto;
-    if (pedAnt === 0) {
-      vcls = "neutro";
-      vtexto = `${pedidos} pedidos`;
+    if (d.anterior === 0) {
+      vcls = "neutro"; vtexto = "Sin datos anteriores";
     } else if (dif > 0) {
-      vcls = "bien";
-      vtexto = `↑ ${dif} más que ${periodoAnterior}`;
+      vcls = "bien";   vtexto = `↑ ${dif} más que ${periodoAnterior}`;
     } else if (dif < 0) {
-      vcls = "mal";
-      vtexto = `↓ ${Math.abs(dif)} menos que ${periodoAnterior}`;
+      vcls = "mal";    vtexto = `↓ ${Math.abs(dif)} menos que ${periodoAnterior}`;
     } else {
-      vcls = "neutro";
-      vtexto = `Igual que ${periodoAnterior}`;
+      vcls = "neutro"; vtexto = `Igual que ${periodoAnterior}`;
     }
-
-    const rankLabel = medallas[i] ?? `${i + 1}°`;
-    const faltInfo  = faltant > 0 ? ` · ${faltant} faltante${faltant !== 1 ? "s" : ""}` : "";
 
     return `
       <div class="vcard">
-        <div class="vcard-rank">${rankLabel}</div>
+        <div class="vcard-rank">${medallas[i] ?? (i + 1) + "°"}</div>
         <div class="vcard-info">
-          <div class="vcard-nombre">${escHtml(r.vendedor)}</div>
-          <div class="vcard-pedidos">${pedidos} pedidos${faltInfo}</div>
+          <div class="vcard-nombre">${escHtml(nombre.charAt(0).toUpperCase() + nombre.slice(1))}</div>
+          <div class="vcard-pedidos">${d.actual} pedidos${faltInfo}</div>
         </div>
         <div class="vcard-veredicto ${vcls}">${vtexto}</div>
       </div>`;
