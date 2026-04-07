@@ -1,5 +1,7 @@
 -- =============================================================================
 -- analytics_views.sql
+-- ACTUALIZADO: Se agregaron vistas de comparación semana/mes,
+--              proyección del negocio y rendimiento detallado por vendedor.
 -- Vistas analíticas para el sistema de pedidos
 -- Timezone: America/Argentina/Buenos_Aires
 -- Compatible con PostgreSQL 15 (Supabase)
@@ -293,3 +295,290 @@ SELECT
 FROM racha_continua rc
 WHERE rc.semanas_faltando >= 2
 ORDER BY rc.semanas_faltando DESC, rc.descripcion;
+
+
+-- -----------------------------------------------------------------------------
+-- 8. v_comparacion_semanas
+--    Semana actual vs semana anterior: pedidos, facturados, faltantes y
+--    variación porcentual. Una sola fila de resultado.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW v_comparacion_semanas AS
+WITH
+tz AS (SELECT 'America/Argentina/Buenos_Aires' AS tz),
+semana_actual AS (
+    SELECT
+        COUNT(*)                                             AS pedidos,
+        COUNT(*) FILTER (WHERE p.estado = 'facturado')      AS facturados,
+        COALESCE((
+            SELECT COUNT(ip2.id)
+            FROM items_pedido ip2
+            JOIN pedidos p2 ON p2.id = ip2.pedido_id
+            WHERE ip2.es_faltante = TRUE
+              AND DATE_TRUNC('week', p2.created_at AT TIME ZONE (SELECT tz FROM tz))
+                  = DATE_TRUNC('week', NOW() AT TIME ZONE (SELECT tz FROM tz))
+        ), 0)                                                AS faltantes,
+        COALESCE((
+            SELECT COUNT(ip2.id)
+            FROM items_pedido ip2
+            JOIN pedidos p2 ON p2.id = ip2.pedido_id
+            WHERE DATE_TRUNC('week', p2.created_at AT TIME ZONE (SELECT tz FROM tz))
+                  = DATE_TRUNC('week', NOW() AT TIME ZONE (SELECT tz FROM tz))
+        ), 0)                                                AS items_total
+    FROM pedidos p
+    WHERE DATE_TRUNC('week', p.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')
+        = DATE_TRUNC('week', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')
+),
+semana_anterior AS (
+    SELECT
+        COUNT(*)                                             AS pedidos,
+        COUNT(*) FILTER (WHERE p.estado = 'facturado')      AS facturados,
+        COALESCE((
+            SELECT COUNT(ip2.id)
+            FROM items_pedido ip2
+            JOIN pedidos p2 ON p2.id = ip2.pedido_id
+            WHERE ip2.es_faltante = TRUE
+              AND DATE_TRUNC('week', p2.created_at AT TIME ZONE (SELECT tz FROM tz))
+                  = DATE_TRUNC('week', (NOW() AT TIME ZONE (SELECT tz FROM tz)) - INTERVAL '1 week')
+        ), 0)                                                AS faltantes,
+        COALESCE((
+            SELECT COUNT(ip2.id)
+            FROM items_pedido ip2
+            JOIN pedidos p2 ON p2.id = ip2.pedido_id
+            WHERE DATE_TRUNC('week', p2.created_at AT TIME ZONE (SELECT tz FROM tz))
+                  = DATE_TRUNC('week', (NOW() AT TIME ZONE (SELECT tz FROM tz)) - INTERVAL '1 week')
+        ), 0)                                                AS items_total
+    FROM pedidos p
+    WHERE DATE_TRUNC('week', p.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')
+        = DATE_TRUNC('week', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires') - INTERVAL '1 week')
+)
+SELECT
+    sa.pedidos                                        AS pedidos_actual,
+    sa.facturados                                     AS facturados_actual,
+    sa.faltantes                                      AS faltantes_actual,
+    sa.items_total                                    AS items_actual,
+    sp.pedidos                                        AS pedidos_anterior,
+    sp.facturados                                     AS facturados_anterior,
+    sp.faltantes                                      AS faltantes_anterior,
+    sp.items_total                                    AS items_anterior,
+    CASE WHEN sp.pedidos > 0
+         THEN ROUND(((sa.pedidos::NUMERIC - sp.pedidos::NUMERIC) / sp.pedidos::NUMERIC) * 100, 1)
+         ELSE NULL END                                AS var_pedidos_pct,
+    CASE WHEN sp.faltantes > 0
+         THEN ROUND(((sa.faltantes::NUMERIC - sp.faltantes::NUMERIC) / sp.faltantes::NUMERIC) * 100, 1)
+         ELSE NULL END                                AS var_faltantes_pct,
+    CASE WHEN sp.facturados > 0
+         THEN ROUND(((sa.facturados::NUMERIC - sp.facturados::NUMERIC) / sp.facturados::NUMERIC) * 100, 1)
+         ELSE NULL END                                AS var_facturados_pct
+FROM semana_actual sa, semana_anterior sp;
+
+
+-- -----------------------------------------------------------------------------
+-- 9. v_comparacion_meses
+--    Mes actual vs mes anterior: pedidos, facturados, faltantes y variación %.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW v_comparacion_meses AS
+WITH
+mes_actual AS (
+    SELECT
+        COUNT(*)                                             AS pedidos,
+        COUNT(*) FILTER (WHERE p.estado = 'facturado')      AS facturados,
+        COALESCE((
+            SELECT COUNT(ip2.id)
+            FROM items_pedido ip2
+            JOIN pedidos p2 ON p2.id = ip2.pedido_id
+            WHERE ip2.es_faltante = TRUE
+              AND DATE_TRUNC('month', p2.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')
+                  = DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')
+        ), 0)                                                AS faltantes,
+        COALESCE((
+            SELECT COUNT(ip2.id)
+            FROM items_pedido ip2
+            JOIN pedidos p2 ON p2.id = ip2.pedido_id
+            WHERE DATE_TRUNC('month', p2.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')
+                  = DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')
+        ), 0)                                                AS items_total
+    FROM pedidos p
+    WHERE DATE_TRUNC('month', p.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')
+        = DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')
+),
+mes_anterior AS (
+    SELECT
+        COUNT(*)                                             AS pedidos,
+        COUNT(*) FILTER (WHERE p.estado = 'facturado')      AS facturados,
+        COALESCE((
+            SELECT COUNT(ip2.id)
+            FROM items_pedido ip2
+            JOIN pedidos p2 ON p2.id = ip2.pedido_id
+            WHERE ip2.es_faltante = TRUE
+              AND DATE_TRUNC('month', p2.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')
+                  = DATE_TRUNC('month', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires') - INTERVAL '1 month')
+        ), 0)                                                AS faltantes,
+        COALESCE((
+            SELECT COUNT(ip2.id)
+            FROM items_pedido ip2
+            JOIN pedidos p2 ON p2.id = ip2.pedido_id
+            WHERE DATE_TRUNC('month', p2.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')
+                  = DATE_TRUNC('month', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires') - INTERVAL '1 month')
+        ), 0)                                                AS items_total
+    FROM pedidos p
+    WHERE DATE_TRUNC('month', p.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')
+        = DATE_TRUNC('month', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires') - INTERVAL '1 month')
+)
+SELECT
+    ma.pedidos                                        AS pedidos_actual,
+    ma.facturados                                     AS facturados_actual,
+    ma.faltantes                                      AS faltantes_actual,
+    ma.items_total                                    AS items_actual,
+    mant.pedidos                                      AS pedidos_anterior,
+    mant.facturados                                   AS facturados_anterior,
+    mant.faltantes                                    AS faltantes_anterior,
+    mant.items_total                                  AS items_anterior,
+    CASE WHEN mant.pedidos > 0
+         THEN ROUND(((ma.pedidos::NUMERIC - mant.pedidos::NUMERIC) / mant.pedidos::NUMERIC) * 100, 1)
+         ELSE NULL END                                AS var_pedidos_pct,
+    CASE WHEN mant.faltantes > 0
+         THEN ROUND(((ma.faltantes::NUMERIC - mant.faltantes::NUMERIC) / mant.faltantes::NUMERIC) * 100, 1)
+         ELSE NULL END                                AS var_faltantes_pct,
+    CASE WHEN mant.facturados > 0
+         THEN ROUND(((ma.facturados::NUMERIC - mant.facturados::NUMERIC) / mant.facturados::NUMERIC) * 100, 1)
+         ELSE NULL END                                AS var_facturados_pct
+FROM mes_actual ma, mes_anterior mant;
+
+
+-- -----------------------------------------------------------------------------
+-- 10. v_proyeccion_semanal
+--     Últimas 8 semanas: pedidos, facturados y faltantes por semana ISO.
+--     Permite calcular tendencia, proyección de fin de mes y detectar si
+--     los faltantes mejoran o empeoran.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW v_proyeccion_semanal AS
+WITH semanas AS (
+    SELECT generate_series(
+        DATE_TRUNC('week', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires') - INTERVAL '7 weeks'),
+        DATE_TRUNC('week',  NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires'),
+        INTERVAL '1 week'
+    )::DATE AS semana_inicio
+),
+pedidos_sem AS (
+    SELECT
+        DATE_TRUNC('week', p.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::DATE AS semana_inicio,
+        COUNT(*)                                           AS pedidos,
+        COUNT(*) FILTER (WHERE p.estado = 'facturado')    AS facturados
+    FROM pedidos p
+    WHERE p.created_at >= NOW() - INTERVAL '8 weeks'
+    GROUP BY 1
+),
+faltantes_sem AS (
+    SELECT
+        DATE_TRUNC('week', p.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::DATE AS semana_inicio,
+        COUNT(ip.id)                                       AS faltantes,
+        COUNT(ip.id) FILTER (WHERE ip.es_faltante)        AS faltantes_count
+    FROM items_pedido ip
+    JOIN pedidos p ON p.id = ip.pedido_id
+    WHERE p.created_at >= NOW() - INTERVAL '8 weeks'
+    GROUP BY 1
+)
+SELECT
+    s.semana_inicio,
+    COALESCE(ps.pedidos, 0)    AS pedidos,
+    COALESCE(ps.facturados, 0) AS facturados,
+    COALESCE(fs.faltantes_count, 0) AS faltantes,
+    COALESCE(fs.faltantes, 0)  AS items_total,
+    CASE WHEN COALESCE(fs.faltantes, 0) > 0
+         THEN ROUND((COALESCE(fs.faltantes_count, 0)::NUMERIC / fs.faltantes::NUMERIC) * 100, 1)
+         ELSE 0 END            AS tasa_faltantes_pct
+FROM semanas s
+LEFT JOIN pedidos_sem   ps ON ps.semana_inicio = s.semana_inicio
+LEFT JOIN faltantes_sem fs ON fs.semana_inicio = s.semana_inicio
+ORDER BY s.semana_inicio ASC;
+
+
+-- -----------------------------------------------------------------------------
+-- 11. v_rendimiento_vendedores_detalle
+--     Esta semana y mes actual: pedidos, faltantes y tasa de faltantes
+--     por vendedor, comparando con la semana/mes anterior.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW v_rendimiento_vendedores_detalle AS
+WITH
+sem_act AS (
+    SELECT p.vendedor,
+           COUNT(*) AS pedidos,
+           COUNT(*) FILTER (WHERE p.estado = 'facturado') AS facturados
+    FROM pedidos p
+    WHERE DATE_TRUNC('week', p.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')
+        = DATE_TRUNC('week', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')
+      AND p.vendedor IS NOT NULL
+    GROUP BY p.vendedor
+),
+sem_ant AS (
+    SELECT p.vendedor,
+           COUNT(*) AS pedidos,
+           COUNT(*) FILTER (WHERE p.estado = 'facturado') AS facturados
+    FROM pedidos p
+    WHERE DATE_TRUNC('week', p.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')
+        = DATE_TRUNC('week', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires') - INTERVAL '1 week')
+      AND p.vendedor IS NOT NULL
+    GROUP BY p.vendedor
+),
+mes_act AS (
+    SELECT p.vendedor,
+           COUNT(*) AS pedidos,
+           COUNT(*) FILTER (WHERE p.estado = 'facturado') AS facturados
+    FROM pedidos p
+    WHERE DATE_TRUNC('month', p.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')
+        = DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')
+      AND p.vendedor IS NOT NULL
+    GROUP BY p.vendedor
+),
+mes_ant AS (
+    SELECT p.vendedor,
+           COUNT(*) AS pedidos
+    FROM pedidos p
+    WHERE DATE_TRUNC('month', p.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')
+        = DATE_TRUNC('month', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires') - INTERVAL '1 month')
+      AND p.vendedor IS NOT NULL
+    GROUP BY p.vendedor
+),
+faltantes_sem AS (
+    SELECT p.vendedor, COUNT(ip.id) AS faltantes
+    FROM items_pedido ip
+    JOIN pedidos p ON p.id = ip.pedido_id
+    WHERE ip.es_faltante = TRUE
+      AND DATE_TRUNC('week', p.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')
+        = DATE_TRUNC('week', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')
+      AND p.vendedor IS NOT NULL
+    GROUP BY p.vendedor
+),
+faltantes_mes AS (
+    SELECT p.vendedor, COUNT(ip.id) AS faltantes
+    FROM items_pedido ip
+    JOIN pedidos p ON p.id = ip.pedido_id
+    WHERE ip.es_faltante = TRUE
+      AND DATE_TRUNC('month', p.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')
+        = DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')
+      AND p.vendedor IS NOT NULL
+    GROUP BY p.vendedor
+)
+SELECT
+    COALESCE(sa.vendedor, ma.vendedor)        AS vendedor,
+    COALESCE(sa.pedidos, 0)                   AS pedidos_semana_actual,
+    COALESCE(sa.facturados, 0)                AS facturados_semana_actual,
+    COALESCE(sant.pedidos, 0)                 AS pedidos_semana_anterior,
+    COALESCE(ma.pedidos, 0)                   AS pedidos_mes_actual,
+    COALESCE(ma.facturados, 0)                AS facturados_mes_actual,
+    COALESCE(mant.pedidos, 0)                 AS pedidos_mes_anterior,
+    COALESCE(fs.faltantes, 0)                 AS faltantes_semana,
+    COALESCE(fm.faltantes, 0)                 AS faltantes_mes,
+    CASE WHEN sant.pedidos > 0
+         THEN ROUND(((COALESCE(sa.pedidos,0)::NUMERIC - sant.pedidos::NUMERIC) / sant.pedidos::NUMERIC) * 100, 1)
+         ELSE NULL END                        AS var_pedidos_semana_pct,
+    CASE WHEN mant.pedidos > 0
+         THEN ROUND(((COALESCE(ma.pedidos,0)::NUMERIC - mant.pedidos::NUMERIC) / mant.pedidos::NUMERIC) * 100, 1)
+         ELSE NULL END                        AS var_pedidos_mes_pct
+FROM sem_act sa
+FULL OUTER JOIN sem_ant  sant ON sant.vendedor  = sa.vendedor
+FULL OUTER JOIN mes_act  ma   ON ma.vendedor    = COALESCE(sa.vendedor, sant.vendedor)
+FULL OUTER JOIN mes_ant  mant ON mant.vendedor  = COALESCE(sa.vendedor, sant.vendedor, ma.vendedor)
+LEFT  JOIN faltantes_sem fs   ON fs.vendedor    = COALESCE(sa.vendedor, sant.vendedor, ma.vendedor)
+LEFT  JOIN faltantes_mes fm   ON fm.vendedor    = COALESCE(sa.vendedor, sant.vendedor, ma.vendedor)
+ORDER BY pedidos_mes_actual DESC NULLS LAST;
