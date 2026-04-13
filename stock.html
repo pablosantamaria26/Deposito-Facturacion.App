@@ -789,6 +789,7 @@ function loadState() {
     state.makeListaRaw  = saved.makeListaRaw  || null;
     state.makeListaName = saved.makeListaName || '';
     state.makeStock     = saved.makeStock     || {};
+    rebuildMakeDescIdx(); // reconstruir índice de descripción desde makeLista
   } catch(e) { /* ignore */ }
 }
 
@@ -1145,17 +1146,8 @@ async function parseListaMake(file) {
         state.makeListaRaw  = btoa(binary);
         state.makeListaName = file.name;
 
-        // Construir índice palabra → [code4] para matching por descripción
-        const descIdx = {};
-        Object.entries(map).forEach(([code4, info]) => {
-          if (!info.desc) return;
-          const words = normalize(info.desc).split(' ').filter(w => w.length > 3);
-          words.forEach(w => {
-            if (!descIdx[w]) descIdx[w] = [];
-            descIdx[w].push(code4);
-          });
-        });
-        state.makeListaDescIdx = descIdx;
+        state.makeLista = map; // asignar antes de reconstruir el índice
+        rebuildMakeDescIdx();
 
         resolve(map);
       } catch(err) { reject(err); }
@@ -1163,6 +1155,20 @@ async function parseListaMake(file) {
     reader.onerror = reject;
     reader.readAsArrayBuffer(file);
   });
+}
+
+// Reconstruir índice palabra → [code4] desde state.makeLista (se llama al cargar estado)
+function rebuildMakeDescIdx() {
+  const descIdx = {};
+  Object.entries(state.makeLista).forEach(([code4, info]) => {
+    if (!info.desc) return;
+    const words = normalize(info.desc).split(' ').filter(w => w.length > 3);
+    words.forEach(w => {
+      if (!descIdx[w]) descIdx[w] = [];
+      descIdx[w].push(code4);
+    });
+  });
+  state.makeListaDescIdx = descIdx;
 }
 
 // Buscar code4 por palabras clave en la descripción (fallback cuando EAN no matchea)
@@ -2090,6 +2096,7 @@ async function init() {
       state.makeListaRaw  = remote.data.makeListaRaw  || null;
       state.makeListaName = remote.data.makeListaName || '';
       state.makeStock     = remote.data.makeStock     || {};
+      rebuildMakeDescIdx(); // reconstruir índice de descripción desde makeLista
       if (state.periodos.length) {
         saveState(); // guardar local para próxima vez offline
         setSyncStatus('cloud');
