@@ -1354,13 +1354,25 @@ async function _ejecutarFacturar() {
   btn.disabled = true; btn.textContent = "Facturando...";
   showLoader();
   try {
+    // ── Auto-marcar como faltante los items que quedaron sin verificar ──
+    // Un item sin verificar = ni facturado ni marcado como faltante manualmente.
+    // Si no se marca aquí, se pierden sin quedar registrados en Supabase.
+    const sinMarcar = itemsActivos.filter(i => !i.facturado && !i.es_faltante);
+    if (sinMarcar.length) {
+      await Promise.all(sinMarcar.map(i =>
+        sbPatch("items_pedido", `id=eq.${i.id}`, { es_faltante: true, facturado: false })
+      ));
+      sinMarcar.forEach(i => { i.es_faltante = true; });
+    }
+
     await sbPatch("pedidos", `id=eq.${pedidoActivo.id}`, {
       estado: "facturado",
       facturado_at: new Date().toISOString()
     });
+    const totalFaltantes = itemsActivos.filter(i => i.es_faltante).length;
     await sbInsert("auditoria", {
       pedido_id: pedidoActivo.id, accion: "pedido_facturado", usuario: currentUser,
-      detalle: { ok: itemsActivos.filter(i=>i.facturado).length, faltantes: itemsActivos.filter(i=>i.es_faltante).length }
+      detalle: { ok: itemsActivos.filter(i=>i.facturado).length, faltantes: totalFaltantes, auto_marcados: sinMarcar.length }
     });
     pedidoActivo.estado = "facturado";
     renderHeader(); actualizarStats();

@@ -733,7 +733,7 @@ const DEFAULT_CONFIG = { lt: 5, ss: 3 };
 // ════════════════════════════════════════════
 let state = {
   periodos:   [],  // historial de períodos subidos
-  faltantes:  {},  // { normalizedDesc: count } de Supabase
+  faltantes:  {},  // { normalizedDesc: { count, unidades } } de Supabase
   provConfig: {},  // { proveedor: { lt, ss } } — persistido en localStorage
   viewPeriod: 0,   // índice del período activo (0 = más nuevo)
   // Make específico
@@ -829,6 +829,59 @@ function normalize(str) {
   return str.toLowerCase()
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, ' ').trim();
+}
+
+function escHtml(s) {
+  return String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+// Popup de detalle de faltantes al tocar el badge
+function showFaltDetail(el, desc, count, unidades) {
+  // Remover popup anterior si existe
+  const prev = document.getElementById('faltDetailPopup');
+  if (prev) { prev.remove(); if (prev._desc === desc) return; }
+
+  const popup = document.createElement('div');
+  popup.id = '_desc';
+  popup._desc = desc;
+  popup.id = 'faltDetailPopup';
+  popup.style.cssText = `
+    position:fixed;z-index:9999;background:var(--card);border:1.5px solid var(--red);
+    border-radius:10px;padding:12px 16px;box-shadow:0 4px 20px rgba(0,0,0,.3);
+    max-width:260px;font-size:13px;line-height:1.5;
+  `;
+  popup.innerHTML = `
+    <div style="font-weight:800;color:var(--red);margin-bottom:6px">❌ Faltantes (últimos 30 días)</div>
+    <div style="font-weight:600;margin-bottom:8px;color:var(--text)">${desc}</div>
+    <div style="display:flex;gap:16px">
+      <div style="text-align:center">
+        <div style="font-size:22px;font-weight:900;color:var(--red)">${count}</div>
+        <div style="font-size:11px;color:var(--text3)">pedidos</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:22px;font-weight:900;color:var(--red)">${unidades}</div>
+        <div style="font-size:11px;color:var(--text3)">unidades</div>
+      </div>
+    </div>
+  `;
+
+  // Posicionar cerca del elemento tocado
+  const rect = el.getBoundingClientRect();
+  document.body.appendChild(popup);
+  const pw = popup.offsetWidth, ph = popup.offsetHeight;
+  let top = rect.bottom + 6, left = rect.left;
+  if (top + ph > window.innerHeight - 10) top = rect.top - ph - 6;
+  if (left + pw > window.innerWidth - 10) left = window.innerWidth - pw - 10;
+  popup.style.top = `${top}px`;
+  popup.style.left = `${left}px`;
+
+  // Cerrar al tocar fuera
+  setTimeout(() => {
+    document.addEventListener('click', function close() {
+      popup.remove();
+      document.removeEventListener('click', close);
+    }, { once: true });
+  }, 50);
 }
 
 // ════════════════════════════════════════════
@@ -1046,31 +1099,37 @@ async function loadFaltantes() {
   try {
     const since = new Date();
     since.setDate(since.getDate() - 30);
-    const url = `${SB_URL}/rest/v1/items_pedido?es_faltante=eq.true&created_at=gte.${since.toISOString()}&select=descripcion&limit=2000`;
+    const url = `${SB_URL}/rest/v1/items_pedido?es_faltante=eq.true&created_at=gte.${since.toISOString()}&select=descripcion,cantidad,cantidad_real&limit=5000`;
     const r = await fetch(url, {
       headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` }
     });
     if (!r.ok) return;
     const rows = await r.json();
-    const map = {};
+    const map = {}; // key → { count: pedidos, unidades: total unidades faltadas }
     rows.forEach(row => {
       if (!row.descripcion) return;
       const key = normalize(row.descripcion);
-      map[key] = (map[key] || 0) + 1;
+      const u   = Number(row.cantidad_real ?? row.cantidad) || 0;
+      if (!map[key]) map[key] = { count: 0, unidades: 0 };
+      map[key].count++;
+      map[key].unidades += u;
     });
     state.faltantes = map;
   } catch(e) { /* silencioso */ }
 }
 
 // Buscar faltantes para un artículo (fuzzy: busca si alguna clave contiene palabras del artículo)
+// Devuelve { count, unidades } o null si no hay faltantes
 function getFaltantes(desc) {
   const words = normalize(desc).split(' ').filter(w => w.length > 3);
-  let max = 0;
-  for (const [key, count] of Object.entries(state.faltantes)) {
+  let best = null;
+  for (const [key, data] of Object.entries(state.faltantes)) {
     const matches = words.filter(w => key.includes(w)).length;
-    if (matches >= Math.min(2, words.length) && count > max) max = count;
+    if (matches >= Math.min(2, words.length)) {
+      if (!best || data.count > best.count) best = data;
+    }
   }
-  return max;
+  return best; // { count, unidades } o null
 }
 
 // ════════════════════════════════════════════
@@ -1372,7 +1431,7 @@ function renderMakeOrderBlock(arts, periodDays) {
       ${info?.precio > 0 && p?.uxb
         ? `<td class="td-num" style="font-size:11px">$${(info.precio * p.uxb).toLocaleString('es-AR',{maximumFractionDigits:0})}</td>`
         : `<td class="td-num" style="color:var(--text3)">—</td>`}
-      ${falt > 0 ? `<td class="td-falt">${falt}x</td>` : '<td></td>'}
+      ${falt?.count > 0 ? `<td class="td-falt" onclick="showFaltDetail(this,'${escHtml(art.desc)}',${falt.count},${falt.unidades})" style="cursor:pointer" title="Tocá para ver detalle">❌ ${falt.count}p/${falt.unidades}u</td>` : '<td></td>'}
     </tr>`;
   }).join('');
 
@@ -1708,10 +1767,13 @@ function artRowHTML(art, periodDays, cfg, prevMap) {
   const vpd   = calcVPD(art.qty, periodDays);
   const pp    = calcPP(vpd, cfg.lt, cfg.ss);
   const level = alertLevel(vpd, cfg.lt, cfg.ss);
-  const falt  = getFaltantes(art.desc);
+  const falt  = getFaltantes(art.desc); // { count, unidades } o null
   const trend = getTrend(art, periodDays, prevMap);
   const trendHTML = trend
     ? `<span class="trend-badge ${trend.css}">${trend.label}</span>`
+    : '';
+  const faltBadge = falt
+    ? `<span class="falt-badge" onclick="event.stopPropagation();showFaltDetail(this,'${escHtml(art.desc)}',${falt.count},${falt.unidades})" title="Tocá para ver detalle">❌ ${falt.count} ped · ${falt.unidades} un</span>`
     : '';
   return `
   <div class="art-row">
@@ -1721,7 +1783,7 @@ function artRowHTML(art, periodDays, cfg, prevMap) {
       <div class="art-meta">
         <span>${Math.round(art.qty)} un · VPD ${vpd.toFixed(1)}</span>
         <span>PP: ${Math.ceil(pp)} · Pedir: ${Math.ceil(calcSugerido(vpd))}</span>
-        ${falt > 0 ? `<span class="falt-badge">${falt} faltantes</span>` : ''}
+        ${faltBadge}
         ${trendHTML}
       </div>
     </div>
@@ -1812,8 +1874,8 @@ function renderAll() {
   // ── Alertas prioritarias ──
   const alertContainer = document.getElementById('alertList');
   const priorityAlerts = allAlerts
-    .filter(a => a.level === 'danger' || (a.level === 'warn' && a.falt > 0))
-    .sort((a, b) => (b.falt - a.falt) || (a.level === 'danger' ? -1 : 1))
+    .filter(a => a.level === 'danger' || (a.level === 'warn' && a.falt?.count > 0))
+    .sort((a, b) => ((b.falt?.count || 0) - (a.falt?.count || 0)) || (a.level === 'danger' ? -1 : 1))
     .slice(0, 10);
 
   document.getElementById('alertLabel').style.display = priorityAlerts.length ? '' : 'none';
@@ -1830,7 +1892,7 @@ function renderAll() {
         <div class="alert-detail">
           VPD <strong>${a.vpd.toFixed(1)}</strong> ·
           PP <strong>${Math.ceil(a.pp)}</strong> un
-          ${a.falt > 0 ? ` · <span style="color:var(--red);font-weight:700">${a.falt} faltantes</span>` : ''}
+          ${a.falt?.count > 0 ? ` · <span class="falt-badge" onclick="event.stopPropagation();showFaltDetail(this,'${escHtml(a.art.desc)}',${a.falt.count},${a.falt.unidades})" style="cursor:pointer">❌ ${a.falt.count} ped · ${a.falt.unidades} un</span>` : ''}
         </div>
       </div>
       <div class="alert-right">
