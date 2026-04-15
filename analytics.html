@@ -139,6 +139,40 @@ a { text-decoration: none; }
 .vcard-veredicto.bien   { background: var(--green-s);  color: #1a6b35; }
 .vcard-veredicto.mal    { background: var(--red-s);    color: #8b1a1a; }
 .vcard-veredicto.neutro { background: var(--surface2); color: var(--text2); }
+.vcard { cursor: pointer; transition: box-shadow .15s; }
+.vcard:active { box-shadow: 0 0 0 2px var(--accent); }
+
+/* Modal faltantes vendedor */
+.vfalt-overlay {
+  display:none; position:fixed; inset:0; z-index:1000;
+  background:rgba(0,0,0,.55); align-items:flex-end; justify-content:center;
+}
+.vfalt-overlay.open { display:flex; }
+.vfalt-sheet {
+  background:var(--surface); border-radius:20px 20px 0 0;
+  width:100%; max-width:520px; max-height:80vh;
+  display:flex; flex-direction:column; overflow:hidden;
+  box-shadow:0 -4px 30px rgba(0,0,0,.3);
+  animation: slideUp .22s ease;
+}
+@keyframes slideUp { from { transform:translateY(60px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+.vfalt-header {
+  padding:18px 20px 12px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:12px; flex-shrink:0;
+}
+.vfalt-title { font-size:17px; font-weight:900; color:var(--text); flex:1; }
+.vfalt-sub   { font-size:12px; color:var(--text3); margin-top:2px; }
+.vfalt-close { font-size:22px; cursor:pointer; color:var(--text3); padding:4px; }
+.vfalt-body  { overflow-y:auto; padding:12px 16px 24px; }
+.vfalt-empty { text-align:center; padding:32px; color:var(--text3); font-size:14px; }
+.vfalt-row {
+  display:flex; align-items:center; gap:10px;
+  padding:10px 0; border-bottom:1px solid var(--border);
+}
+.vfalt-row:last-child { border-bottom:none; }
+.vfalt-num  { font-size:13px; font-weight:900; color:var(--accent); min-width:28px; text-align:right; }
+.vfalt-desc { flex:1; font-size:13px; font-weight:600; color:var(--text); }
+.vfalt-cnt  { font-size:11px; color:var(--text3); white-space:nowrap; }
 
 /* ═══════════════════════════════════════════
    HEADER
@@ -897,86 +931,6 @@ async function loadResumenComparativo(period) {
   `;
 }
 
-// ════════════════════════════════════════════
-// VENDEDORES SIMPLE
-// Usa "últimos N días" vs "N días anteriores"
-// → no depende de vistas SQL
-// ════════════════════════════════════════════
-async function loadVendedoresSimple(period) {
-  const el = document.getElementById("vendedoresStack");
-  const isSemana = period === "semana";
-  const dias = isSemana ? 7 : 30;
-  const periodoAnterior = isSemana ? "los 7 días anteriores" : "los 30 días anteriores";
-  const medallas = ["🥇", "🥈", "🥉"];
-
-  const desdeDoble = makeISO(dias * 2);
-  const corte      = new Date(makeISO(dias));
-
-  // Un solo fetch con vendedor + fecha
-  const [todosPed, todosItm] = await Promise.all([
-    sbGet("pedidos",
-      `created_at=gte.${desdeDoble}&vendedor=neq.null&select=vendedor,created_at,id&limit=2000`),
-    sbGet("items_pedido",
-      `es_faltante=eq.true&created_at=gte.${desdeDoble}&select=pedido_id,created_at&limit=3000`)
-  ]);
-
-  if (!todosPed.length) {
-    el.innerHTML = `<div class="rcard"><div class="rcard-titulo">Sin pedidos registrados</div></div>`;
-    return;
-  }
-
-  // Mapa pedido → vendedor para cruzar faltantes
-  const pedVend = {};
-  todosPed.forEach(p => { pedVend[p.id] = (p.vendedor || "").trim().toLowerCase(); });
-
-  // Agrupar por vendedor: período actual vs anterior
-  // toLowerCase() para que "MARTIN" y "martin" cuenten como el mismo
-  const byVend = {};
-  todosPed.forEach(p => {
-    const v = (p.vendedor || "").trim().toLowerCase();
-    if (!v) return;
-    if (!byVend[v]) byVend[v] = { actual: 0, anterior: 0, faltActual: 0 };
-    if (new Date(p.created_at) >= corte) byVend[v].actual++;
-    else                                  byVend[v].anterior++;
-  });
-
-  // Agregar faltantes del período actual
-  todosItm.forEach(itm => {
-    if (new Date(itm.created_at) < corte) return;
-    const v = pedVend[itm.pedido_id];
-    if (v && byVend[v]) byVend[v].faltActual++;
-  });
-
-  const sorted = Object.entries(byVend)
-    .sort((a, b) => b[1].actual - a[1].actual);
-
-  el.innerHTML = sorted.map(([nombre, d], i) => {
-    const dif = d.actual - d.anterior;
-    const faltInfo = d.faltActual > 0
-      ? ` · ${d.faltActual} faltante${d.faltActual !== 1 ? "s" : ""}` : "";
-
-    let vcls, vtexto;
-    if (d.anterior === 0) {
-      vcls = "neutro"; vtexto = "Sin datos anteriores";
-    } else if (dif > 0) {
-      vcls = "bien";   vtexto = `↑ ${dif} más que ${periodoAnterior}`;
-    } else if (dif < 0) {
-      vcls = "mal";    vtexto = `↓ ${Math.abs(dif)} menos que ${periodoAnterior}`;
-    } else {
-      vcls = "neutro"; vtexto = `Igual que ${periodoAnterior}`;
-    }
-
-    return `
-      <div class="vcard">
-        <div class="vcard-rank">${medallas[i] ?? (i + 1) + "°"}</div>
-        <div class="vcard-info">
-          <div class="vcard-nombre">${escHtml(nombre.charAt(0).toUpperCase() + nombre.slice(1))}</div>
-          <div class="vcard-pedidos">${d.actual} pedidos${faltInfo}</div>
-        </div>
-        <div class="vcard-veredicto ${vcls}">${vtexto}</div>
-      </div>`;
-  }).join("");
-}
 
 // ════════════════════════════════════════════
 // ENVIAR REPORTE POR EMAIL
@@ -1524,7 +1478,7 @@ async function loadAll() {
     loadResumenComparativo(globalPeriod),
     loadChartPedidos(28),
     loadChartVendedores(),
-    loadVendedoresSimple(globalPeriod),
+    loadVendedoresConFaltantes(globalPeriod),
     loadFaltantes(),
     loadClientes(),
     loadAlertas()
@@ -1559,7 +1513,7 @@ document.getElementById("globalPeriodTabs").addEventListener("click", e => {
   globalPeriod = btn.dataset.p;
   Promise.all([
     loadResumenComparativo(globalPeriod),
-    loadVendedoresSimple(globalPeriod)
+    loadVendedoresConFaltantes(globalPeriod)
   ]);
 });
 document.getElementById("btnAIReport").addEventListener("click", async () => {
@@ -1646,6 +1600,132 @@ if (pinIsAuth()) {
 }
 // Auto-refresh cada 5 minutos (solo si ya está autenticado)
 setInterval(() => { if (pinIsAuth()) loadAll(); }, 5 * 60 * 1000);
+// ════════════════════════════════════════════
+// MODAL FALTANTES POR VENDEDOR
+// ════════════════════════════════════════════
+let _vfaltData = {}; // vendedor → [{ desc, unidades, pedidos }] — cargado junto con el ranking
+
+async function loadVendedoresConFaltantes(period) {
+  const el = document.getElementById("vendedoresStack");
+  const isSemana = period === "semana";
+  const dias = isSemana ? 7 : 30;
+  const periodoAnterior = isSemana ? "los 7 días anteriores" : "los 30 días anteriores";
+  const medallas = ["🥇", "🥈", "🥉"];
+
+  const desdeDoble = makeISO(dias * 2);
+  const corte      = new Date(makeISO(dias));
+
+  // Traer pedidos + items faltantes con descripcion y cantidad
+  const [todosPed, todosItm] = await Promise.all([
+    sbGet("pedidos",
+      `created_at=gte.${desdeDoble}&vendedor=neq.null&select=vendedor,created_at,id&limit=2000`),
+    sbGet("items_pedido",
+      `es_faltante=eq.true&created_at=gte.${desdeDoble}&select=pedido_id,created_at,descripcion,cantidad,cantidad_real&limit=5000`)
+  ]);
+
+  if (!todosPed.length) {
+    el.innerHTML = `<div class="rcard"><div class="rcard-titulo">Sin pedidos registrados</div></div>`;
+    return;
+  }
+
+  // Mapa pedido → vendedor
+  const pedVend = {};
+  todosPed.forEach(p => { pedVend[p.id] = (p.vendedor || "").trim().toLowerCase(); });
+
+  // Agrupar por vendedor: pedidos actual vs anterior
+  const byVend = {};
+  todosPed.forEach(p => {
+    const v = (p.vendedor || "").trim().toLowerCase();
+    if (!v) return;
+    if (!byVend[v]) byVend[v] = { actual: 0, anterior: 0, faltActual: 0 };
+    if (new Date(p.created_at) >= corte) byVend[v].actual++;
+    else                                  byVend[v].anterior++;
+  });
+
+  // Agrupar faltantes: período actual → por vendedor → por artículo
+  _vfaltData = {};
+  todosItm.forEach(itm => {
+    if (new Date(itm.created_at) < corte) return;
+    const v = pedVend[itm.pedido_id];
+    if (!v) return;
+    if (byVend[v]) byVend[v].faltActual++;
+    // Acumular por artículo para el desglose
+    if (!_vfaltData[v]) _vfaltData[v] = {};
+    const key = (itm.descripcion || "").trim();
+    if (!key) return;
+    if (!_vfaltData[v][key]) _vfaltData[v][key] = { unidades: 0, pedidos: 0 };
+    _vfaltData[v][key].unidades += Number(itm.cantidad_real ?? itm.cantidad) || 0;
+    _vfaltData[v][key].pedidos++;
+  });
+
+  const sorted = Object.entries(byVend).sort((a, b) => b[1].actual - a[1].actual);
+
+  el.innerHTML = sorted.map(([nombre, d], i) => {
+    const dif = d.actual - d.anterior;
+    const faltInfo = d.faltActual > 0
+      ? ` · <span style="color:var(--red);font-weight:700">❌ ${d.faltActual} faltantes</span>` : "";
+
+    let vcls, vtexto;
+    if (d.anterior === 0)  { vcls = "neutro"; vtexto = "Sin datos anteriores"; }
+    else if (dif > 0)      { vcls = "bien";   vtexto = `↑ ${dif} más que ${periodoAnterior}`; }
+    else if (dif < 0)      { vcls = "mal";    vtexto = `↓ ${Math.abs(dif)} menos que ${periodoAnterior}`; }
+    else                   { vcls = "neutro"; vtexto = `Igual que ${periodoAnterior}`; }
+
+    const nombreDisplay = escHtml(nombre.charAt(0).toUpperCase() + nombre.slice(1));
+    return `
+      <div class="vcard" onclick="abrirFaltantesVendedor('${nombre.replace(/'/g,"\\'")}','${nombreDisplay}')">
+        <div class="vcard-rank">${medallas[i] ?? (i + 1) + "°"}</div>
+        <div class="vcard-info">
+          <div class="vcard-nombre">${nombreDisplay}</div>
+          <div class="vcard-pedidos">${d.actual} pedidos${faltInfo}</div>
+        </div>
+        <div class="vcard-veredicto ${vcls}">${vtexto}</div>
+      </div>`;
+  }).join("");
+}
+
+function abrirFaltantesVendedor(nombreKey, nombreDisplay) {
+  const overlay = document.getElementById("vfaltOverlay");
+  document.getElementById("vfaltNombre").textContent = nombreDisplay;
+  const arts = _vfaltData[nombreKey];
+
+  if (!arts || Object.keys(arts).length === 0) {
+    document.getElementById("vfaltBody").innerHTML =
+      `<div class="vfalt-empty">🎉 Sin faltantes en este período para este vendedor</div>`;
+  } else {
+    const sorted = Object.entries(arts)
+      .sort((a, b) => b[1].unidades - a[1].unidades);
+    document.getElementById("vfaltSub").textContent =
+      `${sorted.length} artículos · ${sorted.reduce((s,[,v])=>s+v.unidades,0)} unidades no entregadas`;
+    document.getElementById("vfaltBody").innerHTML = sorted.map(([desc, v]) => `
+      <div class="vfalt-row">
+        <div class="vfalt-num">${v.unidades}</div>
+        <div class="vfalt-desc">${escHtml(desc)}</div>
+        <div class="vfalt-cnt">${v.pedidos} pedido${v.pedidos !== 1 ? "s" : ""}</div>
+      </div>`).join("");
+  }
+
+  overlay.classList.add("open");
+}
+
+function cerrarFaltantesVendedor() {
+  document.getElementById("vfaltOverlay").classList.remove("open");
+}
 </script>
+
+<!-- MODAL FALTANTES POR VENDEDOR -->
+<div class="vfalt-overlay" id="vfaltOverlay" onclick="if(event.target===this)cerrarFaltantesVendedor()">
+  <div class="vfalt-sheet">
+    <div class="vfalt-header">
+      <div>
+        <div class="vfalt-title">❌ Faltantes de <span id="vfaltNombre"></span></div>
+        <div class="vfalt-sub" id="vfaltSub"></div>
+      </div>
+      <div class="vfalt-close" onclick="cerrarFaltantesVendedor()">✕</div>
+    </div>
+    <div class="vfalt-body" id="vfaltBody"></div>
+  </div>
+</div>
+
 </body>
 </html>
