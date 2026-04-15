@@ -895,20 +895,19 @@ function enviarFaltantesWA() {
   const periodo = currentPeriodo();
   if (!periodo) { toast('No hay datos cargados'); return; }
 
-  // Armar lista de artículos con faltantes en los últimos 30 días
   const lineas = [];
   periodo.articles.forEach(art => {
     const f = getFaltantes(art.desc);
-    if (f && f.count > 0) lineas.push({ desc: art.desc, count: f.count, unidades: f.unidades });
+    if (f && f.count > 0) lineas.push({ desc: art.desc, unidades: f.unidades });
   });
   if (!lineas.length) { toast('No hay faltantes registrados en los últimos 30 días'); return; }
 
-  // Ordenar por unidades faltadas (mayor primero)
   lineas.sort((a, b) => b.unidades - a.unidades);
+  const top = lineas.slice(0, 20);
 
   const hoy = new Date().toLocaleDateString('es-AR');
-  const items = lineas.map(l => `• ${l.desc} (${l.unidades} un en ${l.count} pedidos)`).join('\n');
-  const msg = `⚠️ *ARTÍCULOS SIN STOCK — ${hoy}*\n\nLos siguientes artículos faltaron en pedidos recientes. Intentá reemplazarlos por un producto similar:\n\n${items}\n\n_Mensaje automático del sistema de stock_`;
+  const items = top.map((l, i) => `${i + 1}. ${l.desc}`).join('\n');
+  const msg = `*ARTICULOS SIN STOCK - ${hoy}*\n\nFaltaron en pedidos recientes. Intentar reemplazar por producto similar:\n\n${items}\n\n_Sistema de stock_`;
   window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
