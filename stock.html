@@ -606,10 +606,16 @@ a { text-decoration: none; color: inherit; }
       </div>
     </div>
 
-    <!-- EXPORTAR TODO -->
-    <button class="btn-export-prov fade-up" id="btnExportAll" style="display:none; margin:0" onclick="exportAllExcel()">
-      📥 Exportar Excel completo (todos los proveedores)
-    </button>
+    <!-- EXPORTAR TODO + WHATSAPP FALTANTES -->
+    <div style="display:none" id="btnExportAllWrap">
+      <button class="btn-export-prov fade-up" id="btnExportAll" style="margin:0;flex:1" onclick="exportAllExcel()">
+        📥 Exportar Excel completo
+      </button>
+      <button class="btn-export-prov fade-up" id="btnWAFaltantes" onclick="enviarFaltantesWA()"
+        style="margin:0;flex:0 0 auto;background:#25D366;color:#fff;border-color:#25D366">
+        💬 Avisar faltantes
+      </button>
+    </div>
 
     <!-- ALERTAS PRIORITARIAS -->
     <div class="section-label fade-up" id="alertLabel" style="display:none">Alertas prioritarias</div>
@@ -837,51 +843,73 @@ function escHtml(s) {
 
 // Popup de detalle de faltantes al tocar el badge
 function showFaltDetail(el, desc, count, unidades) {
-  // Remover popup anterior si existe
   const prev = document.getElementById('faltDetailPopup');
-  if (prev) { prev.remove(); if (prev._desc === desc) return; }
+  // Si ya está abierto el mismo artículo, cerrar (toggle)
+  if (prev) { const same = prev.dataset.desc === desc; prev.remove(); if (same) return; }
 
   const popup = document.createElement('div');
-  popup.id = '_desc';
-  popup._desc = desc;
   popup.id = 'faltDetailPopup';
+  popup.dataset.desc = desc;
   popup.style.cssText = `
     position:fixed;z-index:9999;background:var(--card);border:1.5px solid var(--red);
-    border-radius:10px;padding:12px 16px;box-shadow:0 4px 20px rgba(0,0,0,.3);
-    max-width:260px;font-size:13px;line-height:1.5;
+    border-radius:12px;padding:14px 16px;box-shadow:0 4px 24px rgba(0,0,0,.35);
+    max-width:270px;font-size:13px;line-height:1.5;
   `;
   popup.innerHTML = `
-    <div style="font-weight:800;color:var(--red);margin-bottom:6px">❌ Faltantes (últimos 30 días)</div>
-    <div style="font-weight:600;margin-bottom:8px;color:var(--text)">${desc}</div>
-    <div style="display:flex;gap:16px">
+    <div style="font-weight:800;color:var(--red);margin-bottom:6px">❌ Faltante — últimos 30 días</div>
+    <div style="font-weight:600;margin-bottom:10px;color:var(--text);font-size:12px">${desc}</div>
+    <div style="display:flex;gap:20px;margin-bottom:12px">
       <div style="text-align:center">
-        <div style="font-size:22px;font-weight:900;color:var(--red)">${count}</div>
-        <div style="font-size:11px;color:var(--text3)">pedidos</div>
+        <div style="font-size:26px;font-weight:900;color:var(--red)">${count}</div>
+        <div style="font-size:11px;color:var(--text3)">pedidos<br>que lo pidieron</div>
       </div>
       <div style="text-align:center">
-        <div style="font-size:22px;font-weight:900;color:var(--red)">${unidades}</div>
-        <div style="font-size:11px;color:var(--text3)">unidades</div>
+        <div style="font-size:26px;font-weight:900;color:var(--red)">${unidades}</div>
+        <div style="font-size:11px;color:var(--text3)">unidades<br>que no se entregaron</div>
       </div>
     </div>
+    <button onclick="document.getElementById('faltDetailPopup')?.remove()" style="
+      width:100%;padding:7px;border-radius:7px;border:none;
+      background:var(--border);color:var(--text);font-size:12px;cursor:pointer">Cerrar</button>
   `;
 
-  // Posicionar cerca del elemento tocado
   const rect = el.getBoundingClientRect();
   document.body.appendChild(popup);
   const pw = popup.offsetWidth, ph = popup.offsetHeight;
-  let top = rect.bottom + 6, left = rect.left;
-  if (top + ph > window.innerHeight - 10) top = rect.top - ph - 6;
+  let top = rect.bottom + 8, left = rect.left;
+  if (top + ph > window.innerHeight - 10) top = rect.top - ph - 8;
   if (left + pw > window.innerWidth - 10) left = window.innerWidth - pw - 10;
+  if (left < 6) left = 6;
   popup.style.top = `${top}px`;
   popup.style.left = `${left}px`;
 
-  // Cerrar al tocar fuera
   setTimeout(() => {
-    document.addEventListener('click', function close() {
-      popup.remove();
-      document.removeEventListener('click', close);
-    }, { once: true });
+    document.addEventListener('click', function close(e) {
+      if (!popup.contains(e.target)) { popup.remove(); document.removeEventListener('click', close); }
+    });
   }, 50);
+}
+
+// WhatsApp — avisar a vendedores qué artículos están sin stock ahora
+function enviarFaltantesWA() {
+  const periodo = currentPeriodo();
+  if (!periodo) { toast('No hay datos cargados'); return; }
+
+  // Armar lista de artículos con faltantes en los últimos 30 días
+  const lineas = [];
+  periodo.articles.forEach(art => {
+    const f = getFaltantes(art.desc);
+    if (f && f.count > 0) lineas.push({ desc: art.desc, count: f.count, unidades: f.unidades });
+  });
+  if (!lineas.length) { toast('No hay faltantes registrados en los últimos 30 días'); return; }
+
+  // Ordenar por unidades faltadas (mayor primero)
+  lineas.sort((a, b) => b.unidades - a.unidades);
+
+  const hoy = new Date().toLocaleDateString('es-AR');
+  const items = lineas.map(l => `• ${l.desc} (${l.unidades} un en ${l.count} pedidos)`).join('\n');
+  const msg = `⚠️ *ARTÍCULOS SIN STOCK — ${hoy}*\n\nLos siguientes artículos faltaron en pedidos recientes. Intentá reemplazarlos por un producto similar:\n\n${items}\n\n_Mensaje automático del sistema de stock_`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
 // ════════════════════════════════════════════
@@ -1799,7 +1827,7 @@ function renderAll() {
 
   if (!periodo) {
     document.getElementById('emptyState').style.display = '';
-    ['infoBanner','kpiLabel','kpiStrip','alertLabel','alertList','provLabel','historyRow','syncRow','btnExportAll'].forEach(id => {
+    ['infoBanner','kpiLabel','kpiStrip','alertLabel','alertList','provLabel','historyRow','syncRow','btnExportAllWrap'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.style.display = 'none';
     });
@@ -1807,11 +1835,11 @@ function renderAll() {
     return;
   }
 
-  // Mostrar sync row y export all
+  // Mostrar sync row y botones de export/WA
   const syncRow = document.getElementById('syncRow');
   if (syncRow) syncRow.style.display = 'flex';
-  const btnExpAll = document.getElementById('btnExportAll');
-  if (btnExpAll) btnExpAll.style.display = '';
+  const btnWrap = document.getElementById('btnExportAllWrap');
+  if (btnWrap) btnWrap.style.cssText = 'display:flex;gap:8px;padding:0 12px';
 
   document.getElementById('emptyState').style.display = 'none';
 
