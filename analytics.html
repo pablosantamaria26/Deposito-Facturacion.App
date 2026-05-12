@@ -571,6 +571,60 @@ a { text-decoration: none; }
   40%,80% { transform: translateX(8px); }
 }
 .pin-dots.shake { animation: pinShake .35s ease; }
+
+/* ═══════════════════════════════════════════
+   HISTORIAL MENSUAL
+═══════════════════════════════════════════ */
+.mes-card {
+  background: linear-gradient(145deg, #1a3456 0%, #1e3d63 50%, #22426a 100%);
+  border-radius: var(--r);
+  border: 1px solid rgba(130,177,255,0.15);
+  box-shadow: 0 4px 24px rgba(20,50,100,0.35);
+  overflow: hidden;
+  padding: 20px;
+}
+.mes-header { margin-bottom: 16px; }
+.mes-title { font-size: 18px; font-weight: 800; color: #fff; }
+.mes-sub   { font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 2px; }
+
+.mes-comp-row {
+  display: flex; margin-bottom: 12px;
+  background: rgba(255,255,255,0.06); border-radius: 12px;
+  border: 1px solid rgba(130,177,255,0.12);
+}
+.mes-comp-item { flex: 1; padding: 14px 16px; }
+.mes-comp-divider { width: 1px; background: rgba(130,177,255,0.15); margin: 12px 0; flex-shrink: 0; }
+.mes-comp-label { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: .05em; }
+.mes-comp-val   { font-size: 26px; font-weight: 900; color: #fff; line-height: 1.1; margin: 4px 0 2px; }
+.mes-comp-sub   { font-size: 11px; color: rgba(255,255,255,0.4); }
+.mes-comp-badge { display: inline-block; margin-top: 6px; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+.mes-comp-badge.pos { background: rgba(76,175,130,0.25); color: #81CFAA; }
+.mes-comp-badge.neg { background: rgba(255,100,100,0.20); color: #FF8A8A; }
+.mes-comp-badge.neu { background: rgba(130,177,255,0.15); color: #82B1FF; }
+
+.mes-nota { font-size: 11px; color: rgba(255,255,255,0.35); margin-bottom: 14px; padding-left: 2px; }
+
+.mes-chart-wrap { height: 200px; margin-bottom: 14px; }
+
+.mes-table-wrap { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.mes-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 10px; border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+}
+.mes-row-active { background: rgba(130,177,255,0.12); border: 1px solid rgba(130,177,255,0.2); }
+.mes-row-mes  { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.85); }
+.mes-row-datos { font-size: 11px; color: rgba(255,255,255,0.5); text-align: right; }
+.mes-row-num  { font-weight: 700; color: rgba(255,255,255,0.85); }
+.mes-row-sep  { margin: 0 3px; color: rgba(255,255,255,0.2); }
+.mes-green    { color: #81CFAA !important; }
+.mes-red      { color: #FF8A8A !important; }
+.mes-badge-now { font-size: 9px; font-weight: 700; background: rgba(130,177,255,0.3); color: #82B1FF; padding: 2px 6px; border-radius: 99px; margin-left: 4px; vertical-align: middle; }
+.mes-section-label {
+  font-size: 13px; font-weight: 600; color: #1a3456;
+  letter-spacing: .04em; text-transform: uppercase; padding: 0 2px;
+  margin-bottom: -8px;
+}
 </style>
 </head>
 <body>
@@ -681,6 +735,13 @@ a { text-decoration: none; }
       <div class="list-title">Artículos que faltan</div>
       <div class="list-badge" id="faltantesBadge">—</div>
     </div>
+    <div style="padding:0 16px 10px">
+      <div class="period-ctrl" id="faltantesPeriodCtrl">
+        <button class="period-btn active" data-fp="semana">Esta semana</button>
+        <button class="period-btn"        data-fp="mes">Este mes</button>
+        <button class="period-btn"        data-fp="mesant">Mes ant.</button>
+      </div>
+    </div>
     <div id="faltantesList"><div class="empty"><div class="empty-icon">🔍</div>Cargando...</div></div>
   </div>
 
@@ -719,6 +780,12 @@ a { text-decoration: none; }
   <div class="section-label fade-up">Alertas activas</div>
   <div id="alertasContainer" class="fade-up">
     <div class="empty"><div class="empty-icon">⏳</div>Cargando alertas...</div>
+  </div>
+
+  <!-- HISTORIAL MENSUAL -->
+  <div class="mes-section-label fade-up">📅 Evolución mensual</div>
+  <div id="mesHistoriaSection" class="fade-up">
+    <div class="empty"><div class="empty-icon">📅</div>Cargando historial...</div>
   </div>
 
   <!-- REFRESH INFO -->
@@ -771,15 +838,66 @@ function toast(msg) {
 }
 
 // ════════════════════════════════════════════
-// FECHA HELPERS
+// FECHA HELPERS — semanas Lun-Vie reales
 // ════════════════════════════════════════════
 function hoy() {
   return new Date().toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" });
 }
+
+// Lunes de la semana N semanas atrás (0 = esta semana, 1 = anterior)
+function getWeekStart(offsetWeeks = 0) {
+  const d = new Date();
+  const dow = d.getDay(); // 0=Dom, 1=Lun … 6=Sab
+  const toMon = dow === 0 ? 6 : dow - 1;
+  d.setDate(d.getDate() - toMon - offsetWeeks * 7);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Viernes (fin de semana) a partir de un lunes dado
+function getWeekEnd(monday) {
+  const d = new Date(monday);
+  d.setDate(d.getDate() + 4);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+// Primer día del mes N meses atrás (0 = este mes, 1 = anterior)
+function getMonthStart(offsetMonths = 0) {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - offsetMonths);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Último momento del mes N meses atrás
+function getMonthEnd(offsetMonths = 1) {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - offsetMonths + 1);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - 1);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+// Índice Lun=0 … Vie=4; devuelve -1 para Sab/Dom
+function dowIndex(date) {
+  const d = date.getDay();
+  if (d === 0 || d === 6) return -1;
+  return d - 1;
+}
+
+const DIAS_SEM  = ["Lun", "Mar", "Mié", "Jue", "Vie"];
+const MESES_C   = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+const MESES_F   = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+
+// Compatibilidad: makeISO sigue usándose en alertas y IA
 function makeISO(daysAgo) {
   const d = new Date();
   d.setDate(d.getDate() - daysAgo);
-  d.setHours(0,0,0,0);
+  d.setHours(0, 0, 0, 0);
   return d.toISOString();
 }
 function fmtDate(iso) {
@@ -799,121 +917,204 @@ let chartPedidos, chartVendedores;
 let globalPeriod = "semana"; // "semana" | "mes"
 
 // ════════════════════════════════════════════
-// RESUMEN COMPARATIVO SIMPLE
-// Usa "últimos N días" vs "N días anteriores"
-// → siempre hay datos, no depende de vistas SQL
+// RESUMEN COMPARATIVO — semanas Lun-Vie reales
 // ════════════════════════════════════════════
 async function loadResumenComparativo(period) {
   const isSemana = period === "semana";
-  const dias     = isSemana ? 7 : 30;
-  const periodoNombre   = isSemana ? "últimos 7 días"  : "últimos 30 días";
-  const periodoAnterior = isSemana ? "los 7 días anteriores" : "los 30 días anteriores";
+
+  // — Rangos de fechas reales —
+  let desdeActual, hastaActual, desdeAnterior, hastaAnterior, periodoLabel, labelAnterior;
+
+  if (isSemana) {
+    desdeActual   = getWeekStart(0);
+    hastaActual   = new Date();
+    desdeAnterior = getWeekStart(1);
+    hastaAnterior = getWeekEnd(getWeekStart(1));
+    const today   = new Date();
+    const di      = dowIndex(today);
+    periodoLabel  = `${fmtDate(desdeActual.toISOString())} – ${di >= 0 ? DIAS_SEM[di] : "Vie"}`;
+    labelAnterior = `sem. ant. (${fmtDate(desdeAnterior.toISOString())}–${fmtDate(hastaAnterior.toISOString())})`;
+  } else {
+    desdeActual   = getMonthStart(0);
+    hastaActual   = new Date();
+    desdeAnterior = getMonthStart(1);
+    hastaAnterior = getMonthEnd(1);
+    periodoLabel  = `${MESES_F[desdeActual.getMonth()]} (1–${hastaActual.getDate()})`;
+    labelAnterior = MESES_F[desdeAnterior.getMonth()];
+  }
 
   document.getElementById("compLabel").textContent =
     isSemana ? "¿Cómo vamos esta semana?" : "¿Cómo vamos este mes?";
 
-  // Traemos pedidos e ítems de los últimos 2 períodos de una vez
-  const desdeDoble = makeISO(dias * 2);
-  const corte      = new Date(makeISO(dias)); // divide actual vs anterior
+  const inR = (d, a, b) => d >= a && d <= b;
+  const fetchDesde = desdeAnterior.toISOString();
 
-  const [todosPedidos, todosItems] = await Promise.all([
-    sbGet("pedidos",
-      `created_at=gte.${desdeDoble}&select=id,estado,created_at&limit=2000`),
-    sbGet("items_pedido",
-      `created_at=gte.${desdeDoble}&select=es_faltante,created_at&limit=5000`)
+  const [todosPed, todosItm] = await Promise.all([
+    sbGet("pedidos",      `created_at=gte.${fetchDesde}&select=id,estado,created_at&limit=2000`),
+    sbGet("items_pedido", `created_at=gte.${fetchDesde}&select=es_faltante,created_at&limit=5000`)
   ]);
 
-  // Dividir en período actual y anterior por fecha de corte
-  const pedActual   = todosPedidos.filter(p => new Date(p.created_at) >= corte);
-  const pedAnterior = todosPedidos.filter(p => new Date(p.created_at) <  corte);
-  const itmActual   = todosItems.filter(i => new Date(i.created_at) >= corte);
-  const itmAnterior = todosItems.filter(i => new Date(i.created_at) <  corte);
+  const pedActual   = todosPed.filter(p => inR(new Date(p.created_at), desdeActual, hastaActual));
+  const pedAnterior = todosPed.filter(p => inR(new Date(p.created_at), desdeAnterior, hastaAnterior));
+  const itmActual   = todosItm.filter(i => inR(new Date(i.created_at), desdeActual, hastaActual));
+  const itmAnterior = todosItm.filter(i => inR(new Date(i.created_at), desdeAnterior, hastaAnterior));
 
-  const actual   = pedActual.length;
-  const anterior = pedAnterior.length;
-  const difPed   = actual - anterior;
+  // Comparación al MISMO PUNTO del período anterior
+  let pedAntPunto = pedAnterior;
+  if (isSemana) {
+    const today   = new Date();
+    const todayDi = dowIndex(today);
+    if (todayDi >= 0) {
+      const corte = new Date(desdeAnterior);
+      corte.setDate(desdeAnterior.getDate() + todayDi);
+      corte.setHours(today.getHours(), today.getMinutes(), 59, 999);
+      pedAntPunto = pedAnterior.filter(p => new Date(p.created_at) <= corte);
+    }
+  } else {
+    const diaHoy   = hastaActual.getDate();
+    const diasMesA = new Date(desdeAnterior.getFullYear(), desdeAnterior.getMonth() + 1, 0).getDate();
+    const corte    = new Date(desdeAnterior);
+    corte.setDate(Math.min(diaHoy, diasMesA));
+    corte.setHours(23, 59, 59, 999);
+    pedAntPunto = pedAnterior.filter(p => new Date(p.created_at) <= corte);
+  }
+
+  const actual       = pedActual.length;
+  const anteriorPunto = pedAntPunto.length;
+  const anteriorFull  = pedAnterior.length;
+  const difPed        = actual - anteriorPunto;
 
   const faltActualN   = itmActual.filter(i => i.es_faltante).length;
   const faltAnteriorN = itmAnterior.filter(i => i.es_faltante).length;
-  const difFalt = faltActualN - faltAnteriorN;
+  const difFalt       = faltActualN - faltAnteriorN;
+  const tasaActual    = itmActual.length > 0 ? Math.round((faltActualN / itmActual.length) * 100) : 0;
 
-  // Tasa de faltantes = faltantes / total ítems del período actual
-  const tasaActual = itmActual.length > 0
-    ? Math.round((faltActualN / itmActual.length) * 100) : 0;
+  // — TABLA DÍA A DÍA + PROYECCIÓN (solo semana) —
+  let tablaHtml = "";
+  if (isSemana) {
+    const today   = new Date();
+    const todayDi = dowIndex(today);
+
+    const actByDow = [0,0,0,0,0];
+    const antByDow = [0,0,0,0,0];
+    pedActual.forEach(p => { const i = dowIndex(new Date(p.created_at)); if (i >= 0) actByDow[i]++; });
+    pedAnterior.forEach(p => { const i = dowIndex(new Date(p.created_at)); if (i >= 0) antByDow[i]++; });
+
+    const filaCur = DIAS_SEM.map((_, i) => {
+      const futuro = todayDi >= 0 && i > todayDi;
+      const esHoy  = i === todayDi;
+      return `<td style="text-align:center;padding:6px 4px;font-weight:${esHoy?800:500};color:${esHoy?"var(--accent)":"inherit"}">${futuro ? "—" : actByDow[i]}</td>`;
+    }).join("");
+    const filaAnt = DIAS_SEM.map((_, i) =>
+      `<td style="text-align:center;padding:6px 4px;font-weight:500;color:var(--text3)">${antByDow[i]}</td>`
+    ).join("");
+
+    tablaHtml = `
+      <div style="overflow-x:auto;margin-top:10px;background:var(--surface2);border-radius:10px;padding:8px 4px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr>
+            <td style="padding:2px 8px;font-size:10px;font-weight:700;color:var(--text3);width:36px"></td>
+            ${DIAS_SEM.map(d => `<th style="text-align:center;padding:2px 4px;font-size:10px;font-weight:600;color:var(--text3)">${d}</th>`).join("")}
+          </tr></thead>
+          <tbody>
+            <tr><td style="padding:4px 8px;font-size:10px;font-weight:700;color:var(--accent)">Esta</td>${filaCur}</tr>
+            <tr><td style="padding:4px 8px;font-size:10px;font-weight:600;color:var(--text3)">Ant.</td>${filaAnt}</tr>
+          </tbody>
+        </table>
+      </div>`;
+
+    // Proyección al viernes
+    const diasEf = (todayDi >= 0 ? todayDi : 4) + 1;
+    if (actual > 0) {
+      const ritmo    = actual / diasEf;
+      const proyecc  = Math.round(ritmo * 5);
+      const pvAnt    = anteriorFull > 0 ? Math.round(((proyecc - anteriorFull) / anteriorFull) * 100) : null;
+      const pColor   = pvAnt === null ? "var(--text)" : pvAnt >= 0 ? "#1a6b35" : "#8b1a1a";
+      const pBg      = pvAnt === null ? "var(--surface2)" : pvAnt >= 0 ? "var(--green-s)" : "var(--red-s)";
+      tablaHtml += `
+        <div style="display:flex;align-items:center;gap:10px;margin-top:8px;padding:10px 12px;background:${pBg};border-radius:10px">
+          <span style="font-size:18px">📈</span>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:${pColor}">Proyección al viernes: ~${proyecc} pedidos</div>
+            <div style="font-size:11px;color:var(--text3)">Ritmo: ${ritmo.toFixed(1)}/día · ${diasEf} día${diasEf!==1?"s":""} trabajado${diasEf!==1?"s":""}${pvAnt!==null?` · sem. pasada: ${anteriorFull} pedidos`:""}</div>
+          </div>
+        </div>`;
+    }
+  }
 
   // — VEREDICTO VENTAS —
   let vVentasCls, vVentasIcon, vVentasTexto, vVentasDetalle;
-  if (anterior === 0) {
+  const refComp = isSemana ? "al mismo punto la sem. anterior" : `al mismo día en ${labelAnterior}`;
+  if (anteriorPunto === 0 && anteriorFull === 0) {
     vVentasCls = "neutro"; vVentasIcon = "📊";
     vVentasTexto = "Sin datos anteriores para comparar";
     vVentasDetalle = "A medida que pasen los días habrá comparación";
   } else if (difPed > 0) {
+    const pct = anteriorPunto > 0 ? Math.round((difPed / anteriorPunto) * 100) : 100;
     vVentasCls = "bien"; vVentasIcon = "✅";
-    vVentasTexto = "Vendiste MÁS que " + periodoAnterior;
-    vVentasDetalle = `${difPed} pedido${difPed !== 1 ? "s" : ""} más`;
+    vVentasTexto = `Vendiste MÁS que ${refComp}`;
+    vVentasDetalle = `${difPed} pedido${difPed!==1?"s":""} más (+${pct}%)`;
   } else if (difPed < 0) {
+    const pct = anteriorPunto > 0 ? Math.round((difPed / anteriorPunto) * 100) : 0;
     vVentasCls = "mal"; vVentasIcon = "⚠️";
-    vVentasTexto = "Vendiste MENOS que " + periodoAnterior;
-    vVentasDetalle = `${Math.abs(difPed)} pedido${Math.abs(difPed) !== 1 ? "s" : ""} menos`;
+    vVentasTexto = `Vendiste MENOS que ${refComp}`;
+    vVentasDetalle = `${Math.abs(difPed)} pedido${Math.abs(difPed)!==1?"s":""} menos (${pct}%)`;
   } else {
     vVentasCls = "neutro"; vVentasIcon = "➡️";
-    vVentasTexto = "Igual que " + periodoAnterior;
+    vVentasTexto = `Igual que ${refComp}`;
     vVentasDetalle = "Sin cambios respecto al período anterior";
   }
 
   // — VEREDICTO FALTANTES —
   let vFaltCls, vFaltIcon, vFaltTexto, vFaltDetalle;
-  if (faltAnteriorN === 0 && anterior === 0) {
+  if (faltAnteriorN === 0 && anteriorFull === 0) {
     vFaltCls = "neutro"; vFaltIcon = "📊";
     vFaltTexto = "Sin datos anteriores";
     vFaltDetalle = "No hay período anterior para comparar";
   } else if (difFalt < 0) {
     vFaltCls = "bien"; vFaltIcon = "✅";
     vFaltTexto = "Los faltantes MEJORARON";
-    vFaltDetalle = `${Math.abs(difFalt)} menos que ${periodoAnterior}`;
+    vFaltDetalle = `${Math.abs(difFalt)} menos que ${labelAnterior}`;
   } else if (difFalt > 0) {
     vFaltCls = "mal"; vFaltIcon = "🔴";
     vFaltTexto = "Los faltantes EMPEORARON";
-    vFaltDetalle = `${difFalt} más que ${periodoAnterior}`;
+    vFaltDetalle = `${difFalt} más que ${labelAnterior}`;
   } else {
     vFaltCls = "neutro"; vFaltIcon = "➡️";
-    vFaltTexto = "Faltantes iguales que " + periodoAnterior;
+    vFaltTexto = `Faltantes iguales que ${labelAnterior}`;
     vFaltDetalle = "Sin cambios en faltantes";
   }
 
-  // — SEMÁFORO DE NORMALIDAD (< 8% ok, 8-14% atención, ≥ 15% crítico) —
+  // — SEMÁFORO —
   let normalCls, normalTexto;
   if (itmActual.length === 0) {
-    normalCls = "neutro";
-    normalTexto = "Sin artículos registrados en el período";
+    normalCls = "neutro"; normalTexto = "Sin artículos registrados en el período";
   } else if (tasaActual < 8) {
-    normalCls = "bien";
-    normalTexto = `✅ Dentro de lo normal — ${tasaActual}% de artículos faltaron (el límite aceptable es 8%)`;
+    normalCls = "bien"; normalTexto = `✅ Dentro de lo normal — ${tasaActual}% faltaron (límite: 8%)`;
   } else if (tasaActual < 15) {
-    normalCls = "mal";
-    normalTexto = `⚠️ Por encima de lo normal — ${tasaActual}% de artículos faltaron. Lo aceptable es menos del 8%`;
+    normalCls = "mal";  normalTexto = `⚠️ Por encima de lo normal — ${tasaActual}% faltaron`;
   } else {
-    normalCls = "mal";
-    normalTexto = `🔴 Crítico — ${tasaActual}% de artículos faltaron. Revisá el stock urgente`;
+    normalCls = "mal";  normalTexto = `🔴 Crítico — ${tasaActual}% faltaron. Revisá el stock`;
   }
 
   document.getElementById("resumenStack").innerHTML = `
     <div class="rcard">
-      <div class="rcard-titulo">📦 Pedidos — ${periodoNombre}</div>
+      <div class="rcard-titulo">📦 Pedidos — ${periodoLabel}</div>
       <div class="rcard-numero">${actual}</div>
       <div class="rcard-sub">pedidos recibidos</div>
-      <div class="veredicto ${vVentasCls}">
+      ${tablaHtml}
+      <div class="veredicto ${vVentasCls}" style="margin-top:8px">
         <span class="veredicto-icon">${vVentasIcon}</span>
         <div>
           <div class="veredicto-texto">${vVentasTexto}</div>
           <div class="veredicto-detalle">${vVentasDetalle}</div>
         </div>
       </div>
-      <div class="rcard-ref">${periodoAnterior}: ${anterior} pedidos</div>
+      <div class="rcard-ref">${labelAnterior} completo: ${anteriorFull} pedidos</div>
     </div>
 
     <div class="rcard">
-      <div class="rcard-titulo">⚠️ Faltantes — ${periodoNombre}</div>
+      <div class="rcard-titulo">⚠️ Faltantes — ${periodoLabel}</div>
       <div class="rcard-numero">${faltActualN}</div>
       <div class="rcard-sub">artículos que faltaron</div>
       <div class="veredicto ${vFaltCls}">
@@ -926,7 +1127,7 @@ async function loadResumenComparativo(period) {
       <div class="veredicto ${normalCls}" style="margin-top:4px">
         <div class="veredicto-texto" style="font-size:13px">${normalTexto}</div>
       </div>
-      <div class="rcard-ref">${periodoAnterior}: ${faltAnteriorN} faltantes</div>
+      <div class="rcard-ref">${labelAnterior}: ${faltAnteriorN} faltantes</div>
     </div>
   `;
 }
@@ -993,25 +1194,29 @@ async function enviarReporteEmail() {
 // ════════════════════════════════════════════
 function renderKPIs(data) {
   const grid = document.getElementById("kpiGrid");
-  const { hoyCount, facturadosHoy, faltantesHoy, pendientes, semanaCount, tasaFaltantes } = data;
+  const { hoyCount, facturadosHoy, tasaFactHoy, pendientes, semanaCount, tasaFaltantes } = data;
+
+  const fBadgeCls = tasaFaltantes >= 15 ? "down" : tasaFaltantes >= 8 ? "down" : "up";
+  const fBadgeTxt = tasaFaltantes >= 15 ? "↑ Crítico" : tasaFaltantes >= 8 ? "⚠ Revisar" : "✓ Normal";
 
   grid.innerHTML = `
     <div class="kpi-card k-green">
       <span class="kpi-icon">📦</span>
       <div class="kpi-value">${hoyCount}</div>
       <div class="kpi-label">Pedidos hoy</div>
-      ${semanaCount !== undefined ? `<span class="kpi-badge neu">↗ ${semanaCount} esta semana</span>` : ""}
+      ${semanaCount !== undefined ? `<span class="kpi-badge neu">↗ ${semanaCount} esta sem.</span>` : ""}
     </div>
     <div class="kpi-card k-blue">
       <span class="kpi-icon">✅</span>
       <div class="kpi-value">${facturadosHoy}</div>
       <div class="kpi-label">Facturados hoy</div>
+      ${hoyCount > 0 ? `<span class="kpi-badge ${tasaFactHoy >= 80 ? "up" : "down"}">${tasaFactHoy}% fact.</span>` : ""}
     </div>
     <div class="kpi-card k-orange">
       <span class="kpi-icon">⚠️</span>
       <div class="kpi-value">${tasaFaltantes}%</div>
-      <div class="kpi-label">Items faltantes (sem.)</div>
-      <span class="kpi-badge ${tasaFaltantes > 15 ? "down" : "up"}">${tasaFaltantes > 15 ? "↑ Revisar" : "✓ Normal"}</span>
+      <div class="kpi-label">Faltantes (sem. actual)</div>
+      <span class="kpi-badge ${fBadgeCls}">${fBadgeTxt}</span>
     </div>
     <div class="kpi-card k-accent">
       <span class="kpi-icon">🔄</span>
@@ -1038,10 +1243,11 @@ async function loadChartPedidos(days = 28) {
     if (p.estado === "facturado") byDate[d].facturado++;
   });
 
-  // Generar labels de los últimos N días
+  // Solo días laborales (Lun–Vie) dentro del rango
   const labels = [], totales = [], facturados = [];
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(); d.setDate(d.getDate() - i);
+    if (d.getDay() === 0 || d.getDay() === 6) continue; // skip Sab/Dom
     const key = d.toISOString().slice(0,10);
     labels.push(fmtDate(key));
     totales.push(byDate[key]?.total || 0);
@@ -1163,23 +1369,42 @@ async function loadChartVendedores() {
 }
 
 // ════════════════════════════════════════════
-// FALTANTES FRECUENTES
+// FALTANTES FRECUENTES — con selector de período
 // ════════════════════════════════════════════
-async function loadFaltantes() {
-  const desde = makeISO(90);
-  const items = await sbGet("items_pedido",
-    `es_faltante=eq.true&created_at=gte.${desde}&select=descripcion,cantidad,pedido_id&limit=2000`);
+let faltantesPeriod = "semana";
 
-  if (!items.length) {
+async function loadFaltantes(fp) {
+  if (fp !== undefined) faltantesPeriod = fp;
+
+  let desde, hasta, periodoLabel;
+  if (faltantesPeriod === "semana") {
+    desde        = getWeekStart(0);
+    hasta        = new Date();
+    periodoLabel = "esta semana";
+  } else if (faltantesPeriod === "mes") {
+    desde        = getMonthStart(0);
+    hasta        = new Date();
+    periodoLabel = MESES_F[desde.getMonth()];
+  } else {
+    desde        = getMonthStart(1);
+    hasta        = getMonthEnd(1);
+    periodoLabel = MESES_F[desde.getMonth()];
+  }
+
+  const items = await sbGet("items_pedido",
+    `es_faltante=eq.true&created_at=gte.${desde.toISOString()}&select=descripcion,cantidad,pedido_id,created_at&limit=2000`);
+
+  const filtered = items.filter(i => new Date(i.created_at) <= hasta);
+
+  if (!filtered.length) {
     document.getElementById("faltantesList").innerHTML =
-      `<div class="empty"><div class="empty-icon">🎉</div>Sin faltantes en 90 días</div>`;
+      `<div class="empty"><div class="empty-icon">🎉</div>Sin faltantes en ${periodoLabel}</div>`;
     document.getElementById("faltantesBadge").textContent = "0";
     return;
   }
 
-  // Contar por descripción
   const counts = {};
-  items.forEach(i => {
+  filtered.forEach(i => {
     const k = (i.descripcion || "").trim().toLowerCase();
     if (!k) return;
     if (!counts[k]) counts[k] = { desc: (i.descripcion||"").trim(), veces: 0, pedidos: new Set() };
@@ -1187,13 +1412,13 @@ async function loadFaltantes() {
     counts[k].pedidos.add(i.pedido_id);
   });
 
-  const sorted = Object.values(counts).sort((a,b) => b.veces - a.veces).slice(0, 10);
+  const sorted   = Object.values(counts).sort((a,b) => b.veces - a.veces).slice(0, 10);
   const maxVeces = sorted[0]?.veces || 1;
 
   document.getElementById("faltantesBadge").textContent = `${sorted.length} items`;
   document.getElementById("faltantesList").innerHTML = sorted.map((f, i) => {
     const rankCls = i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "";
-    const pct = Math.round((f.veces / maxVeces) * 100);
+    const pct     = Math.round((f.veces / maxVeces) * 100);
     return `
       <div class="list-row">
         <div class="list-rank ${rankCls}">${i+1}</div>
@@ -1254,18 +1479,17 @@ async function loadClientes() {
 // ALERTAS DE FALTANTES CRÓNICOS
 // ════════════════════════════════════════════
 async function loadAlertas() {
-  const desde = makeISO(21); // 3 semanas
+  const desde = makeISO(21); // 3 semanas laborales
   const items = await sbGet("items_pedido",
     `es_faltante=eq.true&created_at=gte.${desde}&select=descripcion,created_at,pedido_id&limit=2000`);
 
   const container = document.getElementById("alertasContainer");
 
   if (!items.length) {
-    container.innerHTML = `<div class="alert-card warn"><div class="alert-icon">✅</div><div><div class="alert-title">Sin alertas activas</div><div class="alert-body">No hay artículos faltando hace más de 2 semanas.</div></div></div>`;
+    container.innerHTML = `<div class="alert-card warn"><div class="alert-icon">✅</div><div><div class="alert-title">Sin alertas activas</div><div class="alert-body">No hay artículos faltando en las últimas 3 semanas.</div></div></div>`;
     return;
   }
 
-  // Agrupar por descripción y contar semanas distintas
   const byDesc = {};
   items.forEach(i => {
     const k = (i.descripcion||"").trim().toLowerCase();
@@ -1275,7 +1499,6 @@ async function loadAlertas() {
     byDesc[k].fechas.push(new Date(i.created_at));
   });
 
-  // Solo los que aparecen en >= 3 pedidos distintos
   const alertas = Object.values(byDesc)
     .filter(a => a.pedidos.size >= 3)
     .sort((a,b) => b.pedidos.size - a.pedidos.size)
@@ -1286,14 +1509,19 @@ async function loadAlertas() {
     return;
   }
 
-  container.innerHTML = alertas.map(a => `
-    <div class="alert-card danger" style="margin-bottom:10px">
-      <div class="alert-icon">🔴</div>
-      <div>
-        <div class="alert-title">${escHtml(a.desc)}</div>
-        <div class="alert-body">Faltó en <strong>${a.pedidos.size} pedidos</strong> en las últimas 3 semanas. Revisá el stock.</div>
-      </div>
-    </div>`).join("");
+  container.innerHTML = alertas.map(a => {
+    const ultimaFecha = new Date(Math.max(...a.fechas.map(f => f.getTime())));
+    const diasAtras   = Math.floor((Date.now() - ultimaFecha.getTime()) / 86400000);
+    const ultimaLabel = diasAtras === 0 ? "hoy" : diasAtras === 1 ? "ayer" : `hace ${diasAtras} días`;
+    return `
+      <div class="alert-card danger" style="margin-bottom:10px">
+        <div class="alert-icon">🔴</div>
+        <div>
+          <div class="alert-title">${escHtml(a.desc)}</div>
+          <div class="alert-body">Faltó en <strong>${a.pedidos.size} pedidos</strong> en 3 semanas · Último avistamiento: <strong>${ultimaLabel}</strong> (${fmtDate(ultimaFecha.toISOString())})</div>
+        </div>
+      </div>`;
+  }).join("");
 }
 
 // ════════════════════════════════════════════
@@ -1301,25 +1529,26 @@ async function loadAlertas() {
 // ════════════════════════════════════════════
 async function loadKPIs() {
   const hoyISO = new Date(); hoyISO.setHours(0,0,0,0);
-  const hoyStr = hoyISO.toISOString();
-  const semanaStr = makeISO(7);
+  const hoyStr    = hoyISO.toISOString();
+  const semanaStr = getWeekStart(0).toISOString(); // lunes real de esta semana
 
   const [pedidosHoy, pedidosSemana, itemsSemana] = await Promise.all([
-    sbGet("pedidos", `created_at=gte.${hoyStr}&select=estado&limit=200`),
-    sbGet("pedidos", `created_at=gte.${semanaStr}&select=estado,id&limit=500`),
-    sbGet("items_pedido", `created_at=gte.${semanaStr}&select=es_faltante&limit=3000`)
+    sbGet("pedidos",     `created_at=gte.${hoyStr}&select=estado&limit=200`),
+    sbGet("pedidos",     `created_at=gte.${semanaStr}&select=estado,id&limit=500`),
+    sbGet("items_pedido",`created_at=gte.${semanaStr}&select=es_faltante&limit=3000`)
   ]);
 
-  const facturadosHoy = pedidosHoy.filter(p => p.estado === "facturado").length;
-  const pendientes    = pedidosHoy.filter(p => ["pendiente","armado","en_facturacion"].includes(p.estado)).length;
-  const totalItems    = itemsSemana.length;
-  const faltantesItems= itemsSemana.filter(i => i.es_faltante).length;
-  const tasaFaltantes = totalItems > 0 ? Math.round((faltantesItems / totalItems) * 100) : 0;
+  const facturadosHoy  = pedidosHoy.filter(p => p.estado === "facturado").length;
+  const pendientes     = pedidosHoy.filter(p => ["pendiente","armado","en_facturacion"].includes(p.estado)).length;
+  const totalItems     = itemsSemana.length;
+  const faltantesItems = itemsSemana.filter(i => i.es_faltante).length;
+  const tasaFaltantes  = totalItems > 0 ? Math.round((faltantesItems / totalItems) * 100) : 0;
+  const tasaFactHoy    = pedidosHoy.length > 0 ? Math.round((facturadosHoy / pedidosHoy.length) * 100) : 0;
 
   renderKPIs({
     hoyCount: pedidosHoy.length,
     facturadosHoy,
-    faltantesHoy: faltantesItems,
+    tasaFactHoy,
     pendientes,
     semanaCount: pedidosSemana.length,
     tasaFaltantes
@@ -1466,6 +1695,143 @@ document.getElementById("periodCtrl").addEventListener("click", e => {
 });
 
 // ════════════════════════════════════════════
+// HISTORIAL MENSUAL — pedidos + artículos mes a mes
+// ════════════════════════════════════════════
+let _mesChart = null;
+
+async function loadHistorialMensual() {
+  const el    = document.getElementById("mesHistoriaSection");
+  const desde = getMonthStart(12); // últimos 13 meses
+
+  const [pedidos, items] = await Promise.all([
+    sbGet("pedidos",      `created_at=gte.${desde.toISOString()}&estado=neq.cancelado&select=created_at,estado&limit=10000`),
+    sbGet("items_pedido", `created_at=gte.${desde.toISOString()}&select=created_at,cantidad&limit=30000`)
+  ]);
+
+  const byMonth = {};
+  pedidos.forEach(p => {
+    const d   = new Date(p.created_at);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    if (!byMonth[key]) byMonth[key] = { pedidos:0, facturados:0, articulos:0, year:d.getFullYear(), month:d.getMonth() };
+    byMonth[key].pedidos++;
+    if (p.estado === "facturado") byMonth[key].facturados++;
+  });
+  items.forEach(i => {
+    const d   = new Date(i.created_at);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    if (!byMonth[key]) byMonth[key] = { pedidos:0, facturados:0, articulos:0, year:d.getFullYear(), month:d.getMonth() };
+    byMonth[key].articulos += Number(i.cantidad) || 0;
+  });
+
+  const sorted = Object.entries(byMonth).filter(([,v]) => v.pedidos > 0).sort((a,b) => a[0].localeCompare(b[0]));
+
+  if (sorted.length < 2) {
+    el.innerHTML = `<div class="mes-card"><div class="mes-header"><div class="mes-title">📅 Historial mensual</div><div class="mes-sub">Todavía no hay suficientes meses para comparar. La sección irá creciendo sola.</div></div></div>`;
+    return;
+  }
+
+  const today  = new Date();
+  const curKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}`;
+  const prevDt = new Date(today.getFullYear(), today.getMonth()-1, 1);
+  const prevKey= `${prevDt.getFullYear()}-${String(prevDt.getMonth()+1).padStart(2,"0")}`;
+  const cur    = byMonth[curKey];
+  const prev   = byMonth[prevKey];
+
+  // — Comparativa mes actual vs anterior —
+  let compHtml = "";
+  if (cur && prev && prev.pedidos > 0) {
+    const difPed = cur.pedidos  - prev.pedidos;
+    const difArt = cur.articulos - prev.articulos;
+    const pctPed = Math.round((difPed / prev.pedidos)  * 100);
+    const pctArt = prev.articulos > 0 ? Math.round((difArt / prev.articulos) * 100) : 0;
+    const badgePed = `<span class="mes-comp-badge ${difPed >= 0 ? "pos":"neg"}">${difPed >= 0 ? "+":""}${pctPed}%</span>`;
+    const badgeArt = `<span class="mes-comp-badge ${difArt >= 0 ? "pos":"neg"}">${difArt >= 0 ? "+":""}${pctArt}%</span>`;
+    compHtml = `
+      <div class="mes-comp-row">
+        <div class="mes-comp-item">
+          <div class="mes-comp-label">Pedidos ${MESES_C[today.getMonth()]}</div>
+          <div class="mes-comp-val">${cur.pedidos}</div>
+          <div class="mes-comp-sub">vs ${prev.pedidos} en ${MESES_C[prevDt.getMonth()]}</div>
+          ${badgePed}
+        </div>
+        <div class="mes-comp-divider"></div>
+        <div class="mes-comp-item">
+          <div class="mes-comp-label">Artículos ${MESES_C[today.getMonth()]}</div>
+          <div class="mes-comp-val">${cur.articulos.toLocaleString("es-AR")}</div>
+          <div class="mes-comp-sub">vs ${prev.articulos.toLocaleString("es-AR")} en ${MESES_C[prevDt.getMonth()]}</div>
+          ${badgeArt}
+        </div>
+      </div>
+      <div class="mes-nota">📅 Día ${today.getDate()} de ${MESES_F[today.getMonth()]} — mes en curso, datos parciales</div>`;
+  }
+
+  // — Tabla de todos los meses —
+  const filas = sorted.slice().reverse().slice(0,14).map(([key, v]) => {
+    const label    = `${MESES_F[v.month]} ${v.year}`;
+    const tasaFact = v.pedidos > 0 ? Math.round((v.facturados / v.pedidos) * 100) : 0;
+    const esCur    = key === curKey;
+    return `
+      <div class="mes-row${esCur ? " mes-row-active" : ""}">
+        <div class="mes-row-mes">${label}${esCur ? ` <span class="mes-badge-now">Hoy</span>` : ""}</div>
+        <div class="mes-row-datos">
+          <span class="mes-row-num">${v.pedidos}</span><span class="mes-row-sep"> ped ·</span>
+          <span class="mes-row-num">${v.articulos.toLocaleString("es-AR")}</span><span class="mes-row-sep"> arts ·</span>
+          <span class="mes-row-num ${tasaFact >= 80 ? "mes-green" : tasaFact < 60 ? "mes-red" : ""}">${tasaFact}%</span>
+        </div>
+      </div>`;
+  }).join("");
+
+  el.innerHTML = `
+    <div class="mes-card">
+      <div class="mes-header">
+        <div class="mes-title">📅 Historial mensual</div>
+        <div class="mes-sub">Pedidos · Artículos · % facturado — mes a mes</div>
+      </div>
+      ${compHtml}
+      <div class="mes-chart-wrap">
+        <canvas id="chartMesHistoria"></canvas>
+      </div>
+      <div class="mes-table-wrap">${filas}</div>
+    </div>`;
+
+  // — Gráfico barras + línea —
+  const chartData   = sorted.slice(-12);
+  const chartLabels = chartData.map(([,v]) => `${MESES_C[v.month]} ${String(v.year).slice(2)}`);
+  const chartPed    = chartData.map(([,v]) => v.pedidos);
+  const chartArt    = chartData.map(([,v]) => v.articulos);
+
+  if (_mesChart) _mesChart.destroy();
+  const ctx = document.getElementById("chartMesHistoria").getContext("2d");
+  _mesChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: chartLabels,
+      datasets: [
+        { label: "Pedidos", data: chartPed, backgroundColor: "rgba(130,177,255,0.70)", borderColor: "#82B1FF", borderWidth: 1.5, borderRadius: 6, yAxisID: "yP" },
+        { label: "Artículos", data: chartArt, type: "line", borderColor: "#4CAF82", backgroundColor: "rgba(76,175,130,0.12)", borderWidth: 2.5, pointRadius: 4, pointBackgroundColor: "#4CAF82", tension: 0.3, fill: true, yAxisID: "yA" }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { intersect: false, mode: "index" },
+      plugins: {
+        legend: { display: true, labels: { color: "rgba(255,255,255,0.70)", font: { size: 11 }, boxWidth: 12 } },
+        tooltip: {
+          backgroundColor: "rgba(10,25,50,0.92)", titleColor: "#fff", bodyColor: "rgba(255,255,255,0.85)",
+          padding: 10, cornerRadius: 10,
+          callbacks: { label: item => item.dataset.label === "Pedidos" ? ` ${item.raw} pedidos` : ` ${item.raw.toLocaleString("es-AR")} artículos` }
+        }
+      },
+      scales: {
+        x:  { grid:{ display:false }, ticks:{ color:"rgba(255,255,255,0.55)", font:{ size:10 } } },
+        yP: { position:"left",  grid:{ color:"rgba(255,255,255,0.07)" }, ticks:{ color:"rgba(130,177,255,0.8)", font:{ size:10 } }, beginAtZero:true },
+        yA: { position:"right", grid:{ display:false }, ticks:{ color:"rgba(76,175,130,0.8)", font:{ size:10 } }, beginAtZero:true }
+      }
+    }
+  });
+}
+
+// ════════════════════════════════════════════
 // REFRESH
 // ════════════════════════════════════════════
 async function loadAll() {
@@ -1481,7 +1847,8 @@ async function loadAll() {
     loadVendedoresConFaltantes(globalPeriod),
     loadFaltantes(),
     loadClientes(),
-    loadAlertas()
+    loadAlertas(),
+    loadHistorialMensual()
   ]);
 
   const now = new Date().toLocaleTimeString("es-AR", { hour:"2-digit", minute:"2-digit" });
@@ -1519,6 +1886,15 @@ document.getElementById("globalPeriodTabs").addEventListener("click", e => {
 document.getElementById("btnAIReport").addEventListener("click", async () => {
   await runAI();
   await exportPDF();
+});
+
+// Selector de período para faltantes
+document.getElementById("faltantesPeriodCtrl").addEventListener("click", e => {
+  const btn = e.target.closest(".period-btn");
+  if (!btn) return;
+  document.querySelectorAll("#faltantesPeriodCtrl .period-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  loadFaltantes(btn.dataset.fp);
 });
 
 // ════════════════════════════════════════════
@@ -1606,21 +1982,47 @@ setInterval(() => { if (pinIsAuth()) loadAll(); }, 5 * 60 * 1000);
 let _vfaltData = {}; // vendedor → [{ desc, unidades, pedidos }] — cargado junto con el ranking
 
 async function loadVendedoresConFaltantes(period) {
-  const el = document.getElementById("vendedoresStack");
-  const isSemana = period === "semana";
-  const dias = isSemana ? 7 : 30;
-  const periodoAnterior = isSemana ? "los 7 días anteriores" : "los 30 días anteriores";
-  const medallas = ["🥇", "🥈", "🥉"];
+  const el        = document.getElementById("vendedoresStack");
+  const isSemana  = period === "semana";
+  const medallas  = ["🥇", "🥈", "🥉"];
 
-  const desdeDoble = makeISO(dias * 2);
-  const corte      = new Date(makeISO(dias));
+  // Rangos con mismo punto que el período anterior
+  let desdeActual, hastaActual, desdeAnterior, hastaAnterior, periodoLabel;
 
-  // Traer pedidos + items faltantes con descripcion y cantidad
+  if (isSemana) {
+    desdeActual   = getWeekStart(0);
+    hastaActual   = new Date();
+    desdeAnterior = getWeekStart(1);
+    const today   = new Date();
+    const di      = dowIndex(today);
+    if (di >= 0) {
+      hastaAnterior = new Date(desdeAnterior);
+      hastaAnterior.setDate(desdeAnterior.getDate() + di);
+      hastaAnterior.setHours(today.getHours(), today.getMinutes(), 59, 999);
+    } else {
+      hastaAnterior = getWeekEnd(desdeAnterior);
+    }
+    periodoLabel = "vs. mismo punto sem. ant.";
+  } else {
+    desdeActual   = getMonthStart(0);
+    hastaActual   = new Date();
+    desdeAnterior = getMonthStart(1);
+    const diaHoy  = hastaActual.getDate();
+    const diasMA  = new Date(desdeAnterior.getFullYear(), desdeAnterior.getMonth() + 1, 0).getDate();
+    hastaAnterior = new Date(desdeAnterior);
+    hastaAnterior.setDate(Math.min(diaHoy, diasMA));
+    hastaAnterior.setHours(23, 59, 59, 999);
+    periodoLabel  = `vs. mismo día ${MESES_F[desdeAnterior.getMonth()]}`;
+  }
+
+  const fetchDesde = desdeAnterior.toISOString();
+  const inR = (d, a, b) => d >= a && d <= b;
+
   const [todosPed, todosItm] = await Promise.all([
     sbGet("pedidos",
-      `created_at=gte.${desdeDoble}&vendedor=neq.null&select=vendedor,created_at,id&limit=2000`),
+      `created_at=gte.${fetchDesde}&vendedor=neq.null&select=vendedor,created_at,id&limit=2000`),
     sbGet("items_pedido",
-      `es_faltante=eq.true&created_at=gte.${desdeDoble}&select=pedido_id,created_at,descripcion,cantidad,cantidad_real&limit=5000`)
+      `es_faltante=eq.true&created_at=gte.${fetchDesde}&select=pedido_id,created_at,descripcion,cantidad,cantidad_real&limit=5000`)
   ]);
 
   if (!todosPed.length) {
@@ -1628,28 +2030,26 @@ async function loadVendedoresConFaltantes(period) {
     return;
   }
 
-  // Mapa pedido → vendedor
   const pedVend = {};
   todosPed.forEach(p => { pedVend[p.id] = (p.vendedor || "").trim().toLowerCase(); });
 
-  // Agrupar por vendedor: pedidos actual vs anterior
   const byVend = {};
   todosPed.forEach(p => {
     const v = (p.vendedor || "").trim().toLowerCase();
     if (!v) return;
     if (!byVend[v]) byVend[v] = { actual: 0, anterior: 0, faltActual: 0 };
-    if (new Date(p.created_at) >= corte) byVend[v].actual++;
-    else                                  byVend[v].anterior++;
+    const d = new Date(p.created_at);
+    if (inR(d, desdeActual, hastaActual))   byVend[v].actual++;
+    if (inR(d, desdeAnterior, hastaAnterior)) byVend[v].anterior++;
   });
 
-  // Agrupar faltantes: período actual → por vendedor → por artículo
   _vfaltData = {};
   todosItm.forEach(itm => {
-    if (new Date(itm.created_at) < corte) return;
+    const d = new Date(itm.created_at);
+    if (!inR(d, desdeActual, hastaActual)) return;
     const v = pedVend[itm.pedido_id];
     if (!v) return;
     if (byVend[v]) byVend[v].faltActual++;
-    // Acumular por artículo para el desglose
     if (!_vfaltData[v]) _vfaltData[v] = {};
     const key = (itm.descripcion || "").trim();
     if (!key) return;
@@ -1661,15 +2061,15 @@ async function loadVendedoresConFaltantes(period) {
   const sorted = Object.entries(byVend).sort((a, b) => b[1].actual - a[1].actual);
 
   el.innerHTML = sorted.map(([nombre, d], i) => {
-    const dif = d.actual - d.anterior;
+    const dif      = d.actual - d.anterior;
     const faltInfo = d.faltActual > 0
       ? ` · <span style="color:var(--red);font-weight:700">❌ ${d.faltActual} faltantes</span>` : "";
 
     let vcls, vtexto;
-    if (d.anterior === 0)  { vcls = "neutro"; vtexto = "Sin datos anteriores"; }
-    else if (dif > 0)      { vcls = "bien";   vtexto = `↑ ${dif} más que ${periodoAnterior}`; }
-    else if (dif < 0)      { vcls = "mal";    vtexto = `↓ ${Math.abs(dif)} menos que ${periodoAnterior}`; }
-    else                   { vcls = "neutro"; vtexto = `Igual que ${periodoAnterior}`; }
+    if (d.anterior === 0) { vcls = "neutro"; vtexto = "Sin datos anteriores"; }
+    else if (dif > 0)     { vcls = "bien";   vtexto = `↑ ${dif} más (${periodoLabel})`; }
+    else if (dif < 0)     { vcls = "mal";    vtexto = `↓ ${Math.abs(dif)} menos (${periodoLabel})`; }
+    else                  { vcls = "neutro"; vtexto = `Igual (${periodoLabel})`; }
 
     const nombreDisplay = escHtml(nombre.charAt(0).toUpperCase() + nombre.slice(1));
     return `
