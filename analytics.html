@@ -1784,30 +1784,54 @@ async function loadHistorialMensual() {
       </div>`;
   }
 
-  // — Comparativa mismo punto días hábiles —
+  // — Comparativa: el 1ro de mes → cierre completo; resto → mismo punto días hábiles —
   let compHtml = "";
-  if (cur && prev) {
-    // Días hábiles transcurridos en el mes actual hasta hoy
+  if (esPrimerDia) {
+    // 1ro de mes: mes anterior completo vs el mes previo completo
+    const pp2Dt  = new Date(today.getFullYear(), today.getMonth()-2, 1);
+    const pp2Key = `${pp2Dt.getFullYear()}-${String(pp2Dt.getMonth()+1).padStart(2,"0")}`;
+    const pp2    = byMonth[pp2Key];
+    if (prev && pp2) {
+      const difPed = prev.pedidos   - pp2.pedidos;
+      const difArt = prev.articulos - pp2.articulos;
+      const pctPed = pp2.pedidos   > 0 ? Math.round((difPed / pp2.pedidos)   * 100) : 0;
+      const pctArt = pp2.articulos > 0 ? Math.round((difArt / pp2.articulos) * 100) : 0;
+      compHtml = `
+        <div class="mes-comp-row">
+          <div class="mes-comp-item">
+            <div class="mes-comp-label">Pedidos ${MESES_C[prevDt.getMonth()]} completo</div>
+            <div class="mes-comp-val">${prev.pedidos}</div>
+            <div class="mes-comp-sub">vs ${pp2.pedidos} en ${MESES_C[pp2Dt.getMonth()]} (completo)</div>
+            <span class="mes-comp-badge ${difPed >= 0 ? "pos":"neg"}">${difPed >= 0 ? "+":""}${pctPed}%</span>
+          </div>
+          <div class="mes-comp-divider"></div>
+          <div class="mes-comp-item">
+            <div class="mes-comp-label">Artículos ${MESES_C[prevDt.getMonth()]} completo</div>
+            <div class="mes-comp-val">${prev.articulos.toLocaleString("es-AR")}</div>
+            <div class="mes-comp-sub">vs ${pp2.articulos.toLocaleString("es-AR")} en ${MESES_C[pp2Dt.getMonth()]} (completo)</div>
+            <span class="mes-comp-badge ${difArt >= 0 ? "pos":"neg"}">${difArt >= 0 ? "+":""}${pctArt}%</span>
+          </div>
+        </div>
+        <div class="mes-nota">🗓 Comparativa de cierre: ${MESES_F[prevDt.getMonth()]} completo vs ${MESES_F[pp2Dt.getMonth()]} completo</div>`;
+    }
+  } else if (cur && prev) {
+    // Resto del mes: mismo punto en días hábiles
     const bizActual  = countBizDays(today.getFullYear(), today.getMonth(), today.getDate());
-    // Qué día del mes anterior equivale a ese mismo punto
     const diaEquiv   = nthBizDay(prevDt.getFullYear(), prevDt.getMonth(), bizActual);
     const prevCorte  = new Date(prevDt.getFullYear(), prevDt.getMonth(), diaEquiv, 23, 59, 59, 999);
     const prevInicio = new Date(prevDt.getFullYear(), prevDt.getMonth(), 1);
 
-    // Contar pedidos y artículos del mes anterior hasta el mismo punto
     const pedPrevPunto = pedidos.filter(p => {
-      const d = new Date(p.created_at);
-      return d >= prevInicio && d <= prevCorte;
+      const d = new Date(p.created_at); return d >= prevInicio && d <= prevCorte;
     }).length;
     const artPrevPunto = items.filter(i => {
-      const d = new Date(i.created_at);
-      return d >= prevInicio && d <= prevCorte;
+      const d = new Date(i.created_at); return d >= prevInicio && d <= prevCorte;
     }).reduce((s, i) => s + (Number(i.cantidad) || 0), 0);
 
-    const difPed  = cur.pedidos   - pedPrevPunto;
-    const difArt  = cur.articulos - artPrevPunto;
-    const pctPed  = pedPrevPunto  > 0 ? Math.round((difPed / pedPrevPunto)  * 100) : 0;
-    const pctArt  = artPrevPunto  > 0 ? Math.round((difArt / artPrevPunto)  * 100) : 0;
+    const difPed = cur.pedidos   - pedPrevPunto;
+    const difArt = cur.articulos - artPrevPunto;
+    const pctPed = pedPrevPunto  > 0 ? Math.round((difPed / pedPrevPunto)  * 100) : 0;
+    const pctArt = artPrevPunto  > 0 ? Math.round((difArt / artPrevPunto)  * 100) : 0;
 
     compHtml = `
       <div class="mes-comp-row">
@@ -1825,7 +1849,7 @@ async function loadHistorialMensual() {
           <span class="mes-comp-badge ${difArt >= 0 ? "pos":"neg"}">${difArt >= 0 ? "+":""}${pctArt}%</span>
         </div>
       </div>
-      <div class="mes-nota">📅 Día ${today.getDate()} de ${MESES_F[today.getMonth()]} · ${bizActual} días hábiles vs equivalentes de ${MESES_F[prevDt.getMonth()]} (hasta día ${diaEquiv}) · ${MESES_F[prevDt.getMonth()]} completo: ${prev.pedidos} ped.</div>`;
+      <div class="mes-nota">📅 Día ${today.getDate()} de ${MESES_F[today.getMonth()]} · ${bizActual} días háb. vs ${MESES_F[prevDt.getMonth()]} hasta día ${diaEquiv} · ${MESES_F[prevDt.getMonth()]} completo: ${prev.pedidos} ped. · ${prev.articulos.toLocaleString("es-AR")} arts.</div>`;
   }
 
   // — Tabla de todos los meses —
