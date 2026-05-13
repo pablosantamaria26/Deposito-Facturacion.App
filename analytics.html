@@ -1727,12 +1727,36 @@ async function loadHistorialMensual() {
   const el    = document.getElementById("mesHistoriaSection");
   const desde = getMonthStart(13); // fetch 14 meses por margen
 
-  const [pedidos, items] = await Promise.all([
+  const today    = new Date();
+  const curKey   = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}`;
+  const prevDt   = new Date(today.getFullYear(), today.getMonth()-1, 1);
+  const prevKey  = `${prevDt.getFullYear()}-${String(prevDt.getMonth()+1).padStart(2,"0")}`;
+  const esPrimerDia = today.getDate() === 1;
+
+  // Pre-calcular punto equivalente en el mes anterior
+  const bizActual  = countBizDays(today.getFullYear(), today.getMonth(), today.getDate());
+  const diaEquiv   = bizActual > 0 ? nthBizDay(prevDt.getFullYear(), prevDt.getMonth(), bizActual) : 0;
+  const prevInicio = new Date(prevDt.getFullYear(), prevDt.getMonth(), 1);
+  const prevCorte  = diaEquiv > 0
+    ? new Date(prevDt.getFullYear(), prevDt.getMonth(), diaEquiv, 23, 59, 59, 999)
+    : null;
+  const curStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  // items usa limit=100000+order asc para garantizar datos completos del chart.
+  // Además dos queries targeted para la comparativa (independientes del bulk).
+  const [pedidos, items, artCurRows, artPrevRows] = await Promise.all([
     sbGet("pedidos",      `created_at=gte.${desde.toISOString()}&estado=neq.cancelado&select=created_at,estado&limit=10000`),
-    sbGet("items_pedido", `created_at=gte.${desde.toISOString()}&select=created_at,cantidad&limit=30000`)
+    sbGet("items_pedido", `created_at=gte.${desde.toISOString()}&select=created_at,cantidad&order=created_at.asc&limit=100000`),
+    sbGet("items_pedido", `created_at=gte.${curStart.toISOString()}&select=cantidad&limit=10000`),
+    prevCorte
+      ? sbGet("items_pedido", `created_at=gte.${prevInicio.toISOString()}&created_at=lte.${prevCorte.toISOString()}&select=cantidad&limit=10000`)
+      : Promise.resolve([])
   ]);
 
-  // Agregar por mes
+  const artCurTotal  = artCurRows.reduce((s,i)  => s + (Number(i.cantidad)||0), 0);
+  const artPrevPunto = artPrevRows.reduce((s,i) => s + (Number(i.cantidad)||0), 0);
+
+  // Agregar por mes (para chart e historial)
   const byMonth = {};
   pedidos.forEach(p => {
     const d   = new Date(p.created_at);
@@ -1760,13 +1784,8 @@ async function loadHistorialMensual() {
     return;
   }
 
-  const today  = new Date();
-  const curKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}`;
-  const prevDt = new Date(today.getFullYear(), today.getMonth()-1, 1);
-  const prevKey= `${prevDt.getFullYear()}-${String(prevDt.getMonth()+1).padStart(2,"0")}`;
-  const cur    = byMonth[curKey];
-  const prev   = byMonth[prevKey];
-  const esPrimerDia = today.getDate() === 1;
+  const cur  = byMonth[curKey];
+  const prev = byMonth[prevKey];
 
   // — Banner cierre de mes (solo el 1ro de cada mes) —
   let bannerHtml = "";
@@ -1784,19 +1803,20 @@ async function loadHistorialMensual() {
       </div>`;
   }
 
-  // — Comparativa: el 1ro de mes → cierre completo; resto → mismo punto días hábiles —
+  // — Comparativa —
   let compHtml = "";
-  if (esPrimerDia) {
-    // 1ro de mes: mes anterior completo vs el mes previo completo
+
+  // Bloque 1: cierre (solo el 1ro de mes)
+  if (esPrimerDia && prev) {
     const pp2Dt  = new Date(today.getFullYear(), today.getMonth()-2, 1);
     const pp2Key = `${pp2Dt.getFullYear()}-${String(pp2Dt.getMonth()+1).padStart(2,"0")}`;
     const pp2    = byMonth[pp2Key];
-    if (prev && pp2) {
+    if (pp2) {
       const difPed = prev.pedidos   - pp2.pedidos;
       const difArt = prev.articulos - pp2.articulos;
       const pctPed = pp2.pedidos   > 0 ? Math.round((difPed / pp2.pedidos)   * 100) : 0;
       const pctArt = pp2.articulos > 0 ? Math.round((difArt / pp2.articulos) * 100) : 0;
-      compHtml = `
+      compHtml += `
         <div class="mes-comp-row">
           <div class="mes-comp-item">
             <div class="mes-comp-label">Pedidos ${MESES_C[prevDt.getMonth()]} completo</div>
@@ -1812,44 +1832,41 @@ async function loadHistorialMensual() {
             <span class="mes-comp-badge ${difArt >= 0 ? "pos":"neg"}">${difArt >= 0 ? "+":""}${pctArt}%</span>
           </div>
         </div>
-        <div class="mes-nota">🗓 Comparativa de cierre: ${MESES_F[prevDt.getMonth()]} completo vs ${MESES_F[pp2Dt.getMonth()]} completo</div>`;
+        <div class="mes-nota">🗓 Cierre: ${MESES_F[prevDt.getMonth()]} completo vs ${MESES_F[pp2Dt.getMonth()]} completo</div>`;
     }
-  } else if (cur && prev) {
-    // Resto del mes: mismo punto en días hábiles
-    const bizActual  = countBizDays(today.getFullYear(), today.getMonth(), today.getDate());
-    const diaEquiv   = nthBizDay(prevDt.getFullYear(), prevDt.getMonth(), bizActual);
-    const prevCorte  = new Date(prevDt.getFullYear(), prevDt.getMonth(), diaEquiv, 23, 59, 59, 999);
-    const prevInicio = new Date(prevDt.getFullYear(), prevDt.getMonth(), 1);
+  }
 
+  // Bloque 2: avance del mes actual vs mismo punto del mes anterior (siempre, incluso el 1ro)
+  if (bizActual > 0 && prevCorte) {
+    const curPeds = cur ? cur.pedidos : 0;
     const pedPrevPunto = pedidos.filter(p => {
       const d = new Date(p.created_at); return d >= prevInicio && d <= prevCorte;
     }).length;
-    const artPrevPunto = items.filter(i => {
-      const d = new Date(i.created_at); return d >= prevInicio && d <= prevCorte;
-    }).reduce((s, i) => s + (Number(i.cantidad) || 0), 0);
 
-    const difPed = cur.pedidos   - pedPrevPunto;
-    const difArt = cur.articulos - artPrevPunto;
-    const pctPed = pedPrevPunto  > 0 ? Math.round((difPed / pedPrevPunto)  * 100) : 0;
-    const pctArt = artPrevPunto  > 0 ? Math.round((difArt / artPrevPunto)  * 100) : 0;
+    const difPed = curPeds      - pedPrevPunto;
+    const difArt = artCurTotal  - artPrevPunto;
+    const pctPed = pedPrevPunto > 0 ? Math.round((difPed / pedPrevPunto) * 100) : 0;
+    const pctArt = artPrevPunto > 0 ? Math.round((difArt / artPrevPunto) * 100) : 0;
 
-    compHtml = `
-      <div class="mes-comp-row">
+    const sepStyle = esPrimerDia ? "margin-top:12px;border-top:1px solid rgba(255,255,255,0.07);padding-top:12px" : "";
+    const mesLabel = esPrimerDia ? `1° ${MESES_C[today.getMonth()]}` : MESES_C[today.getMonth()];
+    compHtml += `
+      <div class="mes-comp-row" style="${sepStyle}">
         <div class="mes-comp-item">
-          <div class="mes-comp-label">Pedidos ${MESES_C[today.getMonth()]}</div>
-          <div class="mes-comp-val">${cur.pedidos}</div>
+          <div class="mes-comp-label">Pedidos ${mesLabel}</div>
+          <div class="mes-comp-val">${curPeds}</div>
           <div class="mes-comp-sub">vs ${pedPrevPunto} en ${MESES_C[prevDt.getMonth()]} (mismo punto)</div>
           <span class="mes-comp-badge ${difPed >= 0 ? "pos":"neg"}">${difPed >= 0 ? "+":""}${pctPed}%</span>
         </div>
         <div class="mes-comp-divider"></div>
         <div class="mes-comp-item">
-          <div class="mes-comp-label">Artículos ${MESES_C[today.getMonth()]}</div>
-          <div class="mes-comp-val">${cur.articulos.toLocaleString("es-AR")}</div>
+          <div class="mes-comp-label">Artículos ${mesLabel}</div>
+          <div class="mes-comp-val">${artCurTotal.toLocaleString("es-AR")}</div>
           <div class="mes-comp-sub">vs ${artPrevPunto.toLocaleString("es-AR")} en ${MESES_C[prevDt.getMonth()]} (mismo punto)</div>
           <span class="mes-comp-badge ${difArt >= 0 ? "pos":"neg"}">${difArt >= 0 ? "+":""}${pctArt}%</span>
         </div>
       </div>
-      <div class="mes-nota">📅 Día ${today.getDate()} de ${MESES_F[today.getMonth()]} · ${bizActual} días háb. vs ${MESES_F[prevDt.getMonth()]} hasta día ${diaEquiv} · ${MESES_F[prevDt.getMonth()]} completo: ${prev.pedidos} ped. · ${prev.articulos.toLocaleString("es-AR")} arts.</div>`;
+      <div class="mes-nota">📅 ${bizActual} día${bizActual>1?"s":""} háb. de ${MESES_F[today.getMonth()]} · vs ${MESES_F[prevDt.getMonth()]} hasta día ${diaEquiv}${prev ? ` · Completo: ${prev.pedidos} ped. · ${prev.articulos.toLocaleString("es-AR")} arts.` : ""}</div>`;
   }
 
   // — Tabla de todos los meses —
