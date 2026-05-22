@@ -733,8 +733,12 @@ a { text-decoration: none; }
   <div class="list-card fade-up" id="faltantesCard">
     <div class="list-header">
       <div class="list-title">Artículos que faltan</div>
-      <div class="list-badge" id="faltantesBadge">—</div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="list-badge" id="faltantesBadge">—</div>
+        <button id="btnResetFaltantes" onclick="resetFaltantes()" title="Limpiar historial de faltantes" data-confirming="false" style="background:none;border:1px solid var(--border);font-size:12px;cursor:pointer;opacity:0.4;padding:3px 8px;border-radius:8px;color:var(--text2);transition:opacity .15s,color .15s;line-height:1.4;font-family:inherit;">🧹</button>
+      </div>
     </div>
+    <div id="faltantesDesde" style="font-size:11px;color:var(--text3);padding:0 20px 6px;display:none;"></div>
     <div style="padding:0 16px 10px">
       <div class="period-ctrl" id="faltantesPeriodCtrl">
         <button class="period-btn active" data-fp="semana">Esta semana</button>
@@ -922,6 +926,38 @@ function makeISO(daysAgo) {
 }
 function fmtDate(iso) {
   return new Date(iso).toLocaleDateString("es-AR", { day:"2-digit", month:"2-digit" });
+}
+
+// ════════════════════════════════════════════
+// RESET MANUAL DE FALTANTES
+// ════════════════════════════════════════════
+let _resetFaltantesTimer = null;
+function resetFaltantes() {
+  const btn = document.getElementById("btnResetFaltantes");
+  if (btn.dataset.confirming === "true") {
+    clearTimeout(_resetFaltantesTimer);
+    btn.dataset.confirming = "false";
+    btn.innerHTML = "🧹";
+    btn.style.color = "";
+    btn.style.fontWeight = "";
+    btn.style.opacity = "0.4";
+    localStorage.setItem("ml_faltantes_reset", new Date().toISOString());
+    Promise.all([loadFaltantes(), loadAlertas()]);
+    toast("✅ Faltantes limpiados — contando desde ahora");
+  } else {
+    btn.dataset.confirming = "true";
+    btn.innerHTML = "¿Seguro?";
+    btn.style.color = "var(--red)";
+    btn.style.fontWeight = "700";
+    btn.style.opacity = "1";
+    _resetFaltantesTimer = setTimeout(() => {
+      btn.dataset.confirming = "false";
+      btn.innerHTML = "🧹";
+      btn.style.color = "";
+      btn.style.fontWeight = "";
+      btn.style.opacity = "0.4";
+    }, 3000);
+  }
 }
 
 // ════════════════════════════════════════════
@@ -1414,6 +1450,23 @@ async function loadFaltantes(fp) {
     periodoLabel = MESES_F[desde.getMonth()];
   }
 
+  // Aplicar reset manual como lower bound (solo en semana y mes actuales, no en mes anterior)
+  const _resetTs = localStorage.getItem("ml_faltantes_reset");
+  if (_resetTs && faltantesPeriod !== "mesant") {
+    const resetDate = new Date(_resetTs);
+    if (resetDate > desde) desde = resetDate;
+  }
+
+  // Mostrar/ocultar indicador "Contando desde"
+  const _desdeEl = document.getElementById("faltantesDesde");
+  if (_resetTs && faltantesPeriod !== "mesant" && new Date(_resetTs) > (faltantesPeriod === "semana" ? getWeekStart(0) : getMonthStart(0))) {
+    const d = new Date(_resetTs);
+    _desdeEl.style.display = "block";
+    _desdeEl.textContent = `📍 Contando desde: ${d.toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"})} ${d.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}`;
+  } else {
+    _desdeEl.style.display = "none";
+  }
+
   const items = await sbGet("items_pedido",
     `es_faltante=eq.true&created_at=gte.${desde.toISOString()}&select=descripcion,cantidad,pedido_id,created_at&limit=2000`);
 
@@ -1502,9 +1555,11 @@ async function loadClientes() {
 // ALERTAS DE FALTANTES CRÓNICOS
 // ════════════════════════════════════════════
 async function loadAlertas() {
-  const desde = makeISO(21); // 3 semanas laborales
+  let desdeAlertas = new Date(makeISO(21)); // 3 semanas laborales
+  const _resetTs = localStorage.getItem("ml_faltantes_reset");
+  if (_resetTs && new Date(_resetTs) > desdeAlertas) desdeAlertas = new Date(_resetTs);
   const items = await sbGet("items_pedido",
-    `es_faltante=eq.true&created_at=gte.${desde}&select=descripcion,created_at,pedido_id&limit=2000`);
+    `es_faltante=eq.true&created_at=gte.${desdeAlertas.toISOString()}&select=descripcion,created_at,pedido_id&limit=2000`);
 
   const container = document.getElementById("alertasContainer");
 
