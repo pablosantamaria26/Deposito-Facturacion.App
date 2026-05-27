@@ -825,7 +825,8 @@ const WORKER  = "https://frosty-term-20ea.santamariapablodaniel.workers.dev/";
 // ════════════════════════════════════════════
 async function sbGet(table, params = "") {
   const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {
-    headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` }
+    headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` },
+    cache: "no-store"
   });
   return r.ok ? r.json() : [];
 }

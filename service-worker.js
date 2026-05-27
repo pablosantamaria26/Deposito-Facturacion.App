@@ -1,6 +1,6 @@
-// === Service Worker v77 — Pedidos ML (App-Pedidos-ML) ===
+// === Service Worker v78 — Pedidos ML (App-Pedidos-ML) ===
 
-const CACHE_NAME = "pedidos-ml-v77";
+const CACHE_NAME = "pedidos-ml-v78";
 const OFFLINE_URLS = [
   "./",
   "./index.html",
