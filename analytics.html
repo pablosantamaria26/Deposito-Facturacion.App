@@ -831,6 +831,18 @@ async function sbGet(table, params = "") {
   return r.ok ? r.json() : [];
 }
 
+// Agrega una columna numérica server-side (PostgREST .sum()) → devuelve un Number.
+// No trae filas individuales → inmune al límite de 1000 filas de Supabase.
+async function sbGetSum(table, column, params = "") {
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}&select=${column}.sum()`, {
+    headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` },
+    cache: "no-store"
+  });
+  if (!r.ok) return 0;
+  const data = await r.json();
+  return Number(data[0]?.sum || 0);
+}
+
 // ════════════════════════════════════════════
 // TOAST
 // ════════════════════════════════════════════
@@ -1816,24 +1828,22 @@ async function loadHistorialMensual() {
     });
   }
 
+  // sbGetSum agrega server-side → un solo número por request, sin límite de filas
   const _allPromises = [
     sbGet("pedidos", `created_at=gte.${desde.toISOString()}&estado=neq.cancelado&select=created_at,estado&limit=10000`),
     prevCorte
-      ? sbGet("items_pedido", `created_at=gte.${prevInicio.toISOString()}&created_at=lte.${prevCorte.toISOString()}&select=cantidad&limit=10000`)
-      : Promise.resolve([]),
+      ? sbGetSum("items_pedido", "cantidad", `created_at=gte.${prevInicio.toISOString()}&created_at=lte.${prevCorte.toISOString()}`)
+      : Promise.resolve(0),
     ...monthKeys.map(({start, end}) =>
-      sbGet("items_pedido", `created_at=gte.${start.toISOString()}&created_at=lte.${end.toISOString()}&select=cantidad&limit=20000`)
+      sbGetSum("items_pedido", "cantidad", `created_at=gte.${start.toISOString()}&created_at=lte.${end.toISOString()}`)
     )
   ];
 
-  const _allResults  = await Promise.all(_allPromises);
-  const pedidos      = _allResults[0];
-  const artPrevRows  = _allResults[1];
-  const artMonthRows = _allResults.slice(2); // artMonthRows[i] ↔ monthKeys[i]
-
-  // mes actual = monthKeys[0], mismo dato que usará byMonth[curKey].articulos
-  const artCurTotal  = artMonthRows[0].reduce((s, i) => s + (Number(i.cantidad)||0), 0);
-  const artPrevPunto = artPrevRows.reduce((s, i)     => s + (Number(i.cantidad)||0), 0);
+  const _allResults    = await Promise.all(_allPromises);
+  const pedidos        = _allResults[0];
+  const artPrevPunto   = _allResults[1];         // ya es número
+  const artMonthTotals = _allResults.slice(2);   // ya son números, artMonthTotals[i] ↔ monthKeys[i]
+  const artCurTotal    = artMonthTotals[0];
 
   // Agregar por mes (para chart e historial)
   const byMonth = {};
@@ -1844,11 +1854,10 @@ async function loadHistorialMensual() {
     byMonth[key].pedidos++;
     if (p.estado === "facturado") byMonth[key].facturados++;
   });
-  // Artículos por mes desde las queries dedicadas (misma fuente que artCurTotal)
+  // Artículos por mes desde totales server-side (sin límite de filas)
   monthKeys.forEach(({key, year, month}, idx) => {
-    const total = artMonthRows[idx].reduce((s, i) => s + (Number(i.cantidad)||0), 0);
     if (!byMonth[key]) byMonth[key] = { pedidos:0, facturados:0, articulos:0, year, month };
-    byMonth[key].articulos = total;
+    byMonth[key].articulos = artMonthTotals[idx];
   });
 
   // Filtrar meses de arranque: excluir los que tienen menos del 20% del mes más activo
@@ -2034,11 +2043,11 @@ async function enviarReporteMensual() {
     const bizActual= countBizDays(today.getFullYear(), today.getMonth(), today.getDate());
     const diaEquiv = nthBizDay(prevDt.getFullYear(), prevDt.getMonth(), bizActual);
 
-    const [pedMes, itmMes, faltMes] = await Promise.all([
+    const [pedMes, totalArt, faltMes] = await Promise.all([
       sbGet("pedidos",
         `created_at=gte.${getMonthStart(0).toISOString()}&estado=neq.cancelado&select=created_at,estado,vendedor&limit=3000`),
-      sbGet("items_pedido",
-        `created_at=gte.${getMonthStart(0).toISOString()}&select=created_at,cantidad&limit=10000`),
+      sbGetSum("items_pedido", "cantidad",
+        `created_at=gte.${getMonthStart(0).toISOString()}`),
       sbGet("items_pedido",
         `es_faltante=eq.true&created_at=gte.${getMonthStart(0).toISOString()}&select=descripcion&limit=2000`)
     ]);
@@ -2055,7 +2064,6 @@ async function enviarReporteMensual() {
 
     const totalPed  = pedMes.length;
     const factPed   = pedMes.filter(p => p.estado === "facturado").length;
-    const totalArt  = itmMes.reduce((s,i) => s+(Number(i.cantidad)||0), 0);
     const tasaFact  = totalPed > 0 ? Math.round((factPed/totalPed)*100) : 0;
 
     const payload = {
