@@ -1795,21 +1795,44 @@ async function loadHistorialMensual() {
   const prevCorte  = diaEquiv > 0
     ? new Date(prevDt.getFullYear(), prevDt.getMonth(), diaEquiv, 23, 59, 59, 999)
     : null;
-  const curStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  // ── FUENTE ÚNICA DE VERDAD ────────────────────────────────────────────────
+  // Una query por mes (rango acotado) ejecutadas en paralelo.
+  // Elimina la query bulk que Supabase trunca a ~1000 filas devolviendo solo
+  // los registros más viejos → meses recientes quedaban en 0 en chart y lista
+  // mientras el KPI los calculaba bien desde su propia query dedicada.
+  // Con este enfoque KPI, gráfico, lista y comparativa leen exactamente los
+  // mismos datos.
+  const monthKeys = [];
+  for (let i = 0; i <= 13; i++) {
+    const d     = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    const start = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+    const end   = i === 0
+      ? new Date()
+      : new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+    monthKeys.push({
+      key:   `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`,
+      start, end, year: d.getFullYear(), month: d.getMonth()
+    });
+  }
 
-  // items usa limit=100000+order asc para garantizar datos completos del chart.
-  // Además dos queries targeted para la comparativa (independientes del bulk).
-  const [pedidos, items, artCurRows, artPrevRows] = await Promise.all([
-    sbGet("pedidos",      `created_at=gte.${desde.toISOString()}&estado=neq.cancelado&select=created_at,estado&limit=10000`),
-    sbGet("items_pedido", `created_at=gte.${desde.toISOString()}&select=created_at,cantidad&order=created_at.asc&limit=100000`),
-    sbGet("items_pedido", `created_at=gte.${curStart.toISOString()}&select=cantidad&limit=10000`),
+  const _allPromises = [
+    sbGet("pedidos", `created_at=gte.${desde.toISOString()}&estado=neq.cancelado&select=created_at,estado&limit=10000`),
     prevCorte
       ? sbGet("items_pedido", `created_at=gte.${prevInicio.toISOString()}&created_at=lte.${prevCorte.toISOString()}&select=cantidad&limit=10000`)
-      : Promise.resolve([])
-  ]);
+      : Promise.resolve([]),
+    ...monthKeys.map(({start, end}) =>
+      sbGet("items_pedido", `created_at=gte.${start.toISOString()}&created_at=lte.${end.toISOString()}&select=cantidad&limit=20000`)
+    )
+  ];
 
-  const artCurTotal  = artCurRows.reduce((s,i)  => s + (Number(i.cantidad)||0), 0);
-  const artPrevPunto = artPrevRows.reduce((s,i) => s + (Number(i.cantidad)||0), 0);
+  const _allResults  = await Promise.all(_allPromises);
+  const pedidos      = _allResults[0];
+  const artPrevRows  = _allResults[1];
+  const artMonthRows = _allResults.slice(2); // artMonthRows[i] ↔ monthKeys[i]
+
+  // mes actual = monthKeys[0], mismo dato que usará byMonth[curKey].articulos
+  const artCurTotal  = artMonthRows[0].reduce((s, i) => s + (Number(i.cantidad)||0), 0);
+  const artPrevPunto = artPrevRows.reduce((s, i)     => s + (Number(i.cantidad)||0), 0);
 
   // Agregar por mes (para chart e historial)
   const byMonth = {};
@@ -1820,11 +1843,11 @@ async function loadHistorialMensual() {
     byMonth[key].pedidos++;
     if (p.estado === "facturado") byMonth[key].facturados++;
   });
-  items.forEach(i => {
-    const d   = new Date(i.created_at);
-    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-    if (!byMonth[key]) byMonth[key] = { pedidos:0, facturados:0, articulos:0, year:d.getFullYear(), month:d.getMonth() };
-    byMonth[key].articulos += Number(i.cantidad) || 0;
+  // Artículos por mes desde las queries dedicadas (misma fuente que artCurTotal)
+  monthKeys.forEach(({key, year, month}, idx) => {
+    const total = artMonthRows[idx].reduce((s, i) => s + (Number(i.cantidad)||0), 0);
+    if (!byMonth[key]) byMonth[key] = { pedidos:0, facturados:0, articulos:0, year, month };
+    byMonth[key].articulos = total;
   });
 
   // Filtrar meses de arranque: excluir los que tienen menos del 20% del mes más activo
