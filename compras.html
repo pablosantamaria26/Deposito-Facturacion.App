@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+<title>Mercado Limpio · Compras IA</title>
+<meta name="theme-color" content="#ffffff"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<style>
+/* ─── TOKENS ─────────────────────────────────── */
+:root {
+  --bg:       #F5F5F7;
+  --surface:  #FFFFFF;
+  --surface2: #F9F9FB;
+  --border:   rgba(0,0,0,0.06);
+  --text:     #1C1C1E;
+  --text2:    #48484A;
+  --text3:    #8E8E93;
+  --accent:   #6366F1;
+  --accent-s: rgba(99,102,241,0.10);
+  --green:    #34C759;
+  --green-s:  rgba(52,199,89,0.12);
+  --orange:   #FF9500;
+  --orange-s: rgba(255,149,0,0.12);
+  --red:      #FF3B30;
+  --red-s:    rgba(255,59,48,0.12);
+  --blue:     #007AFF;
+  --blue-s:   rgba(0,122,255,0.12);
+  --r:        18px;
+  --r-sm:     12px;
+  --shadow:   0 1px 2px rgba(0,0,0,0.03), 0 4px 20px rgba(0,0,0,0.06);
+  --shadow-lg: 0 8px 40px rgba(0,0,0,0.10);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bot: env(safe-area-inset-bottom, 0px);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: none; }
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100svh;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: calc(70px + var(--safe-bot));
+}
+button { font-family: inherit; border: none; cursor: pointer; }
+.hidden { display: none !important; }
+
+/* ─── PIN OVERLAY ────────────────────────────── */
+#pinOverlay {
+  position: fixed; inset: 0; z-index: 999;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 28px;
+}
+.pin-logo { font-size: 44px; }
+.pin-title { font-size: 22px; font-weight: 800; color: var(--text); }
+.pin-sub   { font-size: 14px; color: var(--text3); margin-top: -18px; }
+.pin-dots  { display: flex; gap: 16px; }
+.pin-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--border); border: 2px solid var(--text3);
+  transition: background .15s, border-color .15s;
+}
+.pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+.pin-dot.error  { background: var(--red); border-color: var(--red); }
+.pin-grid {
+  display: grid; grid-template-columns: repeat(3, 72px);
+  grid-template-rows: repeat(4, 72px); gap: 10px;
+}
+.pin-key {
+  border-radius: 50%; font-size: 22px; font-weight: 600;
+  background: var(--surface); color: var(--text);
+  box-shadow: var(--shadow); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .1s, opacity .1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.pin-key:active { transform: scale(.92); opacity: .7; }
+.pin-key.del    { font-size: 18px; }
+@keyframes shake {
+  0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)}
+}
+.shake { animation: shake .35s ease; }
+
+/* ─── HEADER ─────────────────────────────────── */
+.app-header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(245,245,247,0.92); backdrop-filter: blur(16px);
+  padding: calc(var(--safe-top) + 16px) 16px 0;
+  display: flex; flex-direction: column; gap: 0;
+}
+.header-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 12px;
+}
+.header-brand { display: flex; flex-direction: column; }
+.header-title { font-size: 20px; font-weight: 800; color: var(--text); }
+.header-sub   { font-size: 12px; color: var(--text3); margin-top: 1px; }
+.header-btn {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--border);
+  box-shadow: var(--shadow); font-size: 18px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent);
+}
+.header-btn.spin .spin-icon { display: inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── TABS ───────────────────────────────────── */
+.tab-bar {
+  display: flex; gap: 0; border-bottom: 1.5px solid var(--border);
+  background: rgba(245,245,247,0.92); backdrop-filter: blur(16px);
+}
+.tab-btn {
+  flex: 1; padding: 10px 0; font-size: 13px; font-weight: 600;
+  color: var(--text3); background: none; border: none; border-bottom: 2.5px solid transparent;
+  transition: color .15s, border-color .15s;
+}
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ─── TOAST ──────────────────────────────────── */
+#toast {
+  position: fixed; bottom: calc(80px + var(--safe-bot)); left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--text); color: #fff;
+  padding: 10px 20px; border-radius: 100px;
+  font-size: 14px; font-weight: 600;
+  opacity: 0; transition: all .25s; pointer-events: none; white-space: nowrap;
+  z-index: 900;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ─── KPI CARDS ──────────────────────────────── */
+.kpi-row {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px; padding: 16px 16px 0;
+}
+.kpi-card {
+  background: var(--surface); border-radius: var(--r);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+  padding: 14px 12px; display: flex; flex-direction: column; gap: 4px;
+}
+.kpi-label { font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: .04em; }
+.kpi-value { font-size: 22px; font-weight: 900; color: var(--text); line-height: 1; }
+.kpi-meta  { font-size: 10px; color: var(--text3); }
+
+/* ─── CATEGORY CHIPS ─────────────────────────── */
+.chip-bar {
+  display: flex; gap: 8px; overflow-x: auto; padding: 12px 16px 4px;
+  scrollbar-width: none;
+}
+.chip-bar::-webkit-scrollbar { display: none; }
+.chip {
+  flex-shrink: 0; padding: 5px 12px; border-radius: 100px;
+  font-size: 12px; font-weight: 600; color: var(--text2);
+  background: var(--surface); border: 1.5px solid var(--border);
+  transition: all .15s;
+}
+.chip.active {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(99,102,241,0.25);
+}
+
+/* ─── TABLA COMPRAS ──────────────────────────── */
+.tabla-wrap {
+  padding: 8px 16px 16px; overflow-x: auto;
+}
+.tabla-compras {
+  width: 100%; border-collapse: collapse;
+  background: var(--surface); border-radius: var(--r);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+  overflow: hidden;
+  min-width: 520px;
+}
+.tabla-compras th {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--text3);
+  padding: 10px 12px; text-align: right;
+  border-bottom: 1px solid var(--border); background: var(--surface2);
+}
+.tabla-compras th:first-child { text-align: left; }
+.tabla-compras td {
+  font-size: 12px; color: var(--text);
+  padding: 9px 12px; border-bottom: 1px solid var(--border);
+  text-align: right;
+}
+.tabla-compras td:first-child { text-align: left; font-weight: 500; }
+.tabla-compras tr:last-child td { border-bottom: none; }
+.tabla-compras tr:hover td { background: var(--surface2); }
+.trend-up   { color: var(--green); font-weight: 700; }
+.trend-down { color: var(--red);   font-weight: 700; }
+.trend-flat { color: var(--text3); }
+.sugerido-chip {
+  display: inline-block; padding: 2px 8px; border-radius: 100px;
+  font-size: 11px; font-weight: 700;
+  background: var(--accent-s); color: var(--accent);
+}
+.sugerido-chip.alto { background: var(--orange-s); color: #b86a00; }
+.prod-name { max-width: 160px; }
+.prod-cat {
+  display: inline-block; font-size: 9px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em;
+  padding: 1px 5px; border-radius: 4px;
+  background: var(--surface2); color: var(--text3);
+  margin-top: 2px;
+}
+.skeleton-row td { background: linear-gradient(90deg, var(--surface2) 25%, var(--surface) 50%, var(--surface2) 75%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; height: 38px; }
+@keyframes shimmer { 0%{background-position:100% 0} 100%{background-position:-100% 0} }
+
+/* ─── CHAT ───────────────────────────────────── */
+.chat-section {
+  display: flex; flex-direction: column;
+  height: calc(100svh - 160px); padding: 0;
+}
+.chat-context-bar {
+  margin: 12px 16px 0;
+  padding: 8px 12px; border-radius: var(--r-sm);
+  background: var(--surface); border: 1px solid var(--border);
+  font-size: 11px; color: var(--text3);
+  display: flex; align-items: center; gap: 6px;
+}
+.ctx-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+.ctx-dot.loading { background: var(--orange); animation: pulse 1s ease infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.chat-messages {
+  flex: 1; overflow-y: auto; padding: 12px 16px;
+  display: flex; flex-direction: column; gap: 10px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.msg-wrap { display: flex; flex-direction: column; max-width: 85%; }
+.msg-wrap.user { align-self: flex-end; align-items: flex-end; }
+.msg-wrap.ai   { align-self: flex-start; align-items: flex-start; }
+.msg-bubble {
+  padding: 10px 14px; border-radius: 16px;
+  font-size: 14px; line-height: 1.5;
+  word-break: break-word; white-space: pre-wrap;
+}
+.msg-wrap.user .msg-bubble {
+  background: var(--accent); color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.msg-wrap.ai .msg-bubble {
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+  border-bottom-left-radius: 4px;
+}
+.msg-time { font-size: 10px; color: var(--text3); padding: 0 4px; margin-top: 3px; }
+.msg-actions { display: flex; gap: 6px; margin-top: 4px; }
+.msg-action-btn {
+  font-size: 11px; padding: 2px 8px; border-radius: 100px;
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text3); font-weight: 600;
+  transition: all .15s;
+}
+.msg-action-btn:hover { color: var(--accent); border-color: var(--accent); }
+.typing-indicator {
+  display: flex; gap: 4px; align-items: center;
+  padding: 12px 14px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 16px; border-bottom-left-radius: 4px;
+  box-shadow: var(--shadow); align-self: flex-start;
+}
+.typing-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--text3);
+  animation: typing-bounce 1.2s ease infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: .2s; }
+.typing-dot:nth-child(3) { animation-delay: .4s; }
+@keyframes typing-bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+.chat-input-row {
+  display: flex; gap: 10px; padding: 10px 16px;
+  background: rgba(245,245,247,0.92); backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+}
+#chatInput {
+  flex: 1; padding: 10px 14px; border-radius: 100px;
+  border: 1.5px solid var(--border); background: var(--surface);
+  font-size: 14px; font-family: inherit; color: var(--text);
+  outline: none; transition: border-color .15s;
+}
+#chatInput:focus { border-color: var(--accent); }
+#chatSendBtn {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-size: 20px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(99,102,241,0.35); flex-shrink: 0;
+  transition: transform .1s, opacity .1s;
+}
+#chatSendBtn:active { transform: scale(.9); opacity: .8; }
+#chatSendBtn:disabled { background: var(--text3); box-shadow: none; }
+
+/* quick prompts */
+.quick-prompts {
+  display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 8px;
+  scrollbar-width: none;
+}
+.quick-prompts::-webkit-scrollbar { display: none; }
+.qp-btn {
+  flex-shrink: 0; padding: 7px 12px; border-radius: 100px;
+  font-size: 12px; font-weight: 600; color: var(--accent);
+  background: var(--accent-s); border: 1.5px solid var(--accent);
+  transition: all .15s; white-space: nowrap;
+}
+.qp-btn:active { background: var(--accent); color: #fff; }
+
+/* ─── NOTAS ──────────────────────────────────── */
+.notas-section { padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+.nota-card {
+  background: var(--surface); border-radius: var(--r);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+  padding: 14px 16px; position: relative;
+}
+.nota-tipo {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--text3); margin-bottom: 4px;
+}
+.nota-tipo.aprendizaje { color: var(--accent); }
+.nota-tipo.parametro   { color: var(--orange); }
+.nota-texto { font-size: 14px; color: var(--text); line-height: 1.5; }
+.nota-fecha { font-size: 11px; color: var(--text3); margin-top: 6px; }
+.nota-del-btn {
+  position: absolute; top: 10px; right: 10px;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--red-s); color: var(--red);
+  font-size: 12px; display: flex; align-items: center; justify-content: center;
+  border: none;
+}
+.nueva-nota-wrap {
+  background: var(--surface); border-radius: var(--r);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+}
+.nueva-nota-label { font-size: 12px; font-weight: 700; color: var(--text3); }
+#notaInput {
+  width: 100%; padding: 10px 12px; border-radius: var(--r-sm);
+  border: 1.5px solid var(--border); background: var(--surface2);
+  font-size: 13px; font-family: inherit; color: var(--text);
+  resize: none; min-height: 70px; outline: none;
+  transition: border-color .15s;
+}
+#notaInput:focus { border-color: var(--accent); }
+.nota-tipo-row { display: flex; gap: 8px; }
+.nota-tipo-opt {
+  flex: 1; padding: 6px; border-radius: 8px;
+  font-size: 12px; font-weight: 600; text-align: center;
+  background: var(--surface2); border: 1.5px solid var(--border);
+  color: var(--text2); transition: all .15s;
+}
+.nota-tipo-opt.selected { background: var(--accent-s); border-color: var(--accent); color: var(--accent); }
+.btn-guardar-nota {
+  padding: 10px; border-radius: var(--r-sm);
+  background: var(--accent); color: #fff;
+  font-size: 14px; font-weight: 700;
+  box-shadow: 0 2px 8px rgba(99,102,241,.3);
+}
+.empty-msg {
+  text-align: center; color: var(--text3);
+  font-size: 14px; padding: 40px 20px;
+}
+
+/* ─── SQL MODAL ──────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,0.4); backdrop-filter: blur(4px);
+  display: flex; align-items: flex-end; justify-content: center;
+  padding-bottom: var(--safe-bot);
+}
+.modal-sheet {
+  background: var(--surface); border-radius: 20px 20px 0 0;
+  padding: 20px 20px 30px; width: 100%; max-width: 500px;
+  max-height: 80vh; overflow-y: auto;
+}
+.modal-title { font-size: 18px; font-weight: 800; margin-bottom: 10px; }
+.modal-body  { font-size: 13px; color: var(--text2); line-height: 1.6; }
+.modal-body pre {
+  background: var(--surface2); border-radius: 10px;
+  padding: 12px; font-size: 11px; color: var(--text);
+  overflow-x: auto; margin: 10px 0; border: 1px solid var(--border);
+}
+.modal-btns { display: flex; gap: 10px; margin-top: 16px; }
+.modal-btn {
+  flex: 1; padding: 12px; border-radius: var(--r-sm);
+  font-size: 14px; font-weight: 700;
+}
+.modal-btn.primary { background: var(--accent); color: #fff; }
+.modal-btn.secondary { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<!-- ─── PIN OVERLAY ─────────────────────────────── -->
+<div id="pinOverlay">
+  <div class="pin-logo">🛒</div>
+  <div class="pin-title">Compras IA</div>
+  <p class="pin-sub">Mercado Limpio</p>
+  <div class="pin-dots" id="pinDots">
+    <div class="pin-dot" id="pd0"></div>
+    <div class="pin-dot" id="pd1"></div>
+    <div class="pin-dot" id="pd2"></div>
+    <div class="pin-dot" id="pd3"></div>
+  </div>
+  <div class="pin-grid" id="pinGrid">
+    <button class="pin-key" data-k="1">1</button>
+    <button class="pin-key" data-k="2">2</button>
+    <button class="pin-key" data-k="3">3</button>
+    <button class="pin-key" data-k="4">4</button>
+    <button class="pin-key" data-k="5">5</button>
+    <button class="pin-key" data-k="6">6</button>
+    <button class="pin-key" data-k="7">7</button>
+    <button class="pin-key" data-k="8">8</button>
+    <button class="pin-key" data-k="9">9</button>
+    <button class="pin-key" style="visibility:hidden"></button>
+    <button class="pin-key" data-k="0">0</button>
+    <button class="pin-key del" data-k="del">⌫</button>
+  </div>
+</div>
+
+<!-- ─── APP ─────────────────────────────────────── -->
+<div id="app" class="hidden">
+
+  <!-- HEADER -->
+  <div class="app-header">
+    <div class="header-row">
+      <div class="header-brand">
+        <div class="header-title">🛒 Compras IA</div>
+        <div class="header-sub" id="headerSub">cargando datos…</div>
+      </div>
+      <button class="header-btn" id="refreshBtn" onclick="refreshAll()" title="Actualizar">
+        <span class="spin-icon">↻</span>
+      </button>
+    </div>
+    <div class="tab-bar" id="tabBar">
+      <button class="tab-btn active" data-tab="compras">📊 Compras</button>
+      <button class="tab-btn"        data-tab="ia">💬 IA</button>
+      <button class="tab-btn"        data-tab="notas">📌 Notas</button>
+    </div>
+  </div>
+
+  <!-- ── TAB: COMPRAS ──────────────────────────── -->
+  <section id="tab-compras">
+    <!-- KPI row -->
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-label">Este mes</div>
+        <div class="kpi-value" id="kpiMes">—</div>
+        <div class="kpi-meta">unidades</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Mes anterior</div>
+        <div class="kpi-value" id="kpiPrev">—</div>
+        <div class="kpi-meta">unidades</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Artículos top</div>
+        <div class="kpi-value" id="kpiTop">—</div>
+        <div class="kpi-meta" id="kpiTopNom">—</div>
+      </div>
+    </div>
+
+    <!-- Category chips -->
+    <div class="chip-bar" id="chipBar">
+      <button class="chip active" data-cat="todas" onclick="filterCat(this,'todas')">Todas</button>
+    </div>
+
+    <!-- Table -->
+    <div class="tabla-wrap">
+      <table class="tabla-compras">
+        <thead>
+          <tr>
+            <th style="min-width:160px">Artículo</th>
+            <th>Mes ant.</th>
+            <th>Este mes</th>
+            <th>Tendencia</th>
+            <th>Sugerido</th>
+          </tr>
+        </thead>
+        <tbody id="tablaBody">
+          <!-- skeleton -->
+          <tr class="skeleton-row"><td colspan="5">&nbsp;</td></tr>
+          <tr class="skeleton-row"><td colspan="5">&nbsp;</td></tr>
+          <tr class="skeleton-row"><td colspan="5">&nbsp;</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:11px;color:var(--text3);padding:0 16px 16px;text-align:center">
+      Datos desde Supabase · actualizados en tiempo real · sugerido = promedio × 1.2
+    </p>
+  </section>
+
+  <!-- ── TAB: IA CHAT ──────────────────────────── -->
+  <section id="tab-ia" class="hidden chat-section">
+    <div class="chat-context-bar">
+      <div class="ctx-dot loading" id="ctxDot"></div>
+      <span id="ctxLabel">Cargando contexto de negocio…</span>
+    </div>
+    <div class="chat-messages" id="chatMessages">
+      <div class="msg-wrap ai">
+        <div class="msg-bubble">
+          👋 ¡Hola! Soy tu asistente de compras para <strong>Mercado Limpio</strong>.<br><br>
+          Puedo ayudarte a decidir <em>qué comprar, cuánto y cuándo</em> basándome en los pedidos reales de tus vendedores. Una vez que cargue el contexto del negocio, podés preguntarme lo que quieras.
+        </div>
+        <div class="msg-time">ahora</div>
+      </div>
+    </div>
+    <div class="quick-prompts" id="quickPrompts">
+      <button class="qp-btn" onclick="quickPrompt(this)">¿Qué me conviene comprar esta semana?</button>
+      <button class="qp-btn" onclick="quickPrompt(this)">¿Qué artículos vienen bajando?</button>
+      <button class="qp-btn" onclick="quickPrompt(this)">Top 5 productos por volumen</button>
+      <button class="qp-btn" onclick="quickPrompt(this)">¿Cuántas esponjas de acero comprar?</button>
+      <button class="qp-btn" onclick="quickPrompt(this)">¿Qué faltó más este mes?</button>
+    </div>
+    <div class="chat-input-row">
+      <input type="text" id="chatInput" placeholder="Preguntá sobre tus compras…"
+             onkeydown="if(event.key==='Enter')enviarMensaje()"/>
+      <button id="chatSendBtn" onclick="enviarMensaje()">↑</button>
+    </div>
+  </section>
+
+  <!-- ── TAB: NOTAS ─────────────────────────────── -->
+  <section id="tab-notas" class="hidden notas-section">
+    <div id="notasList">
+      <div class="empty-msg">📌 Las notas guardadas del agente IA aparecen aquí.<br>Podés guardar aprendizajes del chat o escribir tus propios parámetros de compra.</div>
+    </div>
+
+    <div class="nueva-nota-wrap">
+      <div class="nueva-nota-label">＋ Agregar nota</div>
+      <textarea id="notaInput" placeholder="Ej: En diciembre se vende el doble de escobillones. Comprar con 2 semanas de anticipación."></textarea>
+      <div class="nota-tipo-row">
+        <button class="nota-tipo-opt selected" data-tipo="aprendizaje" onclick="selectTipo(this)">💡 Aprendizaje</button>
+        <button class="nota-tipo-opt" data-tipo="parametro" onclick="selectTipo(this)">⚙️ Parámetro</button>
+        <button class="nota-tipo-opt" data-tipo="nota" onclick="selectTipo(this)">📝 Nota</button>
+      </div>
+      <button class="btn-guardar-nota" onclick="guardarNota()">Guardar nota</button>
+    </div>
+
+    <div id="sqlModal" class="modal-overlay hidden">
+      <div class="modal-sheet">
+        <div class="modal-title">⚙️ Tabla ai_memoria</div>
+        <div class="modal-body">
+          <p>La tabla <code>ai_memoria</code> no existe en tu Supabase. Copiá este SQL y ejecutalo en el SQL Editor de Supabase:</p>
+          <pre id="sqlText">-- Ejecutar en Supabase SQL Editor
+CREATE TABLE ai_memoria (
+  id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  tipo TEXT NOT NULL DEFAULT 'nota',
+  clave TEXT,
+  contenido TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE ai_memoria ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "anon_read"   ON ai_memoria FOR SELECT USING (true);
+CREATE POLICY "anon_insert" ON ai_memoria FOR INSERT WITH CHECK (true);
+CREATE POLICY "anon_update" ON ai_memoria FOR UPDATE USING (true);
+CREATE POLICY "anon_delete" ON ai_memoria FOR DELETE USING (true);</pre>
+        </div>
+        <div class="modal-btns">
+          <button class="modal-btn secondary" onclick="closeSqlModal()">Después</button>
+          <button class="modal-btn primary" onclick="copiarSQL()">Copiar SQL</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div><!-- /app -->
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════
+const SB_URL  = "https://gjeyvbidomxzofcdycya.supabase.co";
+const SB_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
+const WORKER  = "https://frosty-term-20ea.santamariapablodaniel.workers.dev/";
+const PIN_CORRECT = "2817";
+const PIN_LS_KEY  = "ml_compras_auth";
+
+// ═══════════════════════════════════════════════
+// SUPABASE HELPERS
+// ═══════════════════════════════════════════════
+async function sbGet(table, params = "") {
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {
+    headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` },
+    cache: "no-store"
+  });
+  return r.ok ? r.json() : [];
+}
+
+async function sbPost(table, body) {
+  const r = await fetch(`${SB_URL}/rest/v1/${table}`, {
+    method: "POST",
+    headers: {
+      apikey: SB_ANON,
+      Authorization: `Bearer ${SB_ANON}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation"
+    },
+    body: JSON.stringify(body)
+  });
+  return r.ok ? r.json() : null;
+}
+
+async function sbDelete(table, id) {
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`, {
+    method: "DELETE",
+    headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` }
+  });
+  return r.ok;
+}
+
+// Paginación completa (para no perder filas por el límite de PostgREST)
+async function sbGetAll(table, params, pageSize = 1000) {
+  let all = [], offset = 0;
+  while (true) {
+    const rows = await sbGet(table, `${params}&limit=${pageSize}&offset=${offset}`);
+    if (!Array.isArray(rows) || rows.length === 0) break;
+    all = all.concat(rows);
+    if (rows.length < pageSize) break;
+    offset += pageSize;
+  }
+  return all;
+}
+
+// ═══════════════════════════════════════════════
+// UTILIDADES DE FECHA
+// ═══════════════════════════════════════════════
+function isoISO(d) { return d.toISOString(); }
+
+function getMesStart(offsetMeses = 0) {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth() - offsetMeses, 1, 0, 0, 0, 0);
+}
+function getMesEnd(offsetMeses = 0) {
+  const d = getMesStart(offsetMeses);
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+}
+
+function fmtMes(d) {
+  return d.toLocaleDateString("es-AR", { month: "short", year: "numeric" });
+}
+
+function fmtNum(n) {
+  if (!n && n !== 0) return "—";
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+  if (n >= 1000)    return (n / 1000).toFixed(1) + "k";
+  return n.toLocaleString("es-AR");
+}
+
+// ═══════════════════════════════════════════════
+// NORMALIZACIÓN DE DESCRIPCIONES
+// ═══════════════════════════════════════════════
+function normalizar(raw) {
+  let s = raw.trim().toUpperCase();
+  // Eliminar alternativas entre paréntesis
+  s = s.replace(/\s*\([^)]*\)\s*/g, ' ');
+  // Eliminar prefijos de pack al inicio (8X3, 12X3, etc.)
+  s = s.replace(/^\d+X\d+\s+/, '');
+  // Normalizar "X 30 G" → "X30G", "X30 G" → "X30G", "X 30G" → "X30G"
+  s = s.replace(/\bX\s*(\d+)\s*G\b/g, 'X$1G');
+  // Normalizar "30 G" → "30G"
+  s = s.replace(/\b(\d+)\s+G\b/g, '$1G');
+  // Limpiar espacios dobles y finales
+  s = s.replace(/\s{2,}/g, ' ').trim();
+  return s;
+}
+
+// Retorna categoría amplia basada en el texto normalizado
+function getCategoria(s) {
+  if (/^ESPONJA ACERO/.test(s))           return "ESPONJA ACERO";
+  if (/^FIBRA ESPONJA/.test(s))           return "FIBRA ESPONJA";
+  if (/^FIBRA\b/.test(s))                 return "FIBRA";
+  if (/^ESPONJA\b/.test(s))               return "ESPONJA";
+  if (/^REJILLA\b/.test(s))               return "REJILLA";
+  if (/^TRAPO\b/.test(s))                 return "TRAPO";
+  if (/^ESCOBILLON/.test(s))              return "ESCOBILLON";
+  if (/^GUANTES\b/.test(s))              return "GUANTES";
+  if (/^BALDE\b/.test(s))                return "BALDE";
+  if (/^PALA\b/.test(s))                 return "PALA";
+  if (/^ESCOBILLA\b/.test(s))            return "ESCOBILLA";
+  if (/^SOPAPA\b/.test(s))               return "SOPAPA";
+  if (/^LAMPAZO\b/.test(s))              return "LAMPAZO";
+  if (/^BROCHE\b/.test(s))               return "BROCHE";
+  if (/^SECADOR\b/.test(s))              return "SECADOR";
+  if (/^VIRULANA\b/.test(s))             return "VIRULANA";
+  if (/^PAÑO\b/.test(s))                 return "PAÑO";
+  if (/^FRANELA\b/.test(s))              return "FRANELA";
+  if (/^REPASADOR\b/.test(s))            return "REPASADOR";
+  if (/^CONTENEDOR\b|^HERMETICO\b/.test(s)) return "CONTENEDOR";
+  if (/^FUENTON\b|^PALANGANA\b/.test(s)) return "FUENTON";
+  if (/^\d+X\d+/.test(s))               return "BOLSA";
+  if (/^CEPILLO\b/.test(s))              return "CEPILLO";
+  if (/^VELA\b|^CAJA VELA/.test(s))     return "VELA";
+  if (/^FILTRO\b/.test(s))               return "FILTRO";
+  return "OTROS";
+}
+
+// Nombre amigable de la categoría
+const CAT_LABELS = {
+  "ESPONJA ACERO": "Esponja Acero",
+  "FIBRA ESPONJA": "Fibra Esponja",
+  "FIBRA":         "Fibra",
+  "ESPONJA":       "Esponja",
+  "REJILLA":       "Rejilla",
+  "TRAPO":         "Trapo",
+  "ESCOBILLON":    "Escobillón",
+  "GUANTES":       "Guantes",
+  "BALDE":         "Balde",
+  "PALA":          "Pala",
+  "ESCOBILLA":     "Escobilla",
+  "SOPAPA":        "Sopapa",
+  "LAMPAZO":       "Lampazo",
+  "BROCHE":        "Broche",
+  "SECADOR":       "Secador",
+  "VIRULANA":      "Virulana",
+  "PAÑO":          "Paño",
+  "FRANELA":       "Franela",
+  "REPASADOR":     "Repasador",
+  "CONTENEDOR":    "Contenedor",
+  "FUENTON":       "Fuetón/Palangana",
+  "BOLSA":         "Bolsa Nylon",
+  "CEPILLO":       "Cepillo",
+  "VELA":          "Vela",
+  "FILTRO":        "Filtro",
+  "OTROS":         "Otros",
+};
+
+// ═══════════════════════════════════════════════
+// ESTADO GLOBAL
+// ═══════════════════════════════════════════════
+let _datosMes     = {};   // { norm: { cantidad, cat } }
+let _datosPrev    = {};   // { norm: { cantidad, cat } }
+let _faltantesMes = {};   // { desc: count }
+let _categorias   = [];
+let _filtCat      = "todas";
+let _chatHistory  = JSON.parse(localStorage.getItem("ml_compras_chat") || "[]");
+let _contextoIA   = null;  // string con resumen del negocio
+let _notasTable   = true;  // true si ai_memoria existe
+let _tipoNota     = "aprendizaje";
+let _enviando     = false;
+
+// ═══════════════════════════════════════════════
+// CARGA DE DATOS
+// ═══════════════════════════════════════════════
+async function loadDashboard() {
+  const hoy      = new Date();
+  const mesStart = getMesStart(0);
+  const prevEnd  = getMesEnd(1);
+  const prevStart = getMesStart(1);
+  // Mes corriente
+  const [itemsMes, itemsPrev, faltMes] = await Promise.all([
+    sbGetAll("items_pedido", `created_at=gte.${isoISO(mesStart)}&select=descripcion,cantidad,es_faltante`),
+    sbGetAll("items_pedido", `created_at=gte.${isoISO(prevStart)}&created_at=lte.${isoISO(prevEnd)}&select=descripcion,cantidad,es_faltante`),
+    sbGet("items_pedido", `es_faltante=eq.true&created_at=gte.${isoISO(mesStart)}&select=descripcion&limit=2000`)
+  ]);
+
+  // Procesar mes actual
+  _datosMes = {};
+  let totalMes = 0;
+  for (const row of itemsMes) {
+    const n = normalizar(row.descripcion);
+    const c = getCategoria(n);
+    if (!_datosMes[n]) _datosMes[n] = { cantidad: 0, cat: c };
+    _datosMes[n].cantidad += Number(row.cantidad) || 0;
+    totalMes += Number(row.cantidad) || 0;
+  }
+
+  // Procesar mes anterior
+  _datosPrev = {};
+  let totalPrev = 0;
+  for (const row of itemsPrev) {
+    const n = normalizar(row.descripcion);
+    const c = getCategoria(n);
+    if (!_datosPrev[n]) _datosPrev[n] = { cantidad: 0, cat: c };
+    _datosPrev[n].cantidad += Number(row.cantidad) || 0;
+    totalPrev += Number(row.cantidad) || 0;
+  }
+
+  // Faltantes
+  _faltantesMes = {};
+  for (const row of faltMes) {
+    const n = normalizar(row.descripcion);
+    _faltantesMes[n] = (_faltantesMes[n] || 0) + 1;
+  }
+
+  // Actualizar KPIs
+  const topEntry = Object.entries(_datosMes).sort((a,b) => b[1].cantidad - a[1].cantidad)[0];
+  document.getElementById("kpiMes").textContent  = fmtNum(totalMes);
+  document.getElementById("kpiPrev").textContent = fmtNum(totalPrev);
+  document.getElementById("kpiTop").textContent  = topEntry ? fmtNum(topEntry[1].cantidad) : "—";
+  document.getElementById("kpiTopNom").textContent = topEntry ? topEntry[0].slice(0, 20) : "—";
+
+  // Construir categorías únicas (unión de mes y prev)
+  const catSet = new Set();
+  Object.values(_datosMes).forEach(v => catSet.add(v.cat));
+  Object.values(_datosPrev).forEach(v => catSet.add(v.cat));
+  _categorias = [...catSet].sort();
+
+  buildChips();
+  renderTabla(_filtCat);
+
+  // Header sub
+  document.getElementById("headerSub").textContent =
+    `${fmtMes(mesStart)} · actualizado ${hoy.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}`;
+
+  // Construir contexto para IA
+  buildContextoIA(totalMes, totalPrev);
+}
+
+// ═══════════════════════════════════════════════
+// CHIPS DE CATEGORÍA
+// ═══════════════════════════════════════════════
+function buildChips() {
+  const bar = document.getElementById("chipBar");
+  bar.innerHTML = `<button class="chip ${_filtCat==='todas'?'active':''}" data-cat="todas" onclick="filterCat(this,'todas')">Todas</button>`;
+  for (const cat of _categorias) {
+    const lbl = CAT_LABELS[cat] || cat;
+    const isActive = _filtCat === cat;
+    bar.innerHTML += `<button class="chip ${isActive?'active':''}" data-cat="${cat}" onclick="filterCat(this,'${cat}')">${lbl}</button>`;
+  }
+}
+
+function filterCat(btn, cat) {
+  _filtCat = cat;
+  document.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
+  btn.classList.add("active");
+  renderTabla(cat);
+}
+
+// ═══════════════════════════════════════════════
+// TABLA DE COMPRAS
+// ═══════════════════════════════════════════════
+function renderTabla(cat) {
+  // Unir todas las claves norm de ambos meses
+  const allKeys = new Set([...Object.keys(_datosMes), ...Object.keys(_datosPrev)]);
+
+  // Filtrar por categoría
+  const rows = [];
+  for (const norm of allKeys) {
+    const cat_norm = (_datosMes[norm] || _datosPrev[norm] || {}).cat || getCategoria(norm);
+    if (cat !== "todas" && cat_norm !== cat) continue;
+    const qMes  = (_datosMes[norm]  || {}).cantidad || 0;
+    const qPrev = (_datosPrev[norm] || {}).cantidad || 0;
+    const qAvg  = (qMes + qPrev) / 2;
+    // Sólo mostrar ítems con al menos algo en alguno de los dos meses
+    if (qMes === 0 && qPrev === 0) continue;
+    rows.push({ norm, cat: cat_norm, qMes, qPrev, qAvg, faltantes: _faltantesMes[norm] || 0 });
+  }
+
+  // Ordenar: mayor promedio primero
+  rows.sort((a, b) => b.qAvg - a.qAvg);
+
+  // Tope: 80 ítems por categoría / 120 en total
+  const maxRows = cat === "todas" ? 120 : 80;
+  const visible = rows.slice(0, maxRows);
+
+  const tbody = document.getElementById("tablaBody");
+  if (visible.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-msg">Sin datos para esta categoría</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = visible.map(r => {
+    const sugerido = Math.round(r.qAvg * 1.2);
+    const diff = r.qPrev > 0 ? ((r.qMes - r.qPrev) / r.qPrev * 100) : null;
+    let trendClass = "trend-flat", trendTxt = "=";
+    if (diff !== null) {
+      if (diff > 8)       { trendClass = "trend-up";   trendTxt = `▲ ${diff.toFixed(0)}%`; }
+      else if (diff < -8) { trendClass = "trend-down";  trendTxt = `▼ ${Math.abs(diff).toFixed(0)}%`; }
+      else                { trendTxt = `~ ${diff > 0 ? "+" : ""}${diff.toFixed(0)}%`; }
+    }
+    const isAlto = sugerido > 500;
+    const catLbl = CAT_LABELS[r.cat] || r.cat;
+    const faltBadge = r.faltantes > 0
+      ? `<span style="margin-left:4px;font-size:9px;background:var(--red-s);color:var(--red);padding:1px 4px;border-radius:4px;font-weight:700">⚠ ${r.faltantes}x faltó</span>`
+      : "";
+    return `<tr>
+      <td>
+        <div class="prod-name" title="${r.norm}">${r.norm.length > 30 ? r.norm.slice(0,28)+"…" : r.norm}</div>
+        <span class="prod-cat">${catLbl}</span>${faltBadge}
+      </td>
+      <td>${fmtNum(r.qPrev)}</td>
+      <td>${fmtNum(r.qMes)}</td>
+      <td class="${trendClass}">${trendTxt}</td>
+      <td><span class="sugerido-chip ${isAlto?'alto':''}">${fmtNum(sugerido)}</span></td>
+    </tr>`;
+  }).join("");
+}
+
+// ═══════════════════════════════════════════════
+// CONTEXTO PARA LA IA
+// ═══════════════════════════════════════════════
+function buildContextoIA(totalMes, totalPrev) {
+  const today   = new Date();
+  const mesNom  = fmtMes(getMesStart(0));
+  const prevNom = fmtMes(getMesStart(1));
+
+  // Top 25 productos por volumen mes actual
+  const topMes = Object.entries(_datosMes)
+    .sort((a,b) => b[1].cantidad - a[1].cantidad)
+    .slice(0, 25)
+    .map(([n, v]) => `  - ${n}: ${v.cantidad} u.`)
+    .join("\n");
+
+  // Top 10 faltantes
+  const topFalt = Object.entries(_faltantesMes)
+    .sort((a,b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([n, c]) => `  - ${n}: ${c} veces`)
+    .join("\n");
+
+  // Comparativa por categoría
+  const byCAT = {};
+  for (const [n, v] of Object.entries(_datosMes)) {
+    if (!byCAT[v.cat]) byCAT[v.cat] = 0;
+    byCAT[v.cat] += v.cantidad;
+  }
+  const catRows = Object.entries(byCAT)
+    .sort((a,b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([c, q]) => `  - ${CAT_LABELS[c] || c}: ${q.toLocaleString("es-AR")} u.`)
+    .join("\n");
+
+  _contextoIA = `NEGOCIO: Mercado Limpio Distribuidora (artículos de limpieza y hogar)
+FECHA HOY: ${today.toLocaleDateString("es-AR", {weekday:"long",day:"numeric",month:"long",year:"numeric"})}
+
+VENTAS ACTUALES (${mesNom}): ${totalMes.toLocaleString("es-AR")} unidades totales
+VENTAS MES ANTERIOR (${prevNom}): ${totalPrev.toLocaleString("es-AR")} unidades totales
+VARIACIÓN: ${totalPrev > 0 ? ((totalMes - totalPrev)/totalPrev*100).toFixed(1)+"%" : "sin datos prev"}
+
+TOP 25 ARTÍCULOS ESTE MES:
+${topMes || "(sin datos)"}
+
+TOP ARTÍCULOS QUE FALTARON ESTE MES:
+${topFalt || "(ninguno)"}
+
+VOLUMEN POR CATEGORÍA ESTE MES:
+${catRows || "(sin datos)"}
+
+NOTA: Solo hay datos desde Marzo 2026. El negocio distribuye productos de limpieza (esponjas, trapos, escobillones, rejillas, guantes, bolsas nylon, baldes, etc.) a comercios y negocios.`;
+
+  document.getElementById("ctxDot").classList.remove("loading");
+  document.getElementById("ctxLabel").textContent =
+    `Contexto cargado · ${totalMes.toLocaleString("es-AR")} u. este mes`;
+}
+
+// ═══════════════════════════════════════════════
+// CHAT IA
+// ═══════════════════════════════════════════════
+async function enviarMensaje() {
+  if (_enviando) return;
+  const input = document.getElementById("chatInput");
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  input.value = "";
+  _enviando = true;
+  document.getElementById("chatSendBtn").disabled = true;
+
+  addMsg("user", msg);
+  const typingId = addTyping();
+
+  // Guardar en historial local
+  _chatHistory.push({ role: "user", content: msg });
+  if (_chatHistory.length > 40) _chatHistory = _chatHistory.slice(-40);
+
+  try {
+    // Construir prompt con contexto + historial + mensaje
+    const histTxt = _chatHistory.slice(-10).map(m =>
+      `${m.role === "user" ? "Usuario" : "Asistente"}: ${m.content}`
+    ).join("\n");
+
+    // Incluir notas/memoria del negocio
+    const notasTxt = await loadNotasParaIA();
+
+    const prompt = `Sos el asistente de compras de Mercado Limpio Distribuidora.
+Tu función es ayudar al dueño a decidir QUÉ comprar, CUÁNTO y CUÁNDO.
+Respondé en español rioplatense. Sé directo, concreto y útil.
+Usá los datos reales del negocio para dar recomendaciones específicas con números.
+Máximo 150 palabras. Sin listas de más de 5 ítems. Sin asteriscos.
+
+${_contextoIA || "Contexto del negocio cargando..."}
+
+${notasTxt ? "NOTAS GUARDADAS DEL NEGOCIO:\n" + notasTxt : ""}
+
+CONVERSACIÓN RECIENTE:
+${histTxt}
+
+Usuario: ${msg}
+Asistente:`;
+
+    const res = await fetch(WORKER, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, sys: "Respondé en español rioplatense. Sos un asistente de compras para una distribuidora de limpieza. Sé concreto, práctico y usá los datos reales para dar recomendaciones con números específicos." })
+    });
+
+    removeTyping(typingId);
+
+    if (!res.ok) throw new Error("Error del servidor");
+    const data = await res.json();
+    const respuesta = data.text || "No se pudo generar una respuesta.";
+
+    _chatHistory.push({ role: "assistant", content: respuesta });
+    localStorage.setItem("ml_compras_chat", JSON.stringify(_chatHistory));
+
+    addMsg("ai", respuesta, true);
+  } catch(e) {
+    removeTyping(typingId);
+    addMsg("ai", "⚠️ Error al conectar con la IA. Verificá tu conexión e intentá de nuevo.");
+  } finally {
+    _enviando = false;
+    document.getElementById("chatSendBtn").disabled = false;
+  }
+}
+
+function quickPrompt(btn) {
+  document.getElementById("chatInput").value = btn.textContent;
+  enviarMensaje();
+}
+
+let _typingId = 0;
+function addMsg(role, text, showActions = false) {
+  const msgs = document.getElementById("chatMessages");
+  const now  = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  const id   = `msg_${Date.now()}`;
+
+  const actionsHtml = showActions ? `
+    <div class="msg-actions">
+      <button class="msg-action-btn" onclick="guardarRespuestaIA('${id}')">📌 Guardar nota</button>
+    </div>` : "";
+
+  const div = document.createElement("div");
+  div.className = `msg-wrap ${role}`;
+  div.id = id;
+  div.innerHTML = `
+    <div class="msg-bubble">${escapeHtml(text).replace(/\n/g,"<br>")}</div>
+    <div class="msg-time">${now}</div>
+    ${actionsHtml}`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return id;
+}
+
+function addTyping() {
+  const msgs = document.getElementById("chatMessages");
+  const id = `typing_${++_typingId}`;
+  const div = document.createElement("div");
+  div.id = id;
+  div.className = "msg-wrap ai";
+  div.innerHTML = `<div class="typing-indicator">
+    <div class="typing-dot"></div>
+    <div class="typing-dot"></div>
+    <div class="typing-dot"></div>
+  </div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return id;
+}
+function removeTyping(id) {
+  document.getElementById(id)?.remove();
+}
+
+function escapeHtml(t) {
+  return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function guardarRespuestaIA(msgId) {
+  const bubble = document.querySelector(`#${msgId} .msg-bubble`);
+  if (!bubble) return;
+  const texto = bubble.textContent.trim();
+  document.getElementById("notaInput").value = texto;
+  document.querySelector('[data-tipo="aprendizaje"]').click();
+  switchTab("notas");
+  toast("📌 Respuesta copiada a notas — guardala abajo");
+}
+
+// ═══════════════════════════════════════════════
+// NOTAS / AI MEMORIA
+// ═══════════════════════════════════════════════
+async function loadNotas() {
+  if (!_notasTable) return;
+  try {
+    const rows = await sbGet("ai_memoria", "order=created_at.desc&limit=50");
+    if (!Array.isArray(rows)) { _notasTable = false; showSqlModal(); return; }
+    // Si es un array vacío o con datos reales, está OK
+    renderNotas(rows);
+  } catch(e) {
+    _notasTable = false;
+  }
+}
+
+async function loadNotasParaIA() {
+  if (!_notasTable) return "";
+  try {
+    const rows = await sbGet("ai_memoria", "order=updated_at.desc&limit=20");
+    if (!Array.isArray(rows) || rows.length === 0) return "";
+    return rows.map(r => `[${r.tipo}] ${r.contenido}`).join("\n");
+  } catch(e) { return ""; }
+}
+
+function renderNotas(rows) {
+  const el = document.getElementById("notasList");
+  if (!rows || rows.length === 0) {
+    el.innerHTML = `<div class="empty-msg">📌 Todavía no hay notas guardadas.<br>Podés guardar aprendizajes del chat IA o tus propias observaciones sobre el negocio.</div>`;
+    return;
+  }
+  el.innerHTML = rows.map(r => {
+    const fecha = new Date(r.created_at).toLocaleDateString("es-AR", { day:"numeric", month:"short", year:"numeric" });
+    const tipoLbl = r.tipo === "aprendizaje" ? "💡 Aprendizaje" : r.tipo === "parametro" ? "⚙️ Parámetro" : "📝 Nota";
+    return `<div class="nota-card">
+      <div class="nota-tipo ${r.tipo}">${tipoLbl}</div>
+      <div class="nota-texto">${escapeHtml(r.contenido)}</div>
+      <div class="nota-fecha">${fecha}</div>
+      <button class="nota-del-btn" onclick="eliminarNota(${r.id})" title="Eliminar">✕</button>
+    </div>`;
+  }).join("");
+}
+
+async function guardarNota() {
+  const texto = document.getElementById("notaInput").value.trim();
+  if (!texto) { toast("Escribí algo antes de guardar"); return; }
+  if (!_notasTable) { showSqlModal(); return; }
+
+  try {
+    const result = await sbPost("ai_memoria", { tipo: _tipoNota, contenido: texto });
+    if (result) {
+      document.getElementById("notaInput").value = "";
+      toast("📌 Nota guardada");
+      await loadNotas();
+    } else {
+      throw new Error("no result");
+    }
+  } catch(e) {
+    // Tabla no existe aún
+    _notasTable = false;
+    showSqlModal();
+  }
+}
+
+async function eliminarNota(id) {
+  await sbDelete("ai_memoria", id);
+  toast("Nota eliminada");
+  await loadNotas();
+}
+
+function selectTipo(btn) {
+  document.querySelectorAll(".nota-tipo-opt").forEach(b => b.classList.remove("selected"));
+  btn.classList.add("selected");
+  _tipoNota = btn.dataset.tipo;
+}
+
+// ═══════════════════════════════════════════════
+// SQL MODAL (si tabla no existe)
+// ═══════════════════════════════════════════════
+function showSqlModal() {
+  document.getElementById("sqlModal").classList.remove("hidden");
+}
+function closeSqlModal() {
+  document.getElementById("sqlModal").classList.add("hidden");
+}
+function copiarSQL() {
+  const sql = document.getElementById("sqlText").textContent;
+  navigator.clipboard.writeText(sql)
+    .then(() => toast("✅ SQL copiado al portapapeles"))
+    .catch(() => toast("Copiá el texto manualmente"));
+}
+
+// ═══════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════
+function switchTab(tab) {
+  document.querySelectorAll(".tab-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.tab === tab);
+  });
+  document.getElementById("tab-compras").classList.toggle("hidden", tab !== "compras");
+  document.getElementById("tab-ia").classList.toggle("hidden",      tab !== "ia");
+  document.getElementById("tab-notas").classList.toggle("hidden",   tab !== "notas");
+
+  if (tab === "notas") loadNotas();
+}
+
+document.getElementById("tabBar").addEventListener("click", e => {
+  const btn = e.target.closest(".tab-btn");
+  if (btn) switchTab(btn.dataset.tab);
+});
+
+// ═══════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════
+let _toastTimer = null;
+function toast(msg, ms = 2500) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove("show"), ms);
+}
+
+// ═══════════════════════════════════════════════
+// REFRESH
+// ═══════════════════════════════════════════════
+async function refreshAll() {
+  const btn = document.getElementById("refreshBtn");
+  btn.classList.add("spin");
+  try { await loadDashboard(); }
+  finally { btn.classList.remove("spin"); }
+}
+
+// ═══════════════════════════════════════════════
+// PIN LOGIN
+// ═══════════════════════════════════════════════
+let pinBuffer = "";
+
+function pinIsAuth() { return localStorage.getItem(PIN_LS_KEY) === "ok"; }
+function pinSetAuth() { localStorage.setItem(PIN_LS_KEY, "ok"); }
+
+function pinUpdateDots(error) {
+  for (let i = 0; i < 4; i++) {
+    const dot = document.getElementById("pd" + i);
+    dot.className = "pin-dot";
+    if (error)               dot.classList.add("error");
+    else if (i < pinBuffer.length) dot.classList.add("filled");
+  }
+}
+
+function pinKey(k) {
+  if (k === "del") { pinBuffer = pinBuffer.slice(0, -1); pinUpdateDots(false); return; }
+  if (pinBuffer.length >= 4) return;
+  pinBuffer += k;
+  pinUpdateDots(false);
+  if (pinBuffer.length === 4) {
+    if (pinBuffer === PIN_CORRECT) {
+      pinSetAuth();
+      document.getElementById("pinOverlay").classList.add("hidden");
+      document.getElementById("app").classList.remove("hidden");
+      init();
+    } else {
+      pinUpdateDots(true);
+      const dots = document.getElementById("pinDots");
+      dots.classList.add("shake");
+      dots.addEventListener("animationend", () => dots.classList.remove("shake"), { once: true });
+      setTimeout(() => { pinBuffer = ""; pinUpdateDots(false); }, 600);
+    }
+  }
+}
+
+document.getElementById("pinGrid").addEventListener("click", e => {
+  const btn = e.target.closest(".pin-key");
+  if (!btn || !btn.dataset.k) return;
+  pinKey(btn.dataset.k);
+});
+document.addEventListener("keydown", e => {
+  if (document.getElementById("pinOverlay").classList.contains("hidden")) return;
+  if (e.key >= "0" && e.key <= "9") pinKey(e.key);
+  if (e.key === "Backspace") pinKey("del");
+});
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+async function init() {
+  await loadDashboard();
+  // Restaurar historial de chat
+  if (_chatHistory.length > 0) {
+    const recentHistory = _chatHistory.slice(-20);
+    for (const m of recentHistory) {
+      addMsg(m.role, m.content, m.role === "assistant");
+    }
+  }
+  // Auto-refresh cada 8 min
+  setInterval(() => refreshAll(), 8 * 60 * 1000);
+}
+
+if (pinIsAuth()) {
+  document.getElementById("pinOverlay").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  init();
+}
+</script>
+</body>
+</html>
