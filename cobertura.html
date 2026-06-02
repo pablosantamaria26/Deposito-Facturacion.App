@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cobertura de Stock</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a1a; }
+
+  header {
+    background: #1e293b; color: white; padding: 14px 16px;
+    display: flex; align-items: center; gap: 10px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  header h1 { font-size: 17px; font-weight: 600; }
+  header .back-btn {
+    background: none; border: none; color: white; font-size: 20px;
+    cursor: pointer; padding: 0 4px; display: none;
+  }
+  header .back-btn.visible { display: block; }
+
+  /* PROVIDER LIST */
+  #view-providers { padding: 12px; }
+  .prov-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px;
+  }
+  .prov-card {
+    background: white; border-radius: 10px; padding: 14px 12px;
+    cursor: pointer; border: 2px solid transparent;
+    transition: border-color .15s, box-shadow .15s;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  .prov-card:hover { border-color: #3b82f6; box-shadow: 0 2px 8px rgba(59,130,246,.2); }
+  .prov-card .name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .prov-card .count { font-size: 12px; color: #64748b; }
+
+  /* DETAIL VIEW */
+  #view-detail { display: none; }
+  .detail-header { padding: 12px 16px; background: white; border-bottom: 1px solid #e2e8f0; }
+  .detail-header h2 { font-size: 18px; font-weight: 700; }
+  .detail-header .fecha { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+
+  .stats-bar {
+    display: flex; gap: 8px; padding: 12px 16px; flex-wrap: wrap;
+  }
+  .stat-chip {
+    padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  }
+  .chip-critico  { background: #fee2e2; color: #991b1b; }
+  .chip-bajo     { background: #ffedd5; color: #9a3412; }
+  .chip-normal   { background: #dcfce7; color: #166534; }
+  .chip-alto     { background: #dbeafe; color: #1e40af; }
+  .chip-sin_stock { background: #f1f5f9; color: #475569; }
+  .chip-sin_match { background: #f8fafc; color: #94a3b8; }
+  .chip-sin_conteo { background: #faf5ff; color: #6b21a8; }
+
+  .filter-bar {
+    padding: 8px 16px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  }
+  .filter-bar select, .filter-bar input {
+    padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px;
+    font-size: 13px; background: white; outline: none;
+  }
+  .filter-bar input { flex: 1; min-width: 140px; }
+
+  .items-table { padding: 0 16px 80px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; background: #f8fafc; color: #64748b; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e2e8f0; position: sticky; top: 56px; z-index: 10; }
+  td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+
+  .estado-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; white-space: nowrap;
+  }
+  .estado-critico   { background: #fee2e2; color: #991b1b; }
+  .estado-bajo      { background: #ffedd5; color: #9a3412; }
+  .estado-normal    { background: #dcfce7; color: #166534; }
+  .estado-alto      { background: #dbeafe; color: #1e40af; }
+  .estado-sin_stock  { background: #f1f5f9; color: #475569; }
+  .estado-sin_match  { background: #f8fafc; color: #94a3b8; }
+  .estado-sin_conteo { background: #faf5ff; color: #6b21a8; }
+
+  .bar-wrap { width: 80px; background: #f1f5f9; border-radius: 4px; height: 6px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width .3s; }
+  .bar-critico { background: #ef4444; }
+  .bar-bajo    { background: #f97316; }
+  .bar-normal  { background: #22c55e; }
+  .bar-alto    { background: #3b82f6; }
+
+  .loading { text-align: center; padding: 40px; color: #94a3b8; font-size: 14px; }
+  .empty   { text-align: center; padding: 40px; color: #cbd5e1; font-size: 14px; }
+
+  @media (max-width: 480px) {
+    .col-bar, .col-cob { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <button class="back-btn" id="backBtn" onclick="showProviders()">←</button>
+  <h1 id="headerTitle">Cobertura de Stock</h1>
+</header>
+
+<div id="view-providers">
+  <div class="loading" id="loadingProvs">Cargando proveedores…</div>
+  <div class="prov-grid" id="provGrid"></div>
+</div>
+
+<div id="view-detail">
+  <div class="detail-header">
+    <h2 id="detailTitle"></h2>
+    <div class="fecha" id="detailFecha"></div>
+  </div>
+  <div class="stats-bar" id="statsBar"></div>
+  <div class="filter-bar">
+    <input type="text" id="searchInput" placeholder="Buscar artículo…" oninput="renderTable()">
+    <select id="filterEstado" onchange="renderTable()">
+      <option value="">Todos</option>
+      <option value="critico">Crítico</option>
+      <option value="bajo">Bajo</option>
+      <option value="normal">Normal</option>
+      <option value="alto">Alto</option>
+      <option value="sin_stock">Sin stock</option>
+      <option value="sin_match">Sin match</option>
+    </select>
+  </div>
+  <div class="items-table">
+    <div class="loading" id="loadingItems" style="display:none">Cargando…</div>
+    <table id="itemsTable" style="display:none">
+      <thead>
+        <tr>
+          <th>Artículo</th>
+          <th>Stock</th>
+          <th class="col-bar">Cobertura</th>
+          <th class="col-cob">%</th>
+          <th>Días</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody id="itemsTbody"></tbody>
+    </table>
+    <div class="empty" id="emptyMsg" style="display:none">Sin resultados</div>
+  </div>
+</div>
+
+<script>
+const SB_URL = 'https://gjeyvbidomxzofcdycya.supabase.co';
+const SB_ANON = 'sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT';
+
+let allItems = [];
+
+async function sbGet(path) {
+  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
+    headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, Accept: 'application/json' }
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function loadProviders() {
+  const provs = await sbGet('proveedores?activo=eq.true&order=nombre&select=id,nombre');
+  document.getElementById('loadingProvs').style.display = 'none';
+  const grid = document.getElementById('provGrid');
+  grid.innerHTML = provs.map(p => `
+    <div class="prov-card" onclick="loadDetail('${p.id}','${escHtml(p.nombre)}')">
+      <div class="name">${escHtml(p.nombre)}</div>
+      <div class="count">ver cobertura →</div>
+    </div>
+  `).join('');
+}
+
+async function loadDetail(provId, provNombre) {
+  document.getElementById('view-providers').style.display = 'none';
+  document.getElementById('view-detail').style.display = 'block';
+  document.getElementById('headerTitle').textContent = provNombre;
+  document.getElementById('backBtn').classList.add('visible');
+  document.getElementById('detailTitle').textContent = provNombre;
+  document.getElementById('detailFecha').textContent = '';
+  document.getElementById('statsBar').innerHTML = '';
+  document.getElementById('loadingItems').style.display = 'block';
+  document.getElementById('itemsTable').style.display = 'none';
+  document.getElementById('emptyMsg').style.display = 'none';
+  document.getElementById('searchInput').value = '';
+  document.getElementById('filterEstado').value = '';
+
+  const items = await sbGet(
+    `v_stock_vs_demanda?proveedor=eq.${encodeURIComponent(provNombre)}&select=articulo_original,stock_unidades,es_bulto,fecha_conteo,demanda_por_mes,dias_de_stock,porcentaje_cobertura_30d,estado_stock&limit=1000`
+  );
+
+  allItems = items;
+  document.getElementById('loadingItems').style.display = 'none';
+
+  if (items.length > 0 && items[0].fecha_conteo) {
+    document.getElementById('detailFecha').textContent =
+      'Último conteo: ' + items[0].fecha_conteo;
+  }
+
+  renderStats(items);
+  renderTable();
+}
+
+function renderStats(items) {
+  const counts = {};
+  items.forEach(i => { counts[i.estado_stock] = (counts[i.estado_stock] || 0) + 1; });
+  const order = ['critico','bajo','normal','alto','sin_stock','sin_match','sin_conteo'];
+  const labels = { critico:'Crítico', bajo:'Bajo', normal:'Normal', alto:'Alto', sin_stock:'Sin stock', sin_match:'Sin match', sin_conteo:'Sin conteo' };
+  const bar = document.getElementById('statsBar');
+  bar.innerHTML = order.filter(k => counts[k]).map(k =>
+    `<span class="stat-chip chip-${k}" onclick="filterBy('${k}')">${labels[k]}: ${counts[k]}</span>`
+  ).join('');
+}
+
+function filterBy(estado) {
+  document.getElementById('filterEstado').value = estado;
+  renderTable();
+}
+
+function renderTable() {
+  const q = document.getElementById('searchInput').value.toLowerCase().trim();
+  const est = document.getElementById('filterEstado').value;
+  const filtered = allItems.filter(i => {
+    if (est && i.estado_stock !== est) return false;
+    if (q && !i.articulo_original.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const tbody = document.getElementById('itemsTbody');
+  if (filtered.length === 0) {
+    document.getElementById('itemsTable').style.display = 'none';
+    document.getElementById('emptyMsg').style.display = 'block';
+    return;
+  }
+  document.getElementById('emptyMsg').style.display = 'none';
+  document.getElementById('itemsTable').style.display = 'table';
+
+  tbody.innerHTML = filtered.map(i => {
+    const pct = i.porcentaje_cobertura_30d;
+    const pctDisplay = pct != null ? Math.min(pct, 200) : 0;
+    const hasCov = pct != null && i.estado_stock !== 'sin_match' && i.estado_stock !== 'sin_stock' && i.estado_stock !== 'sin_conteo';
+    const barClass = hasCov ? `bar-${i.estado_stock}` : '';
+    const stockDisplay = i.stock_unidades != null
+      ? (i.es_bulto ? `${i.stock_unidades} btos` : `${i.stock_unidades}`)
+      : '—';
+    const diasDisplay = i.dias_de_stock != null ? i.dias_de_stock : '—';
+    const pctText = pct != null ? `${pct}%` : '—';
+
+    return `<tr>
+      <td>${escHtml(i.articulo_original)}</td>
+      <td>${stockDisplay}</td>
+      <td class="col-bar">
+        ${hasCov ? `<div class="bar-wrap"><div class="bar-fill ${barClass}" style="width:${Math.min(pctDisplay/2,100)}%"></div></div>` : ''}
+      </td>
+      <td class="col-cob">${pctText}</td>
+      <td>${diasDisplay}</td>
+      <td><span class="estado-badge estado-${i.estado_stock}">${estadoLabel(i.estado_stock)}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function estadoLabel(e) {
+  return { critico:'Crítico', bajo:'Bajo', normal:'Normal', alto:'Alto', sin_stock:'Sin stock', sin_match:'Sin match', sin_conteo:'Sin conteo' }[e] || e;
+}
+
+function showProviders() {
+  document.getElementById('view-detail').style.display = 'none';
+  document.getElementById('view-providers').style.display = 'block';
+  document.getElementById('headerTitle').textContent = 'Cobertura de Stock';
+  document.getElementById('backBtn').classList.remove('visible');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+loadProviders();
+</script>
+</body>
+</html>
