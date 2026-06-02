@@ -249,6 +249,36 @@
     padding: 10px 16px 4px; font-size: 12px; color: var(--c-sub);
   }
   .date-badge strong { color: var(--c-text); }
+
+  /* IA Button */
+  .ia-btn {
+    margin: 8px 16px 2px; padding: 13px 16px; border-radius: 12px; border: none;
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    color: white; font-size: 15px; font-weight: 700;
+    display: flex; align-items: center; gap: 10px;
+    cursor: pointer; width: calc(100% - 32px); transition: opacity .15s;
+    box-shadow: 0 2px 12px rgba(99,102,241,.35);
+  }
+  .ia-btn:active { opacity: .8; }
+  .ia-btn:disabled { opacity: .55; cursor: default; }
+  .ia-btn .ia-icon { font-size: 20px; }
+  .ia-btn .ia-text { flex: 1; text-align: left; }
+  .ia-btn .ia-sub  { font-size: 11px; font-weight: 500; opacity: .75; display: block; margin-top: 1px; }
+  .ia-btn .ia-arrow { font-size: 16px; opacity: .6; }
+
+  /* IA Progress */
+  .ia-progress {
+    margin: 0 16px; padding: 12px 16px; border-radius: 12px;
+    background: #eef2ff; display: none; align-items: center; gap: 12px;
+  }
+  .ia-progress.visible { display: flex; }
+  .ia-progress .prog-spinner {
+    width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+    border: 2px solid rgba(99,102,241,.2); border-top-color: #4f46e5;
+    animation: spin .7s linear infinite;
+  }
+  .ia-progress .prog-text { font-size: 13px; font-weight: 600; color: #4338ca; }
+  .ia-progress .prog-sub  { font-size: 11px; color: #6366f1; margin-top: 1px; }
 </style>
 </head>
 <body>
@@ -277,6 +307,15 @@
     <div class="date-badge" id="dateBadge"></div>
     <div class="stats-scroll" id="statsBar"></div>
     <div id="alertBanner"></div>
+    <button class="ia-btn" id="iaBtnEl" onclick="runIAMatching()">
+      <span class="ia-icon">🤖</span>
+      <span class="ia-text">Mejorar matching con IA<span class="ia-sub" id="iaBtnSub">Gemini analiza artículos sin match</span></span>
+      <span class="ia-arrow">›</span>
+    </button>
+    <div class="ia-progress" id="iaProgress">
+      <div class="prog-spinner"></div>
+      <div><div class="prog-text" id="iaProgText">Analizando…</div><div class="prog-sub" id="iaProgSub"></div></div>
+    </div>
     <div class="search-wrap">
       <div class="search-box">
         <span class="search-icon">🔍</span>
@@ -335,57 +374,6 @@ async function loadProviders() {
     document.getElementById('provContent').style.display = 'block';
   } catch(e) {
     document.getElementById('loadingProvs').innerHTML = `<div style="color:#dc2626;text-align:center;padding:20px">Error: ${esc(e.message)}</div>`;
-  }
-}
-
-// ── DETAIL ──
-async function loadDetail(provId, provNombre) {
-  document.getElementById('view-providers').style.display = 'none';
-  const dv = document.getElementById('view-detail');
-  dv.style.display = 'block';
-  dv.scrollTop = 0;
-
-  document.getElementById('headerTitle').textContent = provNombre;
-  document.getElementById('headerSub').textContent = '';
-  document.getElementById('backBtn').classList.add('visible');
-  document.getElementById('loadingDetail').style.display = 'flex';
-  document.getElementById('detailContent').style.display = 'none';
-  document.getElementById('searchInput').value = '';
-  activeFilter = '';
-
-  try {
-    const items = await sb(
-      `v_stock_vs_demanda?proveedor=eq.${encodeURIComponent(provNombre)}&select=articulo_original,stock_unidades,es_bulto,fecha_conteo,demanda_por_mes,dias_de_stock,porcentaje_cobertura_30d,estado_stock&limit=1000`
-    );
-
-    allItems = items.sort((a,b) =>
-      (ORDEN_ESTADO[a.estado_stock] ?? 9) - (ORDEN_ESTADO[b.estado_stock] ?? 9) ||
-      (a.dias_de_stock ?? 9999) - (b.dias_de_stock ?? 9999)
-    );
-
-    // Date badge
-    const fechas = items.map(i => i.fecha_conteo).filter(Boolean);
-    if (fechas.length) {
-      const latest = fechas.sort().reverse()[0];
-      document.getElementById('dateBadge').innerHTML =
-        `<span>Último conteo</span><strong>${latest}</strong>`;
-    }
-
-    // Stats
-    renderStats();
-    // Alert banner
-    renderAlert();
-    // Filter chips
-    renderFilterChips();
-    // Items
-    renderItems();
-
-    document.getElementById('headerSub').textContent = `${items.length} artículos`;
-    document.getElementById('loadingDetail').style.display = 'none';
-    document.getElementById('detailContent').style.display = 'block';
-  } catch(e) {
-    document.getElementById('loadingDetail').innerHTML =
-      `<div style="color:#dc2626;padding:24px;text-align:center">Error al cargar: ${esc(e.message)}</div>`;
   }
 }
 
@@ -512,6 +500,176 @@ function showProviders() {
   document.getElementById('headerTitle').textContent = 'Cobertura de Stock';
   document.getElementById('headerSub').textContent = '';
   document.getElementById('backBtn').classList.remove('visible');
+}
+
+// ── IA MATCHING ──
+const WORKER_URL = 'https://frosty-term-20ea.santamariapablodaniel.workers.dev';
+
+let currentProvId   = null;
+let currentProvNom  = null;
+
+async function loadDetail(provId, provNombre) {
+  currentProvId  = provId;
+  currentProvNom = provNombre;
+  _loadDetail(provId, provNombre);
+}
+
+async function runIAMatching() {
+  const btn = document.getElementById('iaBtnEl');
+  const prog = document.getElementById('iaProgress');
+  const progText = document.getElementById('iaProgText');
+  const progSub  = document.getElementById('iaProgSub');
+
+  btn.disabled = true;
+  prog.classList.add('visible');
+  progText.textContent = 'Cargando datos…';
+  progSub.textContent  = '';
+
+  try {
+    // 1. Artículos sin match del proveedor actual
+    const unmapped = await sb(
+      `v_stock_vs_demanda?proveedor=eq.${encodeURIComponent(currentProvNom)}&estado_stock=eq.sin_match&select=articulo_original&limit=500`
+    );
+    if (!unmapped.length) {
+      progText.textContent = '¡Sin artículos sin match!';
+      progSub.textContent = 'Todo está mapeado.';
+      setTimeout(() => { prog.classList.remove('visible'); btn.disabled = false; }, 3000);
+      return;
+    }
+
+    // 2. Mappings ya confirmados como contexto (memoria)
+    const confirmed = await sb('productos_mapping?select=articulo_original,proveedor_id,descripcion_en_pedidos&limit=500');
+    const memCtx = confirmed.map(m => `  [${m.proveedor_id}] ${m.articulo_original} → ${m.descripcion_en_pedidos}`).join('\n');
+
+    // 3. Descripciones de pedidos
+    const descs = await sb('items_pedido?select=descripcion&limit=5000');
+    const uniqueDescs = [...new Set(descs.map(d => d.descripcion))].sort();
+    const descList = uniqueDescs.map(d => `  ${d}`).join('\n');
+
+    // 4. Llamar Gemini en batches de 40
+    const arts = unmapped.map(u => u.articulo_original);
+    const BATCH = 40;
+    const total = arts.length;
+    let allMatches = [];
+    let processed = 0;
+
+    for (let i = 0; i < arts.length; i += BATCH) {
+      const batch = arts.slice(i, i + BATCH);
+      processed += batch.length;
+      progText.textContent = `Gemini analizando… ${processed}/${total}`;
+      progSub.textContent  = `${Math.round(processed/total*100)}% completado`;
+
+      const artList = batch.map(a => `  ${a}`).join('\n');
+      const sys = 'Sos experto en matching de nombres de productos de distribuidora argentina. RESPONDÉ SOLO JSON array válido sin markdown.';
+      const prompt = `## Mappings confirmados (memoria):\n${memCtx}\n\n## Patrones: pedidos agregan marca al final (MAKE, ROMYL, etc.), "GRS."="G", "X " decorativo.\nProveedor: ${currentProvNom}\n\n## Artículos SIN match:\n${artList}\n\n## Nombres en pedidos:\n${descList}\n\nconfianza 0.9+=casi idéntico | 0.7-0.89=probable | omitir si <0.70\nSOLO JSON: [{"stock":"...","pedido":"...","confianza":0.85}]`;
+
+      try {
+        const r = await fetch(WORKER_URL, {
+          method: 'POST',
+          body: JSON.stringify({ sys, prompt })
+        });
+        const data = await r.json();
+        let text = (data.text || '').replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        const parsed = JSON.parse(text);
+        allMatches = allMatches.concat(parsed);
+      } catch(e) { console.warn('Batch error:', e); }
+
+      if (i + BATCH < arts.length) await new Promise(r => setTimeout(r, 1200));
+    }
+
+    // 5. Insertar mappings nuevos
+    progText.textContent = `Guardando ${allMatches.length} mappings…`;
+    progSub.textContent  = '';
+
+    const rows = allMatches
+      .filter(m => m.stock && m.pedido && m.confianza >= 0.70)
+      .map(m => ({
+        articulo_original: m.stock,
+        proveedor_id: currentProvId,
+        descripcion_en_pedidos: m.pedido,
+        source: 'gemini',
+        confidence: m.confianza
+      }));
+
+    if (rows.length) {
+      await fetch(`${SB_URL}/rest/v1/productos_mapping`, {
+        method: 'POST',
+        headers: {
+          apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`,
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=ignore-duplicates,return=minimal'
+        },
+        body: JSON.stringify(rows)
+      });
+    }
+
+    progText.textContent = `✓ ${rows.length} nuevos mappings guardados`;
+    progSub.textContent  = 'Recargando datos…';
+
+    // 6. Recargar datos del proveedor
+    setTimeout(() => {
+      prog.classList.remove('visible');
+      btn.disabled = false;
+      document.getElementById('iaBtnSub').textContent = `Última mejora: ${new Date().toLocaleTimeString('es-AR')}`;
+      _loadDetail(currentProvId, currentProvNom);
+    }, 1800);
+
+  } catch(e) {
+    progText.textContent = 'Error: ' + e.message;
+    progSub.textContent  = '';
+    setTimeout(() => { prog.classList.remove('visible'); btn.disabled = false; }, 4000);
+  }
+}
+
+// rename original loadDetail to _loadDetail
+async function _loadDetail(provId, provNombre) {
+  document.getElementById('view-providers').style.display = 'none';
+  const dv = document.getElementById('view-detail');
+  dv.style.display = 'block';
+  dv.scrollTop = 0;
+
+  document.getElementById('headerTitle').textContent = provNombre;
+  document.getElementById('headerSub').textContent = '';
+  document.getElementById('backBtn').classList.add('visible');
+  document.getElementById('loadingDetail').style.display = 'flex';
+  document.getElementById('detailContent').style.display = 'none';
+  document.getElementById('searchInput').value = '';
+  activeFilter = '';
+
+  try {
+    const items = await sb(
+      `v_stock_vs_demanda?proveedor=eq.${encodeURIComponent(provNombre)}&select=articulo_original,stock_unidades,es_bulto,fecha_conteo,demanda_por_mes,dias_de_stock,porcentaje_cobertura_30d,estado_stock&limit=1000`
+    );
+
+    allItems = items.sort((a,b) =>
+      (ORDEN_ESTADO[a.estado_stock] ?? 9) - (ORDEN_ESTADO[b.estado_stock] ?? 9) ||
+      (a.dias_de_stock ?? 9999) - (b.dias_de_stock ?? 9999)
+    );
+
+    const fechas = items.map(i => i.fecha_conteo).filter(Boolean);
+    if (fechas.length) {
+      const latest = fechas.sort().reverse()[0];
+      document.getElementById('dateBadge').innerHTML =
+        `<span>Último conteo</span><strong>${latest}</strong>`;
+    }
+
+    const sinMatchCount = items.filter(i => i.estado_stock === 'sin_match').length;
+    document.getElementById('iaBtnSub').textContent = sinMatchCount > 0
+      ? `${sinMatchCount} artículos sin match para analizar`
+      : '¡Todo mapeado! Podés re-analizar igual';
+
+    renderStats();
+    renderAlert();
+    renderFilterChips();
+    renderItems();
+
+    document.getElementById('headerSub').textContent = `${items.length} artículos`;
+    document.getElementById('loadingDetail').style.display = 'none';
+    document.getElementById('detailContent').style.display = 'block';
+  } catch(e) {
+    document.getElementById('loadingDetail').innerHTML =
+      `<div style="color:#dc2626;padding:24px;text-align:center">Error al cargar: ${esc(e.message)}</div>`;
+  }
 }
 
 loadProviders();
