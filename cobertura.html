@@ -2,279 +2,522 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Cobertura de Stock</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cobertura">
+<meta name="theme-color" content="#0f172a">
+<link rel="apple-touch-icon" href="./icon-192.png">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a1a; }
+  :root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --header-h: calc(56px + var(--safe-top));
+    --c-bg: #f0f2f5;
+    --c-card: #ffffff;
+    --c-text: #0f172a;
+    --c-sub: #64748b;
+    --c-border: #e2e8f0;
+    --c-header: #0f172a;
+  }
 
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    height: 100%; width: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    background: var(--c-bg);
+    color: var(--c-text);
+    overflow: hidden;
+    position: fixed;
+  }
+
+  /* ── HEADER ── */
   header {
-    background: #1e293b; color: white; padding: 14px 16px;
-    display: flex; align-items: center; gap: 10px;
-    position: sticky; top: 0; z-index: 100;
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: var(--c-header);
+    padding-top: var(--safe-top);
+    height: var(--header-h);
+    display: flex; align-items: center;
+    padding-left: 12px; padding-right: 16px;
+    gap: 8px;
   }
-  header h1 { font-size: 17px; font-weight: 600; }
-  header .back-btn {
-    background: none; border: none; color: white; font-size: 20px;
-    cursor: pointer; padding: 0 4px; display: none;
+  .back-btn {
+    display: none; align-items: center; justify-content: center;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(255,255,255,0.12); border: none; color: white;
+    font-size: 20px; cursor: pointer; flex-shrink: 0;
+    transition: background .15s;
   }
-  header .back-btn.visible { display: block; }
+  .back-btn:active { background: rgba(255,255,255,0.22); }
+  .back-btn.visible { display: flex; }
+  .header-title {
+    font-size: 17px; font-weight: 700; color: white; flex: 1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    letter-spacing: -0.3px;
+  }
+  .header-sub {
+    font-size: 12px; color: rgba(255,255,255,0.5);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .header-text { flex: 1; min-width: 0; }
 
-  /* PROVIDER LIST */
-  #view-providers { padding: 12px; }
-  .prov-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px;
+  /* ── SCROLL CONTAINER ── */
+  .scroll-wrap {
+    position: absolute; top: var(--header-h); left: 0; right: 0; bottom: 0;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(20px + var(--safe-bottom));
   }
+
+  /* ── LOADING / EMPTY ── */
+  .loading, .empty {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 60px 24px; gap: 12px;
+    color: var(--c-sub); font-size: 15px;
+  }
+  .spinner {
+    width: 36px; height: 36px; border-radius: 50%;
+    border: 3px solid rgba(0,0,0,.1); border-top-color: #3b82f6;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── PROVIDER LIST ── */
+  #view-providers { padding: 12px 16px; }
+  .section-title {
+    font-size: 12px; font-weight: 700; color: var(--c-sub);
+    text-transform: uppercase; letter-spacing: 0.8px;
+    padding: 8px 4px 4px;
+  }
+  .prov-list { display: flex; flex-direction: column; gap: 1px; }
   .prov-card {
-    background: white; border-radius: 10px; padding: 14px 12px;
-    cursor: pointer; border: 2px solid transparent;
-    transition: border-color .15s, box-shadow .15s;
-    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    background: var(--c-card); padding: 14px 16px;
+    display: flex; align-items: center; gap: 14px;
+    cursor: pointer; transition: opacity .1s;
+    border-radius: 0;
   }
-  .prov-card:hover { border-color: #3b82f6; box-shadow: 0 2px 8px rgba(59,130,246,.2); }
-  .prov-card .name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-  .prov-card .count { font-size: 12px; color: #64748b; }
+  .prov-list .prov-card:first-child { border-radius: 14px 14px 0 0; }
+  .prov-list .prov-card:last-child  { border-radius: 0 0 14px 14px; }
+  .prov-list .prov-card:only-child  { border-radius: 14px; }
+  .prov-card:active { opacity: .55; }
+  .prov-avatar {
+    width: 42px; height: 42px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 800; color: white;
+  }
+  .prov-avatar.bg-teal   { background: linear-gradient(135deg, #0d9488, #14b8a6); }
+  .prov-avatar.bg-blue   { background: linear-gradient(135deg, #2563eb, #3b82f6); }
+  .prov-avatar.bg-violet { background: linear-gradient(135deg, #7c3aed, #a78bfa); }
+  .prov-avatar.bg-amber  { background: linear-gradient(135deg, #d97706, #fbbf24); }
+  .prov-avatar.bg-rose   { background: linear-gradient(135deg, #e11d48, #fb7185); }
+  .prov-avatar.bg-slate  { background: linear-gradient(135deg, #475569, #94a3b8); }
+  .prov-info { flex: 1; min-width: 0; }
+  .prov-name { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+  .prov-hint { font-size: 13px; color: var(--c-sub); margin-top: 1px; }
+  .prov-arrow { color: #c7cdd6; font-size: 14px; }
 
-  /* DETAIL VIEW */
+  /* ── DETAIL ── */
   #view-detail { display: none; }
-  .detail-header { padding: 12px 16px; background: white; border-bottom: 1px solid #e2e8f0; }
-  .detail-header h2 { font-size: 18px; font-weight: 700; }
-  .detail-header .fecha { font-size: 12px; color: #94a3b8; margin-top: 2px; }
 
-  .stats-bar {
-    display: flex; gap: 8px; padding: 12px 16px; flex-wrap: wrap;
+  /* Stats row */
+  .stats-scroll {
+    display: flex; gap: 10px; padding: 12px 16px; overflow-x: auto;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
   }
-  .stat-chip {
-    padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  .stats-scroll::-webkit-scrollbar { display: none; }
+  .stat-pill {
+    flex-shrink: 0; padding: 8px 14px; border-radius: 24px;
+    font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; gap: 5px;
+    cursor: pointer; white-space: nowrap;
+    transition: transform .1s, opacity .1s;
   }
-  .chip-critico  { background: #fee2e2; color: #991b1b; }
-  .chip-bajo     { background: #ffedd5; color: #9a3412; }
-  .chip-normal   { background: #dcfce7; color: #166534; }
-  .chip-alto     { background: #dbeafe; color: #1e40af; }
-  .chip-sin_stock { background: #f1f5f9; color: #475569; }
-  .chip-sin_match { background: #f8fafc; color: #94a3b8; }
-  .chip-sin_conteo { background: #faf5ff; color: #6b21a8; }
+  .stat-pill:active { transform: scale(.95); opacity: .8; }
+  .pill-critico   { background: #fee2e2; color: #991b1b; }
+  .pill-bajo      { background: #ffedd5; color: #9a3412; }
+  .pill-normal    { background: #dcfce7; color: #166534; }
+  .pill-alto      { background: #dbeafe; color: #1e40af; }
+  .pill-sin_stock  { background: #f1f5f9; color: #475569; }
+  .pill-sin_match  { background: #f8fafc; color: #94a3b8; border: 1px solid #e2e8f0; }
+  .pill-sin_conteo { background: #fdf4ff; color: #7e22ce; }
+  .pill-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .dot-critico   { background: #dc2626; }
+  .dot-bajo      { background: #f97316; }
+  .dot-normal    { background: #16a34a; }
+  .dot-alto      { background: #2563eb; }
+  .dot-sin_stock  { background: #94a3b8; }
+  .dot-sin_match  { background: #cbd5e1; }
+  .dot-sin_conteo { background: #a855f7; }
 
-  .filter-bar {
-    padding: 8px 16px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  /* Search bar */
+  .search-wrap {
+    padding: 0 16px 10px;
   }
-  .filter-bar select, .filter-bar input {
-    padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px;
-    font-size: 13px; background: white; outline: none;
+  .search-box {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--c-card); border-radius: 12px; padding: 0 14px;
+    height: 44px; box-shadow: 0 1px 3px rgba(0,0,0,.07);
   }
-  .filter-bar input { flex: 1; min-width: 140px; }
-
-  .items-table { padding: 0 16px 80px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; padding: 8px 10px; background: #f8fafc; color: #64748b; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e2e8f0; position: sticky; top: 56px; z-index: 10; }
-  td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
-  tr:last-child td { border-bottom: none; }
-
-  .estado-badge {
-    display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; white-space: nowrap;
+  .search-box input {
+    flex: 1; border: none; background: transparent; outline: none;
+    font-size: 16px; color: var(--c-text); font-family: inherit;
   }
-  .estado-critico   { background: #fee2e2; color: #991b1b; }
-  .estado-bajo      { background: #ffedd5; color: #9a3412; }
-  .estado-normal    { background: #dcfce7; color: #166534; }
-  .estado-alto      { background: #dbeafe; color: #1e40af; }
-  .estado-sin_stock  { background: #f1f5f9; color: #475569; }
-  .estado-sin_match  { background: #f8fafc; color: #94a3b8; }
-  .estado-sin_conteo { background: #faf5ff; color: #6b21a8; }
+  .search-box input::placeholder { color: #adb5bd; }
+  .search-icon { color: #adb5bd; font-size: 16px; }
 
-  .bar-wrap { width: 80px; background: #f1f5f9; border-radius: 4px; height: 6px; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 4px; transition: width .3s; }
-  .bar-critico { background: #ef4444; }
-  .bar-bajo    { background: #f97316; }
-  .bar-normal  { background: #22c55e; }
-  .bar-alto    { background: #3b82f6; }
-
-  .loading { text-align: center; padding: 40px; color: #94a3b8; font-size: 14px; }
-  .empty   { text-align: center; padding: 40px; color: #cbd5e1; font-size: 14px; }
-
-  @media (max-width: 480px) {
-    .col-bar, .col-cob { display: none; }
+  /* Filter chips */
+  .filter-scroll {
+    display: flex; gap: 8px; padding: 0 16px 10px; overflow-x: auto;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
   }
+  .filter-scroll::-webkit-scrollbar { display: none; }
+  .filter-chip {
+    flex-shrink: 0; padding: 6px 14px; border-radius: 20px; border: none;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: transform .1s;
+    background: var(--c-card); color: var(--c-sub);
+    box-shadow: 0 1px 2px rgba(0,0,0,.07);
+  }
+  .filter-chip:active { transform: scale(.94); }
+  .filter-chip.active { background: #0f172a; color: white; }
+
+  /* Article cards */
+  .items-list { padding: 0 16px; display: flex; flex-direction: column; gap: 1px; }
+  .item-card {
+    background: var(--c-card); padding: 14px 16px;
+    display: grid; grid-template-columns: 1fr auto;
+    align-items: center; gap: 10px;
+    border-radius: 0;
+  }
+  .items-list .item-card:first-child { border-radius: 14px 14px 0 0; }
+  .items-list .item-card:last-child  { border-radius: 0 0 14px 14px; }
+  .items-list .item-card:only-child  { border-radius: 14px; }
+  .item-name {
+    font-size: 15px; font-weight: 600; letter-spacing: -0.1px;
+    line-height: 1.3;
+  }
+  .item-meta {
+    display: flex; align-items: center; gap: 8px; margin-top: 5px;
+    flex-wrap: wrap;
+  }
+  .item-stock { font-size: 13px; color: var(--c-sub); }
+  .item-dem   { font-size: 12px; color: #94a3b8; }
+
+  /* Coverage bar */
+  .cov-col { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; min-width: 72px; }
+  .cov-dias { font-size: 22px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+  .cov-label { font-size: 10px; font-weight: 600; color: var(--c-sub); text-transform: uppercase; letter-spacing: 0.4px; }
+  .cov-bar { width: 72px; height: 5px; border-radius: 3px; background: #f1f5f9; overflow: hidden; }
+  .cov-fill { height: 100%; border-radius: 3px; transition: width .4s ease; }
+
+  /* Estado color coding */
+  .estado-critico  .cov-dias { color: #dc2626; }
+  .estado-bajo     .cov-dias { color: #ea580c; }
+  .estado-normal   .cov-dias { color: #16a34a; }
+  .estado-alto     .cov-dias { color: #2563eb; }
+  .estado-sin_stock .cov-dias { color: #94a3b8; }
+  .estado-sin_match .item-name { color: #94a3b8; }
+  .fill-critico { background: #dc2626; }
+  .fill-bajo    { background: #f97316; }
+  .fill-normal  { background: #22c55e; }
+  .fill-alto    { background: #3b82f6; }
+  .fill-sin_stock { background: #cbd5e1; }
+
+  /* Section separator */
+  .section-sep {
+    font-size: 12px; font-weight: 700; color: var(--c-sub);
+    text-transform: uppercase; letter-spacing: 0.8px;
+    padding: 14px 16px 4px;
+  }
+
+  /* Alert banner for critical items */
+  .alert-banner {
+    margin: 0 16px 10px; padding: 12px 16px; border-radius: 12px;
+    background: #fef2f2; border-left: 4px solid #dc2626;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .alert-banner .ab-icon { font-size: 20px; }
+  .alert-banner .ab-text { font-size: 13px; font-weight: 600; color: #991b1b; }
+  .alert-banner .ab-sub  { font-size: 12px; color: #dc2626; margin-top: 2px; }
+
+  /* Date badge */
+  .date-badge {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px 4px; font-size: 12px; color: var(--c-sub);
+  }
+  .date-badge strong { color: var(--c-text); }
 </style>
 </head>
 <body>
 
 <header>
-  <button class="back-btn" id="backBtn" onclick="showProviders()">←</button>
-  <h1 id="headerTitle">Cobertura de Stock</h1>
+  <button class="back-btn" id="backBtn" onclick="showProviders()">‹</button>
+  <div class="header-text">
+    <div class="header-title" id="headerTitle">Cobertura de Stock</div>
+    <div class="header-sub" id="headerSub"></div>
+  </div>
 </header>
 
-<div id="view-providers">
-  <div class="loading" id="loadingProvs">Cargando proveedores…</div>
-  <div class="prov-grid" id="provGrid"></div>
+<!-- PROVIDERS VIEW -->
+<div class="scroll-wrap" id="view-providers">
+  <div class="loading" id="loadingProvs"><div class="spinner"></div>Cargando proveedores…</div>
+  <div id="provContent" style="display:none">
+    <div class="section-title" style="padding:12px 20px 4px">Proveedores</div>
+    <div class="prov-list" id="provList"></div>
+  </div>
 </div>
 
-<div id="view-detail">
-  <div class="detail-header">
-    <h2 id="detailTitle"></h2>
-    <div class="fecha" id="detailFecha"></div>
-  </div>
-  <div class="stats-bar" id="statsBar"></div>
-  <div class="filter-bar">
-    <input type="text" id="searchInput" placeholder="Buscar artículo…" oninput="renderTable()">
-    <select id="filterEstado" onchange="renderTable()">
-      <option value="">Todos</option>
-      <option value="critico">Crítico</option>
-      <option value="bajo">Bajo</option>
-      <option value="normal">Normal</option>
-      <option value="alto">Alto</option>
-      <option value="sin_stock">Sin stock</option>
-      <option value="sin_match">Sin match</option>
-    </select>
-  </div>
-  <div class="items-table">
-    <div class="loading" id="loadingItems" style="display:none">Cargando…</div>
-    <table id="itemsTable" style="display:none">
-      <thead>
-        <tr>
-          <th>Artículo</th>
-          <th>Stock</th>
-          <th class="col-bar">Cobertura</th>
-          <th class="col-cob">%</th>
-          <th>Días</th>
-          <th>Estado</th>
-        </tr>
-      </thead>
-      <tbody id="itemsTbody"></tbody>
-    </table>
-    <div class="empty" id="emptyMsg" style="display:none">Sin resultados</div>
+<!-- DETAIL VIEW -->
+<div class="scroll-wrap" id="view-detail">
+  <div class="loading" id="loadingDetail"><div class="spinner"></div></div>
+  <div id="detailContent" style="display:none">
+    <div class="date-badge" id="dateBadge"></div>
+    <div class="stats-scroll" id="statsBar"></div>
+    <div id="alertBanner"></div>
+    <div class="search-wrap">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="search" id="searchInput" placeholder="Buscar artículo…" oninput="renderItems()" autocorrect="off" autocapitalize="off">
+      </div>
+    </div>
+    <div class="filter-scroll" id="filterChips"></div>
+    <div id="itemsContainer"></div>
   </div>
 </div>
 
 <script>
-const SB_URL = 'https://gjeyvbidomxzofcdycya.supabase.co';
+const SB_URL  = 'https://gjeyvbidomxzofcdycya.supabase.co';
 const SB_ANON = 'sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT';
 
 let allItems = [];
+let activeFilter = '';
 
-async function sbGet(path) {
+const COLORS = ['bg-teal','bg-blue','bg-violet','bg-amber','bg-rose','bg-slate'];
+const ESTADO_LABEL = {
+  critico:'Crítico', bajo:'Bajo', normal:'Normal', alto:'Alto',
+  sin_stock:'Sin stock', sin_match:'Sin match', sin_conteo:'Sin conteo'
+};
+const ORDEN_ESTADO = { critico:0, sin_stock:1, bajo:2, normal:3, alto:4, sin_match:5, sin_conteo:6 };
+
+async function sb(path) {
   const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, Accept: 'application/json' }
+    headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` }
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 
-async function loadProviders() {
-  const provs = await sbGet('proveedores?activo=eq.true&order=nombre&select=id,nombre');
-  document.getElementById('loadingProvs').style.display = 'none';
-  const grid = document.getElementById('provGrid');
-  grid.innerHTML = provs.map(p => `
-    <div class="prov-card" onclick="loadDetail('${p.id}','${escHtml(p.nombre)}')">
-      <div class="name">${escHtml(p.nombre)}</div>
-      <div class="count">ver cobertura →</div>
-    </div>
-  `).join('');
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// ── PROVIDERS ──
+async function loadProviders() {
+  try {
+    const provs = await sb('proveedores?activo=eq.true&order=nombre&select=id,nombre');
+    document.getElementById('loadingProvs').style.display = 'none';
+    const list = document.getElementById('provList');
+    list.innerHTML = provs.map((p, i) => {
+      const col = COLORS[i % COLORS.length];
+      const letter = p.nombre.charAt(0).toUpperCase();
+      return `<div class="prov-card" onclick="loadDetail('${p.id}','${esc(p.nombre)}')">
+        <div class="prov-avatar ${col}">${letter}</div>
+        <div class="prov-info">
+          <div class="prov-name">${esc(p.nombre)}</div>
+          <div class="prov-hint">Ver cobertura</div>
+        </div>
+        <div class="prov-arrow">›</div>
+      </div>`;
+    }).join('');
+    document.getElementById('provContent').style.display = 'block';
+  } catch(e) {
+    document.getElementById('loadingProvs').innerHTML = `<div style="color:#dc2626;text-align:center;padding:20px">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+// ── DETAIL ──
 async function loadDetail(provId, provNombre) {
   document.getElementById('view-providers').style.display = 'none';
-  document.getElementById('view-detail').style.display = 'block';
+  const dv = document.getElementById('view-detail');
+  dv.style.display = 'block';
+  dv.scrollTop = 0;
+
   document.getElementById('headerTitle').textContent = provNombre;
+  document.getElementById('headerSub').textContent = '';
   document.getElementById('backBtn').classList.add('visible');
-  document.getElementById('detailTitle').textContent = provNombre;
-  document.getElementById('detailFecha').textContent = '';
-  document.getElementById('statsBar').innerHTML = '';
-  document.getElementById('loadingItems').style.display = 'block';
-  document.getElementById('itemsTable').style.display = 'none';
-  document.getElementById('emptyMsg').style.display = 'none';
+  document.getElementById('loadingDetail').style.display = 'flex';
+  document.getElementById('detailContent').style.display = 'none';
   document.getElementById('searchInput').value = '';
-  document.getElementById('filterEstado').value = '';
+  activeFilter = '';
 
-  const items = await sbGet(
-    `v_stock_vs_demanda?proveedor=eq.${encodeURIComponent(provNombre)}&select=articulo_original,stock_unidades,es_bulto,fecha_conteo,demanda_por_mes,dias_de_stock,porcentaje_cobertura_30d,estado_stock&limit=1000`
-  );
+  try {
+    const items = await sb(
+      `v_stock_vs_demanda?proveedor=eq.${encodeURIComponent(provNombre)}&select=articulo_original,stock_unidades,es_bulto,fecha_conteo,demanda_por_mes,dias_de_stock,porcentaje_cobertura_30d,estado_stock&limit=1000`
+    );
 
-  allItems = items;
-  document.getElementById('loadingItems').style.display = 'none';
+    allItems = items.sort((a,b) =>
+      (ORDEN_ESTADO[a.estado_stock] ?? 9) - (ORDEN_ESTADO[b.estado_stock] ?? 9) ||
+      (a.dias_de_stock ?? 9999) - (b.dias_de_stock ?? 9999)
+    );
 
-  if (items.length > 0 && items[0].fecha_conteo) {
-    document.getElementById('detailFecha').textContent =
-      'Último conteo: ' + items[0].fecha_conteo;
+    // Date badge
+    const fechas = items.map(i => i.fecha_conteo).filter(Boolean);
+    if (fechas.length) {
+      const latest = fechas.sort().reverse()[0];
+      document.getElementById('dateBadge').innerHTML =
+        `<span>Último conteo</span><strong>${latest}</strong>`;
+    }
+
+    // Stats
+    renderStats();
+    // Alert banner
+    renderAlert();
+    // Filter chips
+    renderFilterChips();
+    // Items
+    renderItems();
+
+    document.getElementById('headerSub').textContent = `${items.length} artículos`;
+    document.getElementById('loadingDetail').style.display = 'none';
+    document.getElementById('detailContent').style.display = 'block';
+  } catch(e) {
+    document.getElementById('loadingDetail').innerHTML =
+      `<div style="color:#dc2626;padding:24px;text-align:center">Error al cargar: ${esc(e.message)}</div>`;
   }
-
-  renderStats(items);
-  renderTable();
 }
 
-function renderStats(items) {
+function renderStats() {
   const counts = {};
-  items.forEach(i => { counts[i.estado_stock] = (counts[i.estado_stock] || 0) + 1; });
-  const order = ['critico','bajo','normal','alto','sin_stock','sin_match','sin_conteo'];
-  const labels = { critico:'Crítico', bajo:'Bajo', normal:'Normal', alto:'Alto', sin_stock:'Sin stock', sin_match:'Sin match', sin_conteo:'Sin conteo' };
-  const bar = document.getElementById('statsBar');
-  bar.innerHTML = order.filter(k => counts[k]).map(k =>
-    `<span class="stat-chip chip-${k}" onclick="filterBy('${k}')">${labels[k]}: ${counts[k]}</span>`
-  ).join('');
+  allItems.forEach(i => counts[i.estado_stock] = (counts[i.estado_stock]||0)+1);
+  const order = ['critico','bajo','normal','alto','sin_stock','sin_conteo','sin_match'];
+  document.getElementById('statsBar').innerHTML = order
+    .filter(k => counts[k])
+    .map(k => `<div class="stat-pill pill-${k}" onclick="setFilter('${k}')">
+      <div class="pill-dot dot-${k}"></div>
+      ${ESTADO_LABEL[k]} ${counts[k]}
+    </div>`).join('');
 }
 
-function filterBy(estado) {
-  document.getElementById('filterEstado').value = estado;
-  renderTable();
+function renderAlert() {
+  const criticos = allItems.filter(i => i.estado_stock === 'critico')
+    .sort((a,b) => (b.demanda_por_mes||0)-(a.demanda_por_mes||0))
+    .slice(0,3);
+  const banner = document.getElementById('alertBanner');
+  if (!criticos.length) { banner.innerHTML = ''; return; }
+  const topNombres = criticos.map(i =>
+    `<strong>${esc(i.articulo_original)}</strong> (${i.dias_de_stock}d)`
+  ).join(', ');
+  banner.innerHTML = `<div class="alert-banner">
+    <div class="ab-icon">🚨</div>
+    <div>
+      <div class="ab-text">${criticos.length} artículo${criticos.length>1?'s':''} crítico${criticos.length>1?'s':''}</div>
+      <div class="ab-sub">${topNombres}</div>
+    </div>
+  </div>`;
 }
 
-function renderTable() {
+function renderFilterChips() {
+  const estados = [...new Set(allItems.map(i => i.estado_stock))];
+  const order = ['critico','bajo','normal','alto','sin_stock','sin_conteo','sin_match'];
+  const sorted = order.filter(e => estados.includes(e));
+  const chips = document.getElementById('filterChips');
+  chips.innerHTML = `<button class="filter-chip active" data-f="" onclick="setFilter('')">Todos</button>` +
+    sorted.map(e => `<button class="filter-chip" data-f="${e}" onclick="setFilter('${e}')">${ESTADO_LABEL[e]}</button>`).join('');
+}
+
+function setFilter(estado) {
+  activeFilter = estado;
+  document.querySelectorAll('.filter-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.f === estado);
+  });
+  renderItems();
+}
+
+function renderItems() {
   const q = document.getElementById('searchInput').value.toLowerCase().trim();
-  const est = document.getElementById('filterEstado').value;
-  const filtered = allItems.filter(i => {
-    if (est && i.estado_stock !== est) return false;
+  let filtered = allItems.filter(i => {
+    if (activeFilter && i.estado_stock !== activeFilter) return false;
     if (q && !i.articulo_original.toLowerCase().includes(q)) return false;
     return true;
   });
 
-  const tbody = document.getElementById('itemsTbody');
-  if (filtered.length === 0) {
-    document.getElementById('itemsTable').style.display = 'none';
-    document.getElementById('emptyMsg').style.display = 'block';
+  const container = document.getElementById('itemsContainer');
+  if (!filtered.length) {
+    container.innerHTML = '<div class="empty">Sin resultados</div>';
     return;
   }
-  document.getElementById('emptyMsg').style.display = 'none';
-  document.getElementById('itemsTable').style.display = 'table';
 
-  tbody.innerHTML = filtered.map(i => {
-    const pct = i.porcentaje_cobertura_30d;
-    const pctDisplay = pct != null ? Math.min(pct, 200) : 0;
-    const hasCov = pct != null && i.estado_stock !== 'sin_match' && i.estado_stock !== 'sin_stock' && i.estado_stock !== 'sin_conteo';
-    const barClass = hasCov ? `bar-${i.estado_stock}` : '';
-    const stockDisplay = i.stock_unidades != null
-      ? (i.es_bulto ? `${i.stock_unidades} btos` : `${i.stock_unidades}`)
-      : '—';
-    const diasDisplay = i.dias_de_stock != null ? i.dias_de_stock : '—';
-    const pctText = pct != null ? `${pct}%` : '—';
+  // Group by section
+  const withData   = filtered.filter(i => !['sin_match','sin_conteo'].includes(i.estado_stock));
+  const sinMatch   = filtered.filter(i => i.estado_stock === 'sin_match' || i.estado_stock === 'sin_conteo');
 
-    return `<tr>
-      <td>${escHtml(i.articulo_original)}</td>
-      <td>${stockDisplay}</td>
-      <td class="col-bar">
-        ${hasCov ? `<div class="bar-wrap"><div class="bar-fill ${barClass}" style="width:${Math.min(pctDisplay/2,100)}%"></div></div>` : ''}
-      </td>
-      <td class="col-cob">${pctText}</td>
-      <td>${diasDisplay}</td>
-      <td><span class="estado-badge estado-${i.estado_stock}">${estadoLabel(i.estado_stock)}</span></td>
-    </tr>`;
-  }).join('');
+  let html = '';
+  if (withData.length) {
+    html += `<div class="section-sep">Con datos de demanda (${withData.length})</div>`;
+    html += '<div class="items-list">' + withData.map(i => renderCard(i)).join('') + '</div>';
+  }
+  if (sinMatch.length) {
+    html += `<div class="section-sep" style="margin-top:8px">Sin match de demanda (${sinMatch.length})</div>`;
+    html += '<div class="items-list">' + sinMatch.map(i => renderCard(i)).join('') + '</div>';
+  }
+  container.innerHTML = html;
 }
 
-function estadoLabel(e) {
-  return { critico:'Crítico', bajo:'Bajo', normal:'Normal', alto:'Alto', sin_stock:'Sin stock', sin_match:'Sin match', sin_conteo:'Sin conteo' }[e] || e;
+function renderCard(i) {
+  const estado = i.estado_stock;
+  const hasData = !['sin_match','sin_conteo'].includes(estado);
+
+  let diasHtml = '';
+  if (hasData && i.dias_de_stock != null) {
+    const pct = Math.min((i.porcentaje_cobertura_30d ?? 0), 200);
+    const fillW = Math.min(pct / 2, 100);
+    diasHtml = `<div class="cov-col">
+      <div class="cov-dias">${i.dias_de_stock}</div>
+      <div class="cov-label">días</div>
+      <div class="cov-bar"><div class="cov-fill fill-${estado}" style="width:${fillW}%"></div></div>
+    </div>`;
+  } else if (estado === 'sin_stock' && hasData) {
+    diasHtml = `<div class="cov-col">
+      <div class="cov-dias" style="color:#94a3b8">0</div>
+      <div class="cov-label">días</div>
+      <div class="cov-bar"><div class="cov-fill fill-sin_stock" style="width:0%"></div></div>
+    </div>`;
+  } else {
+    diasHtml = `<div class="cov-col"><div class="cov-label" style="color:#cbd5e1">${ESTADO_LABEL[estado]}</div></div>`;
+  }
+
+  const stockStr = i.stock_unidades != null
+    ? (i.es_bulto ? `${i.stock_unidades} btos` : `${i.stock_unidades} u`)
+    : '—';
+  const demStr = i.demanda_por_mes ? `${i.demanda_por_mes}/mes` : '';
+
+  return `<div class="item-card estado-${estado}">
+    <div>
+      <div class="item-name">${esc(i.articulo_original)}</div>
+      <div class="item-meta">
+        <span class="item-stock">Stock: ${stockStr}</span>
+        ${demStr ? `<span class="item-dem">dem. ${demStr}</span>` : ''}
+      </div>
+    </div>
+    ${diasHtml}
+  </div>`;
 }
 
 function showProviders() {
   document.getElementById('view-detail').style.display = 'none';
   document.getElementById('view-providers').style.display = 'block';
   document.getElementById('headerTitle').textContent = 'Cobertura de Stock';
+  document.getElementById('headerSub').textContent = '';
   document.getElementById('backBtn').classList.remove('visible');
 }
 
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
 loadProviders();
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+}
 </script>
 </body>
 </html>
