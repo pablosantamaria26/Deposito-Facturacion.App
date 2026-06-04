@@ -315,6 +315,46 @@
   }
   .btn-wa:hover { border-color: #25D366; color: #25D366; }
 
+  /* Botón sustituir — ✏️ al lado del ⚠️ */
+  .btn-sust {
+    flex-shrink: 0;
+    width: 24px; height: 24px; padding: 0;
+    border-radius: 6px; border: 1.5px solid var(--border); background: transparent;
+    font-size: 13px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.1s, background 0.1s;
+  }
+  .btn-sust:hover { border-color: var(--prox); background: var(--prox-bg); }
+
+  /* Item de reemplazo */
+  .item-f.reemplazo {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    border-left-color: #3b82f6 !important;
+  }
+  .reemplazo-label {
+    font-size: 10px; font-weight: 900; letter-spacing: .5px; flex-shrink: 0;
+    color: #2563eb; background: #dbeafe; border: 1px solid #93c5fd;
+    border-radius: 4px; padding: 1px 6px; white-space: nowrap;
+  }
+  .reemplazo-origin {
+    font-size: 11px; color: var(--muted); font-style: italic; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* Acciones para pedido ya facturado (copiar + WA vendedor) */
+  .acciones-facturado { display: flex; gap: 10px; margin-bottom: 10px; }
+  .btn-accion-fact {
+    flex: 1; padding: 11px 8px; border-radius: 12px;
+    border: 2px solid var(--border); background: var(--bg);
+    font-size: 14px; font-weight: 800; color: var(--muted);
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+  .btn-accion-fact.copiar:hover  { border-color: var(--prox); color: var(--prox); background: var(--prox-bg); }
+  .btn-accion-fact.wa-vend:hover { border-color: #25D366; color: #25D366; background: #f0fdf4; }
+  .footer-stats .rem-count { color: #2563eb; font-size: 14px; font-weight: 700; }
+
   /* Panel IA flotante */
   #iaPanel {
     display: none; position: absolute;
@@ -580,6 +620,9 @@
     body:not(.light-forced) #noSel { color:var(--muted); }
     body:not(.light-forced) .proc-item { background:var(--prox-bg); border-color:var(--prox-brd); }
     body:not(.light-forced) .proc-item:hover { background:#1e3a6e; border-color:var(--prox); }
+    body:not(.light-forced) .item-f.reemplazo { background:#1a2d4a; border-color:#2255aa; border-left-color:#74b9ff !important; }
+    body:not(.light-forced) .reemplazo-label  { color:#74b9ff; background:#1a2d4a; border-color:#2255aa; }
+    body:not(.light-forced) .btn-accion-fact  { background:var(--card); border-color:var(--border); color:var(--muted); }
   }
 
   /* Dark mode forzado por clase */
@@ -618,6 +661,9 @@
   body.dark-forced .grupo-header.prox { background:var(--prox-bg); color:var(--prox); border-color:var(--prox); }
   body.dark-forced .hist-item:hover   { background:#222c40; }
   body.dark-forced #diaChip { background:#0f2e1e; border-color:#166534; }
+  body.dark-forced .item-f.reemplazo { background:#1a2d4a; border-color:#2255aa; border-left-color:#74b9ff !important; }
+  body.dark-forced .reemplazo-label  { color:#74b9ff; background:#1a2d4a; border-color:#2255aa; }
+  body.dark-forced .btn-accion-fact  { background:var(--card); border-color:var(--border); color:var(--muted); }
 </style>
 </head>
 <body>
@@ -726,9 +772,15 @@
           <div style="height:3px;background:var(--border);border-radius:2px;margin-bottom:6px;overflow:hidden;"><div id="scrollProgressFill" style="height:100%;background:var(--success);width:0%;transition:width 0.15s;border-radius:2px;"></div></div>
           <div id="footerScrollHint" class="footer-scroll-hint">↓ Scrolleá para ver todos los artículos</div>
           <div id="msgMot"></div>
+          <!-- Acciones para pedido ya facturado -->
+          <div class="acciones-facturado" id="accionesFacturado" style="display:none;">
+            <button class="btn-accion-fact copiar" onclick="copiarPedido()" title="Copiar resumen">📋 Copiar pedido</button>
+            <button class="btn-accion-fact wa-vend" onclick="enviarWAVendedor()" title="Enviar al vendedor">📤 WA Vendedor</button>
+          </div>
           <div class="footer-stats">
             <span class="ok-count" style="font-size:17px;font-weight:900;"><span id="stOk">0</span>/<span id="stTotal">0</span> facturados</span>
             <span class="flt-count" id="stFaltSpan" style="display:none;">❌ <span id="stFalt">0</span> faltantes</span>
+            <span class="rem-count" id="stRemSpan" style="display:none;">✏️ <span id="stRem">0</span> reemplazos</span>
           </div>
           <div class="footer-actions">
             <button class="btn-wa" onclick="enviarWA()" title="WhatsApp faltantes">💬</button>
@@ -802,6 +854,22 @@
     <div class="modal-btns">
       <button class="modal-btn cancel" onclick="cerrarModalNotas()">Cerrar</button>
       <button class="modal-btn ok"     onclick="guardarNota()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: sustituir artículo -->
+<div class="modal-over" id="modalSustituir">
+  <div class="modal-box" style="border-top:4px solid var(--prox);">
+    <div class="modal-title">✏️ Enviar reemplazo</div>
+    <div class="modal-sub" id="msusSub">El artículo original quedará como faltante.</div>
+    <input class="modal-input" id="msusInput" type="text"
+      placeholder="¿Qué artículo se envió en reemplazo?"
+      maxlength="200"
+      onkeydown="if(event.key==='Enter')confirmarSustitucion()"/>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="cerrarModalSustituir()">Cancelar</button>
+      <button class="modal-btn ok"     onclick="confirmarSustitucion()">Registrar ✓</button>
     </div>
   </div>
 </div>
@@ -1113,7 +1181,33 @@ async function recargarItems() {
 
 function renderItemsF() {
   const box = document.getElementById("itemsPanel");
+  const idsSustituidos = new Set(
+    itemsActivos.filter(i => i.es_reemplazo && i.reemplaza_item_id).map(i => i.reemplaza_item_id)
+  );
+
   box.innerHTML = itemsActivos.map((item, i) => {
+
+    // ── Item de reemplazo ──
+    if (item.es_reemplazo) {
+      const original = itemsActivos.find(o => o.id === item.reemplaza_item_id);
+      const originDesc = original ? escHtml(original.descripcion) : "artículo original";
+      return `
+        <div class="item-f reemplazo ok" id="ifrow-${item.id}" data-idx="${i}"
+          style="display:grid;grid-template-columns:32px 1fr 44px;align-items:center;gap:10px;padding:12px 14px;">
+          <div style="font-size:20px;color:#3b82f6;text-align:center;font-weight:900;">↩</div>
+          <div style="overflow:hidden;">
+            <div class="item-f-name-row">
+              <span class="reemplazo-label">REEMPLAZO</span>
+              <div class="item-f-desc" style="color:#1d4ed8;font-weight:700;">${escHtml(item.descripcion)}</div>
+            </div>
+            <div class="reemplazo-origin">en lugar de: ${originDesc}</div>
+            ${item.facturado_por ? `<div class="item-f-who">✓ ${item.facturado_por} · ${fmtTime(item.facturado_at)}</div>` : ""}
+          </div>
+          <div class="chk-f ok" style="cursor:default;">✓</div>
+        </div>`;
+    }
+
+    // ── Item normal ──
     const isFact = item.facturado;
     const isFalt = item.es_faltante;
     const rowCls = isFact ? "ok" : isFalt ? "faltante" : "";
@@ -1122,6 +1216,9 @@ function renderItemsF() {
     const descCls = isFact ? "tachado" : "";
     const qty = item.cantidad_real ?? item.cantidad;
     const qtyMod = item.cantidad_real != null && item.cantidad_real !== item.cantidad ? "mod" : "";
+    const yaReemplazado = idsSustituidos.has(item.id);
+    const btnSust = yaReemplazado ? "" :
+      `<button class="btn-sust" onclick="event.stopPropagation();abrirModalSustituir('${item.id}',${i})" title="Enviar reemplazo">✏️</button>`;
 
     return `
       <div class="item-f ${rowCls}" id="ifrow-${item.id}" data-idx="${i}"
@@ -1130,9 +1227,10 @@ function renderItemsF() {
           id="qty-${item.id}"
           onclick="event.stopPropagation()"
           onchange="cambiarCantidad('${item.id}',${i},this.value)" />
-        <div style="overflow:hidden;">
+        <div style="overflow:hidden;flex:1;">
           <div class="item-f-name-row">
             <div class="item-f-desc ${descCls}" id="ifdesc-${item.id}">${item.descripcion}</div>
+            ${btnSust}
             <button class="btn-falt ${isFalt?"activo":""}"
               onclick="event.stopPropagation();toggleFaltante('${item.id}',${i})"
               title="Marcar faltante">⚠️</button>
@@ -1287,15 +1385,26 @@ const MSGS_MOT = [
   "Un error ahora es un problema después",
 ];
 function actualizarStats() {
-  const total = itemsActivos.length;
-  const ok    = itemsActivos.filter(i => i.facturado).length;
-  const falt  = itemsActivos.filter(i => i.es_faltante).length;
+  const originales = itemsActivos.filter(i => !i.es_reemplazo);
+  const total = originales.length;
+  const ok    = originales.filter(i => i.facturado).length;
+  const falt  = originales.filter(i => i.es_faltante).length;
+  const rem   = itemsActivos.filter(i => i.es_reemplazo).length;
   document.getElementById("stTotal").textContent = total;
   document.getElementById("stOk").textContent    = ok;
   document.getElementById("stFalt").textContent  = falt;
 
   const faltSpan = document.getElementById("stFaltSpan");
   faltSpan.style.display = falt > 0 ? "inline" : "none";
+
+  const remSpan = document.getElementById("stRemSpan");
+  if (remSpan) {
+    document.getElementById("stRem").textContent = rem;
+    remSpan.style.display = rem > 0 ? "inline" : "none";
+  }
+
+  const accionesFact = document.getElementById("accionesFacturado");
+  if (accionesFact) accionesFact.style.display = pedidoActivo?.estado === "facturado" ? "flex" : "none";
 
   // Mensaje motivacional según progreso
   const msgEl = document.getElementById("msgMot");
@@ -1357,7 +1466,7 @@ async function _ejecutarFacturar() {
     // ── Auto-marcar como faltante los items que quedaron sin verificar ──
     // Un item sin verificar = ni facturado ni marcado como faltante manualmente.
     // Si no se marca aquí, se pierden sin quedar registrados en Supabase.
-    const sinMarcar = itemsActivos.filter(i => !i.facturado && !i.es_faltante);
+    const sinMarcar = itemsActivos.filter(i => !i.facturado && !i.es_faltante && !i.es_reemplazo);
     if (sinMarcar.length) {
       await Promise.all(sinMarcar.map(i =>
         sbPatch("items_pedido", `id=eq.${i.id}`, { es_faltante: true, facturado: false })
@@ -1394,15 +1503,111 @@ async function _ejecutarFacturar() {
   finally { hideLoader(); _enviandoFact = false; actualizarStats(); }
 }
 
-// ── WHATSAPP ──
+// ── WHATSAPP — faltantes (flujo activo) ──
 function enviarWA() {
-  const faltantes = itemsActivos.filter(i => i.es_faltante);
+  const faltantes = itemsActivos.filter(i => i.es_faltante && !i.es_reemplazo);
   if (!faltantes.length) { toast("No hay faltantes marcados."); return; }
   const lineas = faltantes.map(i => `• ${i.cantidad_real ?? i.cantidad} ${i.descripcion}`).join("\n");
   const msg = `Pedido de *${pedidoActivo.cliente_nombre || pedidoActivo.cliente_id}*:\n\n*Faltantes para próximo reparto:*\n${lineas}`;
   window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
 }
 
+// ── SUSTITUCIÓN DE ARTÍCULOS ──
+let _sustItemId = null, _sustIdx = null;
+
+function abrirModalSustituir(itemId, idx) {
+  if (pedidoActivo?.estado === "facturado") { pedirPin(() => _abrirModalSustituir(itemId, idx)); return; }
+  _abrirModalSustituir(itemId, idx);
+}
+function _abrirModalSustituir(itemId, idx) {
+  _sustItemId = itemId;
+  _sustIdx    = idx;
+  const item  = itemsActivos[idx];
+  document.getElementById("msusSub").textContent  = `"${item.descripcion}" quedará como faltante.`;
+  document.getElementById("msusInput").value = "";
+  document.getElementById("modalSustituir").style.display = "flex";
+  setTimeout(() => document.getElementById("msusInput").focus(), 100);
+}
+function cerrarModalSustituir() {
+  document.getElementById("modalSustituir").style.display = "none";
+}
+async function confirmarSustitucion() {
+  const desc = document.getElementById("msusInput").value.trim();
+  if (!desc) { toast("Ingresá el artículo enviado en reemplazo.", "error"); return; }
+  const itemId = _sustItemId, idx = _sustIdx;
+  cerrarModalSustituir();
+  if (!itemId || idx == null) return;
+  showLoader();
+  try {
+    // Marcar original como faltante
+    await sbPatch("items_pedido", `id=eq.${itemId}`, { es_faltante: true, facturado: false });
+    // Insertar nuevo ítem de reemplazo
+    const now = new Date().toISOString();
+    await sbInsert("items_pedido", {
+      pedido_id:         pedidoActivo.id,
+      descripcion:       desc,
+      cantidad:          itemsActivos[idx]?.cantidad ?? 1,
+      facturado:         true,
+      facturado_por:     currentUser || "—",
+      facturado_at:      now,
+      es_reemplazo:      true,
+      reemplaza_item_id: itemId
+    });
+    // Recargar todos los ítems para reflejar el nuevo estado
+    itemsActivos = await sbGet("items_pedido", `pedido_id=eq.${pedidoActivo.id}&order=id.asc`);
+    renderItemsF();
+    toast("✏️ Reemplazo registrado", "ok");
+  } catch(e) { toast("Error al registrar reemplazo", "error"); }
+  finally { hideLoader(); }
+}
+
+// ── COPIAR PEDIDO (para pedidos facturados) ──
+function copiarPedido() {
+  if (!pedidoActivo) return;
+  const cliente   = pedidoActivo.cliente_nombre || `Cliente ${pedidoActivo.cliente_id}`;
+  const originales = itemsActivos.filter(i => !i.es_reemplazo);
+  const facturados = originales.filter(i => i.facturado);
+  const faltantes  = originales.filter(i => i.es_faltante);
+  const reemplazos = itemsActivos.filter(i => i.es_reemplazo);
+  let txt = `📦 Pedido — ${cliente}\nEntrega: ${fmtFecha(pedidoActivo.fecha_entrega)}\n`;
+  if (facturados.length) {
+    txt += `\n✅ Enviado:\n` + facturados.map(i => `  · ${i.cantidad_real ?? i.cantidad} ${i.descripcion}`).join("\n");
+  }
+  if (reemplazos.length) {
+    txt += `\n\n✏️ Reemplazos:\n` + reemplazos.map(i => `  · ${i.cantidad} ${i.descripcion}`).join("\n");
+  }
+  if (faltantes.length) {
+    txt += `\n\n❌ Faltantes:\n` + faltantes.map(i => `  · ${i.cantidad} ${i.descripcion}`).join("\n");
+  }
+  navigator.clipboard.writeText(txt).catch(() => {
+    const el = document.createElement("textarea");
+    el.value = txt; el.style.cssText = "position:fixed;opacity:0;";
+    document.body.appendChild(el); el.select();
+    document.execCommand("copy"); document.body.removeChild(el);
+  });
+  toast("📋 Pedido copiado al portapapeles", "ok");
+}
+
+// ── WA AL VENDEDOR (resumen completo del pedido facturado) ──
+function enviarWAVendedor() {
+  if (!pedidoActivo) return;
+  const cliente   = pedidoActivo.cliente_nombre || `Cliente ${pedidoActivo.cliente_id}`;
+  const originales = itemsActivos.filter(i => !i.es_reemplazo);
+  const facturados = originales.filter(i => i.facturado);
+  const faltantes  = originales.filter(i => i.es_faltante);
+  const reemplazos = itemsActivos.filter(i => i.es_reemplazo);
+  let msg = `📦 *Pedido facturado — ${cliente}*\n_Entrega: ${fmtFecha(pedidoActivo.fecha_entrega)}_`;
+  if (facturados.length) {
+    msg += `\n\n*✅ Enviado:*\n` + facturados.map(i => `• ${i.cantidad_real ?? i.cantidad} ${i.descripcion}`).join("\n");
+  }
+  if (reemplazos.length) {
+    msg += `\n\n*✏️ Reemplazos enviados:*\n` + reemplazos.map(i => `• ${i.cantidad} ${i.descripcion}`).join("\n");
+  }
+  if (faltantes.length) {
+    msg += `\n\n*❌ Faltantes:*\n` + faltantes.map(i => `• ${i.cantidad} ${i.descripcion}`).join("\n");
+  }
+  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+}
 
 // ── LEFT TABS ──
 function setLeftTab(tab) {

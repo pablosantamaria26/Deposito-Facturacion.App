@@ -105,6 +105,15 @@ ALTER TABLE items_pedido ADD COLUMN IF NOT EXISTS nombre_original  TEXT;
 ALTER TABLE items_pedido ADD COLUMN IF NOT EXISTS cantidad_real    NUMERIC;
 
 -- ============================================================
+-- SUSTITUCIÓN DE ARTÍCULOS EN FACTURACIÓN
+-- Cuando facturación envía un artículo distinto al pedido original:
+--   - el item original queda es_faltante=true
+--   - se inserta un nuevo item con es_reemplazo=true y reemplaza_item_id apuntando al original
+-- ============================================================
+ALTER TABLE items_pedido ADD COLUMN IF NOT EXISTS es_reemplazo      BOOLEAN DEFAULT false;
+ALTER TABLE items_pedido ADD COLUMN IF NOT EXISTS reemplaza_item_id UUID REFERENCES items_pedido(id);
+
+-- ============================================================
 -- NOTAS POR CLIENTE (escribe/ve Laura en facturación)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS notas_cliente (
@@ -142,6 +151,9 @@ CREATE INDEX IF NOT EXISTS idx_clientes_vendedor  ON clientes(vendedor);
 CREATE INDEX IF NOT EXISTS idx_clientes_activo    ON clientes(activo);
 CREATE INDEX IF NOT EXISTS idx_clientes_updated   ON clientes(updated_at DESC);
 
+-- Día de entrega habitual: 0=Dom 1=Lun 2=Mar 3=Mié 4=Jue 5=Vie 6=Sáb / NULL=sin dato
+ALTER TABLE clientes ADD COLUMN IF NOT EXISTS dia_entrega_frecuente INTEGER;
+
 ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "public_all_clientes" ON clientes FOR ALL USING (true) WITH CHECK (true);
 
@@ -164,6 +176,32 @@ CREATE INDEX IF NOT EXISTS idx_productos_updated  ON productos(updated_at DESC);
 
 ALTER TABLE productos ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "public_all_productos" ON productos FOR ALL USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- TABLA PEDIDOS_HISTORIAL — historial completo de pedidos de vendedores
+-- Alimentado por GAS syncHistorialASupabase() cada 30 min
+-- Usado por la app de vendedores para sugerencias ("Sugeridos")
+-- ============================================================
+CREATE TABLE IF NOT EXISTS pedidos_historial (
+  id               BIGSERIAL PRIMARY KEY,
+  sig              TEXT UNIQUE NOT NULL,   -- hash deduplicador (de GAS o calculado)
+  timestamp_pedido TIMESTAMPTZ,            -- cuándo se registró el pedido
+  fecha_entrega    DATE,                   -- fecha de entrega acordada
+  cliente_id       TEXT NOT NULL,          -- número de cliente (mismo que clientes.id)
+  vendedor         TEXT,                   -- nombre del vendedor
+  productos        TEXT,                   -- texto libre: "CANT NOMBRE\nCANT NOMBRE"
+  observaciones    TEXT,
+  created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_hist_cliente   ON pedidos_historial(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_hist_vendedor  ON pedidos_historial(vendedor);
+CREATE INDEX IF NOT EXISTS idx_hist_fecha     ON pedidos_historial(fecha_entrega DESC);
+CREATE INDEX IF NOT EXISTS idx_hist_ts        ON pedidos_historial(timestamp_pedido DESC);
+
+ALTER TABLE pedidos_historial ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_read_historial" ON pedidos_historial FOR SELECT USING (true);
+CREATE POLICY "service_write_historial" ON pedidos_historial FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================================
 -- NÚMERO DIARIO — Supabase lo asigna automáticamente en cada INSERT
