@@ -588,7 +588,8 @@ function renderItems(aggArr, clienteId) {
     const vLabel = it.veces > 1 ? `${it.veces}× faltó · ` : "";
     return `
       <div class="item-row" id="ir-${clienteId}-${dk}"
-           onclick="toggleItem('${clienteId}','${dk}',${JSON.stringify(it.descripcion)},${it.totalCant})">
+           data-cid="${escHtml(String(clienteId))}" data-dk="${escHtml(dk)}"
+           data-desc="${escHtml(it.descripcion)}" data-cant="${it.totalCant}">
         <div class="item-check" id="ic-${clienteId}-${dk}"></div>
         <div class="item-body">
           <div class="item-desc">${escHtml(it.descripcion)}</div>
@@ -715,6 +716,14 @@ document.getElementById("provSelect").addEventListener("change", e => {
 
 document.getElementById("genModal").addEventListener("click", e => {
   if (e.target === document.getElementById("genModal")) closeModal();
+});
+
+// Delegado: maneja clicks en item-row (usa data-* para evitar problemas con comillas en descripciones)
+document.getElementById("clientList").addEventListener("click", e => {
+  const row = e.target.closest(".item-row");
+  if (!row) return;
+  const { cid, dk, desc, cant } = row.dataset;
+  if (cid && dk) toggleItem(cid, dk, desc, Number(cant));
 });
 
 // ════════════════════════
