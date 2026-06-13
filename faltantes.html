@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+<title>Faltantes · Mercado Limpio</title>
+<meta name="theme-color" content="#ffffff"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:       #F5F5F7;
+  --surface:  #FFFFFF;
+  --border:   rgba(0,0,0,0.07);
+  --text:     #1C1C1E;
+  --text2:    #48484A;
+  --text3:    #8E8E93;
+  --accent:   #6366F1;
+  --green:    #34C759;
+  --orange:   #FF9500;
+  --red:      #FF3B30;
+  --red-s:    rgba(255,59,48,0.10);
+  --purple:   #AF52DE;
+  --purple-s: rgba(175,82,222,0.10);
+  --r:        18px;
+  --r-sm:     12px;
+  --shadow:   0 1px 2px rgba(0,0,0,0.03),0 4px 20px rgba(0,0,0,0.06);
+  --safe-top: env(safe-area-inset-top,0px);
+  --safe-bot: env(safe-area-inset-bottom,0px);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:none}
+body{
+  font-family:'Inter',-apple-system,sans-serif;
+  background:var(--bg);color:var(--text);
+  min-height:100svh;overscroll-behavior:none;
+  -webkit-font-smoothing:antialiased;
+  padding-bottom:calc(60px + var(--safe-bot));
+}
+button{font-family:inherit;border:none;cursor:pointer}
+
+/* ── TOP BAR ── */
+.top-bar{
+  position:sticky;top:0;z-index:100;
+  background:rgba(255,255,255,0.90);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+  padding:calc(12px + var(--safe-top)) 20px 12px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.top-bar-title{font-size:22px;font-weight:800;color:var(--text)}
+.top-bar-title .dot{color:var(--red)}
+.sync-dot{width:9px;height:9px;border-radius:50%;background:var(--text3);flex-shrink:0}
+.sync-dot.loading{background:var(--orange);animation:pulse 1s infinite}
+.sync-dot.ok{background:var(--green)}
+.sync-dot.err{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* ── FILTERS ── */
+.filters{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:12px 16px;display:flex;flex-direction:column;gap:10px;
+}
+.period-tabs{display:flex;gap:8px}
+.period-tab{
+  flex:1;height:38px;border-radius:12px;
+  font-size:13px;font-weight:600;color:var(--text3);
+  background:var(--bg);border:1.5px solid var(--border);transition:all .15s;
+}
+.period-tab.active{background:var(--red);color:#fff;border-color:var(--red);box-shadow:0 2px 10px rgba(255,59,48,.25)}
+.filter-row{display:flex;gap:8px}
+.search-inp{
+  flex:1;height:40px;padding:0 14px;border-radius:12px;
+  border:1.5px solid var(--border);background:var(--bg);
+  font-size:14px;color:var(--text);outline:none;font-family:inherit;
+}
+.search-inp:focus{border-color:var(--accent)}
+.prov-sel{
+  height:40px;padding:0 10px;border-radius:12px;
+  border:1.5px solid var(--border);background:var(--bg);
+  font-size:13px;color:var(--text);outline:none;font-family:inherit;
+  min-width:130px;max-width:160px;
+}
+
+/* ── STATS BAR ── */
+.stats-bar{
+  padding:9px 20px;font-size:12px;color:var(--text3);
+  display:flex;align-items:center;gap:8px;
+}
+.stats-bar strong{color:var(--text)}
+
+/* ── CLIENT LIST ── */
+.client-list{padding:10px 14px;display:flex;flex-direction:column;gap:10px}
+
+/* ── CLIENT CARD ── */
+.client-card{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.client-header{
+  padding:15px 16px;display:flex;align-items:center;gap:12px;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;
+}
+.client-avatar{
+  width:44px;height:44px;border-radius:12px;flex-shrink:0;
+  background:var(--red-s);display:flex;align-items:center;justify-content:center;
+  font-size:17px;font-weight:900;color:var(--red);
+}
+.client-info{flex:1;min-width:0}
+.client-nombre{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.client-meta{font-size:11px;color:var(--text3);margin-top:2px}
+.client-badge{
+  background:var(--red);color:#fff;border-radius:99px;
+  padding:3px 10px;font-size:12px;font-weight:700;flex-shrink:0;
+}
+.client-chevron{font-size:11px;color:var(--text3);flex-shrink:0;transition:transform .2s}
+.client-card.open .client-chevron{transform:rotate(180deg)}
+
+/* ── ITEMS PANEL ── */
+.items-panel{display:none;border-top:1px solid var(--border)}
+.client-card.open .items-panel{display:block}
+.items-search{
+  display:block;margin:11px 14px 7px;
+  width:calc(100% - 28px);height:36px;padding:0 12px;
+  border-radius:10px;border:1.5px solid var(--border);background:var(--bg);
+  font-size:13px;color:var(--text);font-family:inherit;outline:none;
+}
+.items-search:focus{border-color:var(--accent)}
+.items-list{padding:4px 14px 10px;display:flex;flex-direction:column;gap:4px}
+.item-row{
+  display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;
+  background:var(--bg);cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:background .12s;
+}
+.item-row.checked{background:var(--red-s)}
+.item-check{
+  width:21px;height:21px;border-radius:6px;flex-shrink:0;margin-top:1px;
+  border:2px solid var(--border);background:var(--surface);
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:900;color:#fff;transition:all .15s;
+}
+.item-row.checked .item-check{background:var(--red);border-color:var(--red)}
+.item-body{flex:1;min-width:0}
+.item-desc{font-size:13px;font-weight:600;color:var(--text);line-height:1.35}
+.item-sub{font-size:11px;color:var(--text3);margin-top:2px}
+.item-cant{
+  font-size:13px;font-weight:800;color:var(--text2);flex-shrink:0;
+  background:var(--surface);padding:3px 9px;border-radius:8px;
+  border:1px solid var(--border);align-self:center;
+}
+
+/* ── GENERAR PEDIDO BTN ── */
+.gen-wrap{padding:10px 14px 14px;border-top:1px solid var(--border)}
+.gen-btn{
+  width:100%;height:48px;border-radius:14px;
+  background:var(--red);color:#fff;font-size:15px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  box-shadow:0 4px 16px rgba(255,59,48,.28);transition:all .15s;
+}
+.gen-btn:disabled{opacity:.4;box-shadow:none;cursor:default}
+.gen-btn:active:not(:disabled){transform:scale(.98)}
+
+/* ── EMPTY ── */
+.empty-state{text-align:center;padding:56px 24px}
+.empty-icon{font-size:48px;margin-bottom:12px}
+.empty-title{font-size:17px;font-weight:700;color:var(--text)}
+.empty-sub{font-size:14px;color:var(--text3);margin-top:6px}
+
+/* ── SKELETONS ── */
+.skel{
+  background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%);
+  background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px;
+}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* ── MODAL ── */
+.modal-overlay{
+  display:none;position:fixed;inset:0;z-index:500;
+  background:rgba(0,0,0,.5);backdrop-filter:blur(4px);
+  align-items:flex-end;justify-content:center;
+}
+.modal-overlay.open{display:flex}
+.modal-sheet{
+  background:var(--surface);border-radius:24px 24px 0 0;
+  padding:20px 20px calc(20px + var(--safe-bot));
+  width:100%;max-width:600px;
+}
+.modal-handle{width:36px;height:4px;background:var(--border);border-radius:99px;margin:0 auto 18px}
+.modal-title{font-size:18px;font-weight:800;margin-bottom:5px}
+.modal-sub{font-size:13px;color:var(--text3);margin-bottom:18px;line-height:1.4}
+.modal-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:6px}
+.modal-date{
+  width:100%;height:48px;border-radius:14px;
+  border:1.5px solid var(--border);background:var(--bg);
+  padding:0 16px;font-size:15px;font-family:inherit;
+  color:var(--text);outline:none;margin-bottom:18px;
+}
+.modal-date:focus{border-color:var(--accent)}
+.modal-actions{display:flex;gap:10px}
+.btn-cancel{flex:1;height:48px;border-radius:14px;background:var(--bg);color:var(--text2);font-size:15px;font-weight:600}
+.btn-confirm{
+  flex:2;height:48px;border-radius:14px;
+  background:var(--red);color:#fff;font-size:15px;font-weight:700;
+  box-shadow:0 4px 14px rgba(255,59,48,.28);transition:opacity .15s;
+}
+.btn-confirm:disabled{opacity:.5;cursor:default}
+
+/* ── TOAST ── */
+#toastEl{
+  position:fixed;bottom:76px;left:50%;transform:translateX(-50%) translateY(12px);
+  background:#1C1C1E;color:#fff;border-radius:14px;
+  padding:12px 20px;font-size:14px;font-weight:500;
+  opacity:0;transition:all .25s;pointer-events:none;z-index:600;
+  white-space:nowrap;max-width:calc(100vw - 32px);text-align:center;
+}
+#toastEl.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── BOTTOM NAV ── */
+.bottom-nav{
+  position:fixed;bottom:0;left:0;right:0;z-index:200;
+  background:rgba(255,255,255,0.90);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-top:1px solid var(--border);
+  display:flex;height:calc(56px + var(--safe-bot));padding-bottom:var(--safe-bot);
+}
+.nav-item{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;
+  font-size:10px;font-weight:600;color:var(--text3);
+  text-decoration:none;-webkit-tap-highlight-color:transparent;
+}
+.nav-item .nav-icon{font-size:21px;line-height:1}
+.nav-item.active{color:var(--red)}
+</style>
+</head>
+<body>
+
+<header class="top-bar">
+  <div class="top-bar-title"><span class="dot">●</span> Faltantes</div>
+  <div id="syncDot" class="sync-dot loading"></div>
+</header>
+
+<div class="filters">
+  <div class="period-tabs" id="periodTabs">
+    <button class="period-tab" data-days="7">7 días</button>
+    <button class="period-tab active" data-days="30">30 días</button>
+    <button class="period-tab" data-days="90">90 días</button>
+  </div>
+  <div class="filter-row">
+    <input id="searchCliente" class="search-inp" type="search" placeholder="🔍 Buscar cliente..."/>
+    <select id="provSelect" class="prov-sel">
+      <option value="">Todos los proveedores</option>
+    </select>
+  </div>
+</div>
+
+<div class="stats-bar" id="statsBar">Cargando...</div>
+
+<div class="client-list" id="clientList">
+  <div class="client-card">
+    <div class="client-header">
+      <div class="client-avatar skel" style="width:44px;height:44px;border-radius:12px"></div>
+      <div class="client-info">
+        <div class="skel" style="height:15px;width:65%;margin-bottom:7px"></div>
+        <div class="skel" style="height:11px;width:40%"></div>
+      </div>
+    </div>
+  </div>
+  <div class="client-card">
+    <div class="client-header">
+      <div class="client-avatar skel" style="width:44px;height:44px;border-radius:12px"></div>
+      <div class="client-info">
+        <div class="skel" style="height:15px;width:55%;margin-bottom:7px"></div>
+        <div class="skel" style="height:11px;width:35%"></div>
+      </div>
+    </div>
+  </div>
+  <div class="client-card">
+    <div class="client-header">
+      <div class="client-avatar skel" style="width:44px;height:44px;border-radius:12px"></div>
+      <div class="client-info">
+        <div class="skel" style="height:15px;width:70%;margin-bottom:7px"></div>
+        <div class="skel" style="height:11px;width:45%"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal generar pedido -->
+<div id="genModal" class="modal-overlay">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Generar pedido de faltantes</div>
+    <div class="modal-sub" id="modalSub">—</div>
+    <div class="modal-label">Fecha de entrega</div>
+    <input type="date" id="modalFecha" class="modal-date"/>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-confirm" id="btnConfirm" onclick="confirmarPedido()">Confirmar pedido</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastEl"></div>
+
+<nav class="bottom-nav">
+  <a href="./analytics.html" class="nav-item">
+    <span class="nav-icon">📊</span>Analytics
+  </a>
+  <a href="./faltantes.html" class="nav-item active">
+    <span class="nav-icon">🔴</span>Faltantes
+  </a>
+  <a href="./stock.html" class="nav-item">
+    <span class="nav-icon">📦</span>Stock
+  </a>
+</nav>
+
+<script>
+// ════════════════════════
+// CONFIG
+// ════════════════════════
+const SB_URL  = "https://gjeyvbidomxzofcdycya.supabase.co";
+const SB_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
+const WORKER  = "https://frosty-term-20ea.santamariapablodaniel.workers.dev";
+
+// ════════════════════════
+// STATE
+// ════════════════════════
+let allItems       = [];   // items_pedido con pedidos embebidos
+let allProveedores = [];
+let activeDays     = 30;
+let activeProvId   = "";
+let openClientId   = null;
+let pendingOrder   = null; // { clienteId, clienteNombre, items[] }
+const selMap       = {};   // { clienteId: { descKey: {descripcion, cantidad} } }
+
+// ════════════════════════
+// SUPABASE
+// ════════════════════════
+async function sbGet(table, params = "") {
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {
+    headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` },
+    cache: "no-store"
+  });
+  return r.ok ? r.json() : [];
+}
+
+// ════════════════════════
+// TOAST
+// ════════════════════════
+let _tt;
+function toast(msg) {
+  const el = document.getElementById("toastEl");
+  el.textContent = msg; el.classList.add("show");
+  clearTimeout(_tt);
+  _tt = setTimeout(() => el.classList.remove("show"), 3200);
+}
+
+// ════════════════════════
+// HELPERS
+// ════════════════════════
+function dateAgo(days) {
+  const d = new Date(); d.setDate(d.getDate() - days);
+  return d.toISOString().split("T")[0];
+}
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`;
+}
+function nextWeekday() {
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return d.toISOString().split("T")[0];
+}
+function escHtml(s) {
+  return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+// Hash rápido para usar como DOM id
+function strId(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = Math.imul(31, h) + s.charCodeAt(i) | 0;
+  return (h >>> 0).toString(36);
+}
+function setSyncDot(state) {
+  document.getElementById("syncDot").className = "sync-dot " + state;
+}
+
+// ════════════════════════
+// PROVEEDOR MATCHING
+// ════════════════════════
+const PROV_OVERRIDE = {
+  "entresol":      "ENTRE SOL",
+  "bio_bag":       "BIO BAG",
+  "make_fresh":    "MAKE FRESH",
+  "la_americana":  "AMERICANA",
+  "la_gauchita":   "GAUCHITA",
+  "broche_eco":    "BROCHE",
+  "santamaria_cs": "SANTAMARIA",
+  "mis_plast":     "MIS PLAST",
+  "supy":          "SUPER GOMA",
+};
+function provKeyword(prov) {
+  return PROV_OVERRIDE[prov.id] || prov.nombre.toUpperCase();
+}
+function matchProv(desc, prov) {
+  if (!prov) return true;
+  return (desc || "").toUpperCase().includes(provKeyword(prov));
+}
+
+// ════════════════════════
+// LOAD DATA
+// ════════════════════════
+async function loadData() {
+  setSyncDot("loading");
+  try {
+    const [items, proveedores] = await Promise.all([
+      sbGet("items_pedido",
+        "es_faltante=eq.true" +
+        "&select=id,descripcion,cantidad,created_at,pedidos(cliente_id,cliente_nombre,fecha_entrega)" +
+        "&order=created_at.desc&limit=2000"
+      ),
+      sbGet("proveedores", "select=id,nombre&activo=eq.true&order=nombre"),
+    ]);
+    allItems       = Array.isArray(items)       ? items       : [];
+    allProveedores = Array.isArray(proveedores) ? proveedores : [];
+    fillProvSelect();
+    render();
+    setSyncDot("ok");
+  } catch(e) {
+    console.error(e);
+    setSyncDot("err");
+    toast("Error al cargar faltantes");
+  }
+}
+
+// ════════════════════════
+// PROVEEDOR SELECT
+// ════════════════════════
+function fillProvSelect() {
+  const sel = document.getElementById("provSelect");
+  sel.innerHTML = `<option value="">Todos los proveedores</option>`;
+  allProveedores.forEach(p => {
+    const o = document.createElement("option");
+    o.value = p.id; o.textContent = p.nombre;
+    sel.appendChild(o);
+  });
+}
+
+// ════════════════════════
+// FILTER & GROUP
+// ════════════════════════
+function getGroups() {
+  const from       = dateAgo(activeDays);
+  const search     = document.getElementById("searchCliente").value.trim().toLowerCase();
+  const selProv    = allProveedores.find(p => p.id === activeProvId) || null;
+
+  // Filtrar por fecha y proveedor
+  const filtered = allItems.filter(item => {
+    const fe = item.pedidos?.fecha_entrega || "";
+    if (fe < from) return false;
+    if (!matchProv(item.descripcion, selProv)) return false;
+    return true;
+  });
+
+  // Agrupar por cliente
+  const groups = {};
+  filtered.forEach(item => {
+    const cid  = item.pedidos?.cliente_id    || "?";
+    const cnom = item.pedidos?.cliente_nombre|| "Cliente " + cid;
+    const fe   = item.pedidos?.fecha_entrega || "";
+    if (!groups[cid]) groups[cid] = { cliente_id: cid, cliente_nombre: cnom, items: [], lastDate: "" };
+    groups[cid].items.push(item);
+    if (fe > groups[cid].lastDate) groups[cid].lastDate = fe;
+  });
+
+  // Ordenar por cantidad de faltantes desc
+  let arr = Object.values(groups).sort((a, b) => b.items.length - a.items.length);
+
+  // Filtro por cliente
+  if (search) {
+    arr = arr.filter(g =>
+      g.cliente_id.includes(search) ||
+      g.cliente_nombre.toLowerCase().includes(search)
+    );
+  }
+
+  return { arr, total: filtered.length };
+}
+
+// ════════════════════════
+// RENDER
+// ════════════════════════
+function render() {
+  const { arr, total } = getGroups();
+  const statsBar = document.getElementById("statsBar");
+  if (arr.length) {
+    statsBar.innerHTML = `<strong>${arr.length}</strong> clientes · <strong>${total}</strong> faltantes (últimos <strong>${activeDays}d</strong>)`;
+  } else {
+    statsBar.textContent = `Sin faltantes en los últimos ${activeDays} días`;
+  }
+
+  const list = document.getElementById("clientList");
+  if (!arr.length) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">✅</div>
+        <div class="empty-title">Sin faltantes</div>
+        <div class="empty-sub">No hay faltantes registrados en los últimos ${activeDays} días</div>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = arr.map(g => renderCard(g)).join("");
+
+  // Restaurar abierto
+  if (openClientId) {
+    const c = document.getElementById("cc-" + openClientId);
+    if (c) { c.classList.add("open"); updateGenBtn(openClientId); }
+  }
+
+  // Listeners toggle
+  arr.forEach(g => {
+    const c = document.getElementById("cc-" + g.cliente_id);
+    if (!c) return;
+    c.querySelector(".client-header").addEventListener("click", () => {
+      if (c.classList.contains("open")) {
+        c.classList.remove("open"); openClientId = null;
+      } else {
+        document.querySelectorAll(".client-card.open").forEach(x => x.classList.remove("open"));
+        c.classList.add("open"); openClientId = g.cliente_id;
+        updateGenBtn(g.cliente_id);
+      }
+    });
+    // Restaurar checkboxes
+    const sel = selMap[g.cliente_id] || {};
+    Object.keys(sel).forEach(dk => {
+      const row = document.getElementById(`ir-${g.cliente_id}-${dk}`);
+      const chk = document.getElementById(`ic-${g.cliente_id}-${dk}`);
+      if (row) { row.classList.add("checked"); if (chk) chk.textContent = "✓"; }
+    });
+  });
+}
+
+function renderCard(g) {
+  const agg = aggregate(g.items);
+  const initial = g.cliente_nombre.charAt(0).toUpperCase();
+  return `
+    <div class="client-card" id="cc-${g.cliente_id}">
+      <div class="client-header">
+        <div class="client-avatar">${escHtml(initial)}</div>
+        <div class="client-info">
+          <div class="client-nombre">${escHtml(g.cliente_nombre)}</div>
+          <div class="client-meta">N° ${g.cliente_id} · Último faltante: ${fmtDate(g.lastDate)}</div>
+        </div>
+        <div class="client-badge">${g.items.length}</div>
+        <div class="client-chevron">▼</div>
+      </div>
+      <div class="items-panel">
+        <input class="items-search" type="search" placeholder="🔍 Filtrar productos..."
+               id="is-${g.cliente_id}" oninput="filterItems('${g.cliente_id}')"/>
+        <div class="items-list" id="il-${g.cliente_id}">
+          ${renderItems(agg, g.cliente_id)}
+        </div>
+        <div class="gen-wrap">
+          <button class="gen-btn" id="gb-${g.cliente_id}" disabled
+            onclick="openModal('${g.cliente_id}','${escHtml(g.cliente_nombre).replace(/'/g,"\\'")}')">
+            🚀 Generar pedido
+          </button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// Agrega items por descripcion: cuenta veces y suma cantidades
+function aggregate(items) {
+  const map = {};
+  items.forEach(it => {
+    const key = (it.descripcion || "").trim().toUpperCase();
+    if (!key) return;
+    if (!map[key]) map[key] = { descripcion: key, totalCant: 0, veces: 0, lastDate: "" };
+    map[key].totalCant += Number(it.cantidad) || 1;
+    map[key].veces++;
+    const d = it.pedidos?.fecha_entrega || "";
+    if (d > map[key].lastDate) map[key].lastDate = d;
+  });
+  return Object.values(map).sort((a, b) => b.veces - a.veces || b.totalCant - a.totalCant);
+}
+
+function renderItems(aggArr, clienteId) {
+  return aggArr.map(it => {
+    const dk = strId(it.descripcion);
+    const vLabel = it.veces > 1 ? `${it.veces}× faltó · ` : "";
+    return `
+      <div class="item-row" id="ir-${clienteId}-${dk}"
+           onclick="toggleItem('${clienteId}','${dk}',${JSON.stringify(it.descripcion)},${it.totalCant})">
+        <div class="item-check" id="ic-${clienteId}-${dk}"></div>
+        <div class="item-body">
+          <div class="item-desc">${escHtml(it.descripcion)}</div>
+          <div class="item-sub">${vLabel}Último: ${fmtDate(it.lastDate)}</div>
+        </div>
+        <div class="item-cant">× ${it.totalCant}</div>
+      </div>`;
+  }).join("");
+}
+
+// ════════════════════════
+// ITEM FILTER (búsqueda)
+// ════════════════════════
+function filterItems(clienteId) {
+  const q = (document.getElementById(`is-${clienteId}`)?.value || "").trim().toLowerCase();
+  document.querySelectorAll(`#il-${clienteId} .item-row`).forEach(row => {
+    const desc = row.querySelector(".item-desc")?.textContent?.toLowerCase() || "";
+    row.style.display = q && !desc.includes(q) ? "none" : "flex";
+  });
+}
+
+// ════════════════════════
+// CHECKBOX SELECTION
+// ════════════════════════
+function toggleItem(clienteId, dk, descripcion, cantidad) {
+  if (!selMap[clienteId]) selMap[clienteId] = {};
+  const sel = selMap[clienteId];
+  const row = document.getElementById(`ir-${clienteId}-${dk}`);
+  const chk = document.getElementById(`ic-${clienteId}-${dk}`);
+  if (sel[dk]) {
+    delete sel[dk];
+    row?.classList.remove("checked");
+    if (chk) chk.textContent = "";
+  } else {
+    sel[dk] = { descripcion, cantidad };
+    row?.classList.add("checked");
+    if (chk) chk.textContent = "✓";
+  }
+  updateGenBtn(clienteId);
+}
+
+function updateGenBtn(clienteId) {
+  const btn = document.getElementById(`gb-${clienteId}`);
+  if (!btn) return;
+  const n = Object.keys(selMap[clienteId] || {}).length;
+  btn.disabled = n === 0;
+  btn.textContent = n > 0 ? `🚀 Generar pedido (${n} ítem${n !== 1 ? "s" : ""})` : "🚀 Generar pedido";
+}
+
+// ════════════════════════
+// MODAL
+// ════════════════════════
+function openModal(clienteId, clienteNombre) {
+  const items = Object.values(selMap[clienteId] || {});
+  if (!items.length) { toast("Seleccioná al menos un ítem"); return; }
+  pendingOrder = { clienteId, clienteNombre, items };
+  document.getElementById("modalSub").textContent =
+    `${items.length} ítem${items.length !== 1 ? "s" : ""} · ${clienteNombre}`;
+  document.getElementById("modalFecha").value = nextWeekday();
+  document.getElementById("genModal").classList.add("open");
+}
+
+function closeModal() {
+  document.getElementById("genModal").classList.remove("open");
+  pendingOrder = null;
+}
+
+async function confirmarPedido() {
+  if (!pendingOrder) return;
+  const fecha = document.getElementById("modalFecha").value;
+  if (!fecha) { toast("Elegí una fecha de entrega"); return; }
+  const btn = document.getElementById("btnConfirm");
+  btn.disabled = true; btn.textContent = "Enviando...";
+  try {
+    const res = await fetch(`${WORKER}/crear-pedido-faltante`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cliente_id:     pendingOrder.clienteId,
+        cliente_nombre: pendingOrder.clienteNombre,
+        fecha_entrega:  fecha,
+        items:          pendingOrder.items,
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast(`✅ Pedido generado para depósito`);
+      closeModal();
+      // Limpiar selección del cliente
+      delete selMap[pendingOrder.clienteId];
+      updateGenBtn(pendingOrder.clienteId);
+      document.querySelectorAll(`[id^="ir-${pendingOrder.clienteId}-"]`).forEach(r => r.classList.remove("checked"));
+      document.querySelectorAll(`[id^="ic-${pendingOrder.clienteId}-"]`).forEach(c => c.textContent = "");
+    } else {
+      toast("❌ " + (data.error || "Error al crear el pedido"));
+    }
+  } catch(e) {
+    toast("❌ Error de conexión");
+  } finally {
+    btn.disabled = false; btn.textContent = "Confirmar pedido";
+  }
+}
+
+// ════════════════════════
+// EVENT LISTENERS
+// ════════════════════════
+document.getElementById("periodTabs").addEventListener("click", e => {
+  const btn = e.target.closest(".period-tab");
+  if (!btn) return;
+  document.querySelectorAll(".period-tab").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  activeDays = parseInt(btn.dataset.days);
+  openClientId = null; render();
+});
+
+document.getElementById("searchCliente").addEventListener("input", () => {
+  openClientId = null; render();
+});
+
+document.getElementById("provSelect").addEventListener("change", e => {
+  activeProvId = e.target.value;
+  openClientId = null; render();
+});
+
+document.getElementById("genModal").addEventListener("click", e => {
+  if (e.target === document.getElementById("genModal")) closeModal();
+});
+
+// ════════════════════════
+// INIT
+// ════════════════════════
+loadData();
+</script>
+</body>
+</html>

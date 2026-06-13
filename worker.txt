@@ -897,6 +897,49 @@ export default {
           return jsonResponse({ status: "ok", sig: pedidoRow.sig, pedido_id: pedidoId });
         }
 
+        // ── POST /crear-pedido-faltante ──
+        if (path === "/crear-pedido-faltante") {
+          const { cliente_id, cliente_nombre, fecha_entrega, items } = bodyJson || {};
+          if (!cliente_id || !Array.isArray(items) || !items.length) {
+            return jsonResponse({ error: "Faltan datos: cliente_id e items requeridos" }, 400);
+          }
+          const sig = `falt-${cliente_id}-${fecha_entrega || "nd"}-${Date.now()}`;
+          const pedidoRes = await fetch(`${env.SUPABASE_URL}/rest/v1/pedidos`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": env.SUPABASE_SERVICE_KEY,
+              "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+              "Prefer": "return=representation",
+            },
+            body: JSON.stringify({
+              cliente_id,
+              cliente_nombre: (cliente_nombre || "").toUpperCase(),
+              fecha_entrega: fecha_entrega || null,
+              observaciones: "PEDIDO DE FALTANTES",
+              estado: "pendiente",
+              es_pedido_faltante: true,
+              sig,
+            }),
+          });
+          if (!pedidoRes.ok) {
+            const err = await pedidoRes.text();
+            return jsonResponse({ error: "Error creando pedido: " + err }, 500);
+          }
+          const pedidoData = await pedidoRes.json();
+          const pedidoId = pedidoData?.[0]?.id;
+          if (!pedidoId) return jsonResponse({ error: "No se obtuvo id del pedido" }, 500);
+
+          const itemsRows = items.map(it => ({
+            pedido_id:  pedidoId,
+            descripcion: String(it.descripcion || "").toUpperCase(),
+            cantidad:    Number(it.cantidad) || 1,
+          }));
+          await supabaseInsert(env, "items_pedido", itemsRows);
+
+          return jsonResponse({ ok: true, pedido_id: pedidoId });
+        }
+
         // Fallback → proxy a GAS
         const upstream = await fetch(GAS_URL, {
           method: "POST",

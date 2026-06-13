@@ -61,6 +61,12 @@
   .pedido-card.urgente   {border-left-color:var(--hoy);background:var(--hoy-bg)}
   .pedido-card.pendiente {border-left-color:var(--pend);background:var(--pend-bg)}
   .pedido-card.armado-ok {border-left-color:var(--ok);background:var(--ok-bg);opacity:.75}
+  .pedido-card.faltante  {border-left-color:#9333ea;background:#faf5ff}
+  .badge-faltante{
+    display:inline-block;background:#9333ea;color:#fff;
+    font-size:11px;font-weight:900;padding:3px 10px;border-radius:99px;
+    letter-spacing:.4px;margin-top:6px;
+  }
 
   /* La jerarquía en tarjetas: nombre → num/nº → fecha → meta */
   .card-nombre{font-size:28px;font-weight:900;color:var(--text);line-height:1.15}
@@ -661,7 +667,7 @@ function renderLista() {
   }
   box.innerHTML = filtrados.map((p, idx) => {
     const urg = esUrgente(p.fecha_entrega);
-    const cc  = p.estado==="armado" ? "armado-ok" : urg ? "urgente" : "pendiente";
+    const cc  = p.estado==="armado" ? "armado-ok" : p.es_pedido_faltante ? "faltante" : urg ? "urgente" : "pendiente";
     const ec  = urg ? "urg" : "pend";
     const ndLabel = labelNumDiario(p);
     return `
@@ -673,6 +679,7 @@ function renderLista() {
         </div>
         <div class="card-entrega ${ec}">Entrega: ${fmtFechaCorta(p.fecha_entrega)}</div>
         <div class="card-meta">Vendedor: ${p.vendedor||"—"} · ${p.observaciones||"Sin obs."}</div>
+        ${p.es_pedido_faltante ? `<div class="badge-faltante">⚠️ PEDIDO FALTANTE</div>` : ""}
         ${p.estado==="armado" ? `<div class="badge-armado">✅ ARMADO${p.armado_por ? " · " + p.armado_por : ""}</div>` : ""}
       </div>`;
   }).join("");

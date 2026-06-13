@@ -18,9 +18,13 @@ CREATE TABLE IF NOT EXISTS pedidos (
                   CHECK (estado IN ('pendiente','armado','en_facturacion','facturado','cancelado')),
   archivo_drive_id TEXT,
   sig           TEXT UNIQUE,
+  es_pedido_faltante BOOLEAN DEFAULT false,
   created_at    TIMESTAMPTZ DEFAULT now(),
   updated_at    TIMESTAMPTZ DEFAULT now()
 );
+
+-- ⚠️ Si la tabla ya existe, correr esto manualmente en Supabase SQL Editor:
+-- ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS es_pedido_faltante BOOLEAN DEFAULT false;
 
 -- ITEMS DE CADA PEDIDO
 CREATE TABLE IF NOT EXISTS items_pedido (
