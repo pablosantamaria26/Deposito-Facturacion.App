@@ -420,7 +420,7 @@ async function loadData() {
     const [items, proveedores, reemplazos] = await Promise.all([
       sbGet("items_pedido",
         "es_faltante=eq.true" +
-        "&select=id,descripcion,cantidad,created_at,pedidos(cliente_id,cliente_nombre,fecha_entrega)" +
+        "&select=id,descripcion,cantidad,created_at,pedidos(cliente_id,cliente_nombre,fecha_entrega,vendedor)" +
         "&order=created_at.desc&limit=2000"
       ),
       sbGet("proveedores", "select=id,nombre&activo=eq.true&order=nombre"),
@@ -481,9 +481,13 @@ function getGroups() {
     const cid  = item.pedidos?.cliente_id    || "?";
     const cnom = item.pedidos?.cliente_nombre|| "Cliente " + cid;
     const fe   = item.pedidos?.fecha_entrega || "";
-    if (!groups[cid]) groups[cid] = { cliente_id: cid, cliente_nombre: cnom, items: [], lastDate: "" };
+    const vend = item.pedidos?.vendedor || "";
+    if (!groups[cid]) groups[cid] = { cliente_id: cid, cliente_nombre: cnom, vendedor: vend, items: [], lastDate: "" };
     groups[cid].items.push(item);
-    if (fe > groups[cid].lastDate) groups[cid].lastDate = fe;
+    if (fe > groups[cid].lastDate) {
+      groups[cid].lastDate = fe;
+      if (vend) groups[cid].vendedor = vend; // usar el vendedor del pedido más reciente
+    }
   });
 
   // Ordenar por cantidad de faltantes desc
@@ -576,7 +580,9 @@ function renderCard(g) {
         </div>
         <div class="gen-wrap">
           <button class="gen-btn" id="gb-${g.cliente_id}" disabled
-            onclick="openModal('${g.cliente_id}','${escHtml(g.cliente_nombre).replace(/'/g,"\\'")}')">
+            data-cid="${escHtml(g.cliente_id)}"
+            data-nom="${escHtml(g.cliente_nombre)}"
+            data-vend="${escHtml(g.vendedor || '')}">
             🚀 Generar pedido
           </button>
         </div>
@@ -673,10 +679,13 @@ function updateGenBtn(clienteId) {
 // ════════════════════════
 // MODAL
 // ════════════════════════
-function openModal(clienteId, clienteNombre) {
+let _submitting = false;
+
+function openModal(clienteId, clienteNombre, vendedor) {
+  if (!clienteId || clienteId === "?") { toast("Cliente sin número registrado"); return; }
   const items = Object.values(selMap[clienteId] || {});
   if (!items.length) { toast("Seleccioná al menos un ítem"); return; }
-  pendingOrder = { clienteId, clienteNombre, items };
+  pendingOrder = { clienteId, clienteNombre, vendedor: vendedor || "", items };
   document.getElementById("modalSub").textContent =
     `${items.length} ítem${items.length !== 1 ? "s" : ""} · ${clienteNombre}`;
   document.getElementById("modalFecha").value = nextWeekday();
@@ -689,37 +698,43 @@ function closeModal() {
 }
 
 async function confirmarPedido() {
-  if (!pendingOrder) return;
+  if (!pendingOrder || _submitting) return;
   const fecha = document.getElementById("modalFecha").value;
   if (!fecha) { toast("Elegí una fecha de entrega"); return; }
+  _submitting = true;
   const btn = document.getElementById("btnConfirm");
   btn.disabled = true; btn.textContent = "Enviando...";
+  // Guardar referencia antes de cerrar el modal
+  const { clienteId, clienteNombre, vendedor, items } = pendingOrder;
   try {
     const res = await fetch(`${WORKER}/crear-pedido-faltante`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        cliente_id:     pendingOrder.clienteId,
-        cliente_nombre: pendingOrder.clienteNombre,
+        cliente_id:     clienteId,
+        cliente_nombre: clienteNombre,
+        vendedor:       vendedor,
         fecha_entrega:  fecha,
-        items:          pendingOrder.items,
+        items,
       }),
     });
     const data = await res.json();
     if (data.ok) {
-      toast(`✅ Pedido generado para depósito`);
       closeModal();
+      toast(`✅ Pedido N°${data.numero_diario || ""} generado para depósito`);
       // Limpiar selección del cliente
-      delete selMap[pendingOrder.clienteId];
-      updateGenBtn(pendingOrder.clienteId);
-      document.querySelectorAll(`[id^="ir-${pendingOrder.clienteId}-"]`).forEach(r => r.classList.remove("checked"));
-      document.querySelectorAll(`[id^="ic-${pendingOrder.clienteId}-"]`).forEach(c => c.textContent = "");
+      delete selMap[clienteId];
+      updateGenBtn(clienteId);
+      document.querySelectorAll(`[id^="ir-${clienteId}-"]`).forEach(r => r.classList.remove("checked"));
+      document.querySelectorAll(`[id^="ic-${clienteId}-"]`).forEach(c => c.textContent = "");
     } else {
       toast("❌ " + (data.error || "Error al crear el pedido"));
     }
   } catch(e) {
-    toast("❌ Error de conexión");
+    console.error(e);
+    toast("❌ Error de conexión al generar el pedido");
   } finally {
+    _submitting = false;
     btn.disabled = false; btn.textContent = "Confirmar pedido";
   }
 }
@@ -752,9 +767,17 @@ document.getElementById("genModal").addEventListener("click", e => {
 // Delegado: maneja clicks en item-row (usa data-* para evitar problemas con comillas en descripciones)
 document.getElementById("clientList").addEventListener("click", e => {
   const row = e.target.closest(".item-row");
-  if (!row) return;
-  const { cid, dk, desc, cant } = row.dataset;
-  if (cid && dk) toggleItem(cid, dk, desc, Number(cant));
+  if (row) {
+    const { cid, dk, desc, cant } = row.dataset;
+    if (cid && dk) toggleItem(cid, dk, desc, Number(cant));
+    return;
+  }
+  // Delegado: botón Generar pedido
+  const btn = e.target.closest(".gen-btn");
+  if (btn && !btn.disabled) {
+    const { cid, nom, vend } = btn.dataset;
+    openModal(cid, nom, vend);
+  }
 });
 
 // ════════════════════════

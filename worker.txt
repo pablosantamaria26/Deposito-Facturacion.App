@@ -899,11 +899,14 @@ export default {
 
         // ── POST /crear-pedido-faltante ──
         if (path === "/crear-pedido-faltante") {
-          const { cliente_id, cliente_nombre, fecha_entrega, items } = bodyJson || {};
-          if (!cliente_id || !Array.isArray(items) || !items.length) {
-            return jsonResponse({ error: "Faltan datos: cliente_id e items requeridos" }, 400);
+          const { cliente_id, cliente_nombre, vendedor, fecha_entrega, items } = bodyJson || {};
+          const cidStr = String(cliente_id || "").trim();
+          if (!cidStr || cidStr === "?" || !Array.isArray(items) || !items.length) {
+            return jsonResponse({ error: "Faltan datos: cliente_id válido e items requeridos" }, 400);
           }
-          const sig = `falt-${cliente_id}-${fecha_entrega || "nd"}-${Date.now()}`;
+          const sig = `falt-${cidStr}-${fecha_entrega || "nd"}-${Date.now()}`;
+          // Vendedor: usar el del pedido original si viene, sino indicar origen
+          const vendedorFinal = vendedor ? `${vendedor} (vía Faltantes)` : "MERCADO LIMPIO";
           const pedidoRes = await fetch(`${env.SUPABASE_URL}/rest/v1/pedidos`, {
             method: "POST",
             headers: {
@@ -913,12 +916,12 @@ export default {
               "Prefer": "return=representation",
             },
             body: JSON.stringify({
-              cliente_id,
-              cliente_nombre: (cliente_nombre || "").toUpperCase(),
-              vendedor: "MERCADO LIMPIO",
-              fecha_entrega: fecha_entrega || null,
-              observaciones: "Artículos que faltaron en pedidos anteriores",
-              estado: "pendiente",
+              cliente_id:        cidStr,
+              cliente_nombre:    (cliente_nombre || "").toUpperCase(),
+              vendedor:          vendedorFinal,
+              fecha_entrega:     fecha_entrega || null,
+              observaciones:     "Artículos que faltaron en pedidos anteriores",
+              estado:            "pendiente",
               es_pedido_faltante: true,
               sig,
             }),
@@ -928,17 +931,21 @@ export default {
             return jsonResponse({ error: "Error creando pedido: " + err }, 500);
           }
           const pedidoData = await pedidoRes.json();
-          const pedidoId = pedidoData?.[0]?.id;
+          const pedidoId    = pedidoData?.[0]?.id;
+          const numeroDiario = pedidoData?.[0]?.numero_diario;
           if (!pedidoId) return jsonResponse({ error: "No se obtuvo id del pedido" }, 500);
 
           const itemsRows = items.map(it => ({
-            pedido_id:  pedidoId,
+            pedido_id:   pedidoId,
             descripcion: String(it.descripcion || "").toUpperCase(),
             cantidad:    Number(it.cantidad) || 1,
           }));
-          await supabaseInsert(env, "items_pedido", itemsRows);
+          const itemsRes = await supabaseInsert(env, "items_pedido", itemsRows);
+          if (!itemsRes) {
+            return jsonResponse({ error: "Pedido creado pero error al insertar los artículos. Pedido ID: " + pedidoId }, 500);
+          }
 
-          return jsonResponse({ ok: true, pedido_id: pedidoId });
+          return jsonResponse({ ok: true, pedido_id: pedidoId, numero_diario: numeroDiario });
         }
 
         // Fallback → proxy a GAS
