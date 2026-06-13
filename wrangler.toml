@@ -1,0 +1,6 @@
+name = "frosty-term-20ea"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[build]
+  command = ""
