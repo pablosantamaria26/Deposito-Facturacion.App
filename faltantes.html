@@ -144,6 +144,13 @@ button{font-family:inherit;border:none;cursor:pointer}
   background:var(--surface);padding:3px 9px;border-radius:8px;
   border:1px solid var(--border);align-self:center;
 }
+.item-remp{
+  font-size:11px;color:#1d4ed8;margin-top:6px;
+  padding:5px 9px;background:#eff6ff;border-radius:8px;
+  border-left:3px solid #3b82f6;line-height:1.4;
+}
+.item-remp-lbl{font-weight:800;display:block;margin-bottom:1px}
+.item-remp-val{color:#374151}
 
 /* ── GENERAR PEDIDO BTN ── */
 .gen-wrap{padding:10px 14px 14px;border-top:1px solid var(--border)}
@@ -324,6 +331,7 @@ const WORKER  = "https://frosty-term-20ea.santamariapablodaniel.workers.dev";
 // ════════════════════════
 let allItems       = [];   // items_pedido con pedidos embebidos
 let allProveedores = [];
+let reemplazosMap  = {};   // { item_id_original → { descripcion, cantidad } }
 let activeDays     = 30;
 let activeProvId   = "";
 let openClientId   = null;
@@ -409,16 +417,25 @@ function matchProv(desc, prov) {
 async function loadData() {
   setSyncDot("loading");
   try {
-    const [items, proveedores] = await Promise.all([
+    const [items, proveedores, reemplazos] = await Promise.all([
       sbGet("items_pedido",
         "es_faltante=eq.true" +
         "&select=id,descripcion,cantidad,created_at,pedidos(cliente_id,cliente_nombre,fecha_entrega)" +
         "&order=created_at.desc&limit=2000"
       ),
       sbGet("proveedores", "select=id,nombre&activo=eq.true&order=nombre"),
+      sbGet("items_pedido",
+        "es_reemplazo=eq.true" +
+        "&select=descripcion,cantidad,reemplaza_item_id" +
+        "&limit=2000"
+      ),
     ]);
     allItems       = Array.isArray(items)       ? items       : [];
     allProveedores = Array.isArray(proveedores) ? proveedores : [];
+    reemplazosMap  = {};
+    (Array.isArray(reemplazos) ? reemplazos : []).forEach(r => {
+      if (r.reemplaza_item_id) reemplazosMap[r.reemplaza_item_id] = r;
+    });
     fillProvSelect();
     render();
     setSyncDot("ok");
@@ -567,15 +584,16 @@ function renderCard(g) {
     </div>`;
 }
 
-// Agrega items por descripcion: cuenta veces y suma cantidades
+// Agrega items por descripcion: cuenta veces, suma cantidades y trackea IDs originales
 function aggregate(items) {
   const map = {};
   items.forEach(it => {
     const key = (it.descripcion || "").trim().toUpperCase();
     if (!key) return;
-    if (!map[key]) map[key] = { descripcion: key, totalCant: 0, veces: 0, lastDate: "" };
+    if (!map[key]) map[key] = { descripcion: key, totalCant: 0, veces: 0, lastDate: "", itemIds: [] };
     map[key].totalCant += Number(it.cantidad) || 1;
     map[key].veces++;
+    if (it.id) map[key].itemIds.push(it.id);
     const d = it.pedidos?.fecha_entrega || "";
     if (d > map[key].lastDate) map[key].lastDate = d;
   });
@@ -586,6 +604,18 @@ function renderItems(aggArr, clienteId) {
   return aggArr.map(it => {
     const dk = strId(it.descripcion);
     const vLabel = it.veces > 1 ? `${it.veces}× faltó · ` : "";
+
+    // Reemplazos: buscar en reemplazosMap por cada ID original del grupo
+    const rDescs = [...new Set(
+      (it.itemIds || []).filter(id => reemplazosMap[id]).map(id => reemplazosMap[id].descripcion)
+    )];
+    const rempHtml = rDescs.length
+      ? `<div class="item-remp">
+           <span class="item-remp-lbl">↩ Enviaron en reemplazo:</span>
+           <span class="item-remp-val">${rDescs.map(escHtml).join(" · ")}</span>
+         </div>`
+      : "";
+
     return `
       <div class="item-row" id="ir-${clienteId}-${dk}"
            data-cid="${escHtml(String(clienteId))}" data-dk="${escHtml(dk)}"
@@ -594,6 +624,7 @@ function renderItems(aggArr, clienteId) {
         <div class="item-body">
           <div class="item-desc">${escHtml(it.descripcion)}</div>
           <div class="item-sub">${vLabel}Último: ${fmtDate(it.lastDate)}</div>
+          ${rempHtml}
         </div>
         <div class="item-cant">× ${it.totalCant}</div>
       </div>`;
