@@ -61,11 +61,23 @@
   .pedido-card.urgente   {border-left-color:var(--hoy);background:var(--hoy-bg)}
   .pedido-card.pendiente {border-left-color:var(--pend);background:var(--pend-bg)}
   .pedido-card.armado-ok {border-left-color:var(--ok);background:var(--ok-bg);opacity:.75}
-  .pedido-card.faltante  {border-left-color:#9333ea;background:#faf5ff}
+  .pedido-card.faltante{
+    border-left-color:#7c3aed;
+    background:#f9f5ff;
+    background-image:repeating-linear-gradient(
+      135deg,
+      rgba(124,58,237,.06) 0px, rgba(124,58,237,.06) 1px,
+      transparent 1px, transparent 14px
+    );
+    box-shadow:0 2px 12px rgba(124,58,237,.15),0 0 0 1px rgba(124,58,237,.10);
+  }
   .badge-faltante{
-    display:inline-block;background:#9333ea;color:#fff;
-    font-size:11px;font-weight:900;padding:3px 10px;border-radius:99px;
-    letter-spacing:.4px;margin-top:6px;
+    display:inline-flex;align-items:center;gap:5px;
+    background:linear-gradient(135deg,#7c3aed,#a855f7);
+    color:#fff;font-size:11px;font-weight:900;
+    padding:4px 12px;border-radius:99px;letter-spacing:.5px;margin-top:6px;
+    box-shadow:0 2px 8px rgba(124,58,237,.35);
+    text-transform:uppercase;
   }
 
   /* La jerarquía en tarjetas: nombre → num/nº → fecha → meta */
@@ -679,7 +691,7 @@ function renderLista() {
         </div>
         <div class="card-entrega ${ec}">Entrega: ${fmtFechaCorta(p.fecha_entrega)}</div>
         <div class="card-meta">Vendedor: ${p.vendedor||"—"} · ${p.observaciones||"Sin obs."}</div>
-        ${p.es_pedido_faltante ? `<div class="badge-faltante">⚠️ PEDIDO FALTANTE</div>` : ""}
+        ${p.es_pedido_faltante ? `<div class="badge-faltante">★ PEDIDO DE FALTANTES</div>` : ""}
         ${p.estado==="armado" ? `<div class="badge-armado">✅ ARMADO${p.armado_por ? " · " + p.armado_por : ""}</div>` : ""}
       </div>`;
   }).join("");

@@ -915,8 +915,9 @@ export default {
             body: JSON.stringify({
               cliente_id,
               cliente_nombre: (cliente_nombre || "").toUpperCase(),
+              vendedor: "MERCADO LIMPIO",
               fecha_entrega: fecha_entrega || null,
-              observaciones: "PEDIDO DE FALTANTES",
+              observaciones: "Artículos que faltaron en pedidos anteriores",
               estado: "pendiente",
               es_pedido_faltante: true,
               sig,

@@ -342,6 +342,26 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
+  /* Badge + card estilo para pedidos de faltantes */
+  .badge-faltante{
+    display:inline-flex;align-items:center;gap:5px;
+    background:linear-gradient(135deg,#7c3aed,#a855f7);
+    color:#fff;font-size:10px;font-weight:900;
+    padding:3px 10px;border-radius:99px;letter-spacing:.5px;
+    box-shadow:0 2px 8px rgba(124,58,237,.30);
+    text-transform:uppercase;margin-top:4px;
+  }
+  .pedido-item.faltante{
+    background:#f9f5ff;
+    background-image:repeating-linear-gradient(
+      135deg,
+      rgba(124,58,237,.06) 0px, rgba(124,58,237,.06) 1px,
+      transparent 1px, transparent 14px
+    );
+    border-left:3px solid #7c3aed;
+    box-shadow:inset 0 0 0 1px rgba(124,58,237,.12);
+  }
+
   /* Acciones para pedido ya facturado (copiar + WA vendedor) */
   .acciones-facturado { display: flex; gap: 10px; margin-bottom: 10px; }
   .btn-accion-fact {
@@ -1054,16 +1074,18 @@ function renderLista() {
     html += `<div class="grupo-header ${key}">${icon} ${label} <span class="grupo-count">${grupos[key].length}</span></div>`;
     grupos[key].forEach(p => {
       const g = grupoFecha(p.fecha_entrega);
-      const selClass = pedidoActivo?.id === p.id ? "selected" : "";
-      const facClass = p.estado === "facturado" ? "facturado" : "";
-      const fechaC   = g === "hoy" ? "hoy-c" : g === "man" ? "man-c" : "prox-c";
+      const selClass  = pedidoActivo?.id === p.id ? "selected" : "";
+      const facClass  = p.estado === "facturado" ? "facturado" : "";
+      const faltClass = p.es_pedido_faltante ? "faltante" : "";
+      const fechaC    = g === "hoy" ? "hoy-c" : g === "man" ? "man-c" : "prox-c";
       const ndLabel = labelNumDiario(p);
       html += `
-        <div class="pedido-item grp-${key} ${selClass} ${facClass}" onclick="seleccionar('${p.id}')" style="animation:fadeInUp .2s ease both;display:flex;align-items:flex-start;gap:8px;">
+        <div class="pedido-item grp-${key} ${selClass} ${facClass} ${faltClass}" onclick="seleccionar('${p.id}')" style="animation:fadeInUp .2s ease both;display:flex;align-items:flex-start;gap:8px;">
           <div style="flex:1;min-width:0;">
             <div class="pi-nombre">${p.cliente_nombre || "Cliente " + (p.cliente_id||"—")}</div>
             <div class="pi-fecha ${fechaC}">${icon} ${fmtFecha(p.fecha_entrega).toUpperCase()}</div>
             <div class="pi-meta">${p.vendedor||"—"}${p.armado_por ? " · 🧑‍🏭 "+p.armado_por : ""} ${p.estado === "facturado" ? "· ✅ FACTURADO" : ""}</div>
+            ${p.es_pedido_faltante ? `<div class="badge-faltante">★ PEDIDO DE FALTANTES</div>` : ""}
           </div>
           ${ndLabel ? `<div style="font-size:11px;font-weight:400;opacity:0.55;white-space:nowrap;flex-shrink:0;align-self:center;">${ndLabel}</div>` : ""}
         </div>`;
@@ -1149,9 +1171,10 @@ function renderHeader() {
     }
   }
   document.getElementById("phChips").innerHTML =
-    pedidoActivo.estado === "facturado"
+    (pedidoActivo.es_pedido_faltante ? `<div class="badge-faltante" style="font-size:11px;margin-right:6px;">★ PEDIDO DE FALTANTES</div>` : "") +
+    (pedidoActivo.estado === "facturado"
       ? `<div class="chip" style="color:var(--success);border-color:#86efac;">✅ FACTURADO</div>`
-      : "";
+      : "");
 }
 
 async function recargarItems() {
