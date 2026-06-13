@@ -193,8 +193,10 @@
   .det-nombre{font-size:34px;font-weight:900;color:var(--text);line-height:1.1}
   .det-num   {font-size:14px;font-weight:700;color:var(--muted);margin-top:5px}
   .det-entrega{font-size:18px;font-weight:800;margin-top:8px}
-  .det-entrega.urg {color:#b02a2a}
-  .det-entrega.norm{color:#3a68b0}
+  .det-entrega.urg     {color:#b02a2a}
+  .det-entrega.norm    {color:#3a68b0}
+  .det-entrega.faltante{color:#7c3aed;font-size:19px}
+  .card-entrega.falt   {color:#7c3aed;background:#f5f0ff;border:1.5px solid #c4b5fd}
   .det-sub{font-size:14px;color:var(--muted);margin-top:4px}
   .armador-chip{
     display:inline-flex;align-items:center;gap:6px;margin-top:10px;
@@ -579,6 +581,11 @@ function fmtFechaCorta(fe) {
   return new Date(fe + "T12:00:00").toLocaleDateString("es-AR",
     {weekday:"short", day:"2-digit", month:"2-digit"});
 }
+function fmtFechaFaltante(fe) {
+  if (!fe) return "—";
+  return new Date(fe + "T12:00:00").toLocaleDateString("es-AR",
+    {weekday:"long", day:"2-digit", month:"2-digit"});
+}
 
 // ── SEMANA ISO ──
 function weekId(date) {
@@ -705,7 +712,7 @@ function renderLista() {
           <span class="card-num">N° ${p.cliente_id||"—"}</span>
           ${ndLabel ? `<span class="card-ndiario">📋 ${ndLabel}</span>` : ""}
         </div>
-        <div class="card-entrega ${ec}">Entrega: ${fmtFechaCorta(p.fecha_entrega)}</div>
+        <div class="card-entrega ${p.es_pedido_faltante ? "falt" : ec}">${p.es_pedido_faltante ? fmtFechaFaltante(p.fecha_entrega) : "Entrega: " + fmtFechaCorta(p.fecha_entrega)}</div>
         <div class="card-meta">Vendedor: ${p.vendedor||"—"} · ${p.observaciones||"Sin obs."}</div>
         ${p.es_pedido_faltante ? `<div class="badge-faltante">★ PEDIDO DE FALTANTES</div>` : ""}
         ${p.estado==="armado" ? `<div class="badge-armado">✅ ARMADO${p.armado_por ? " · " + p.armado_por : ""}</div>` : ""}
@@ -789,9 +796,15 @@ async function abrirPedido(id) {
     }
     document.getElementById("detNombre").textContent =
       pedidoActivo.cliente_nombre || "Cliente "+pedidoActivo.cliente_id;
-    document.getElementById("detEntrega").textContent =
-      `Entrega: ${fmtFechaCorta(pedidoActivo.fecha_entrega)}`;
-    document.getElementById("detEntrega").className = `det-entrega ${urg?"urg":"norm"}`;
+    if (pedidoActivo.es_pedido_faltante) {
+      document.getElementById("detEntrega").textContent =
+        `Entrega: ${fmtFechaFaltante(pedidoActivo.fecha_entrega)}`;
+      document.getElementById("detEntrega").className = "det-entrega faltante";
+    } else {
+      document.getElementById("detEntrega").textContent =
+        `Entrega: ${fmtFechaCorta(pedidoActivo.fecha_entrega)}`;
+      document.getElementById("detEntrega").className = `det-entrega ${urg?"urg":"norm"}`;
+    }
     document.getElementById("detSub").textContent =
       `Vendedor: ${pedidoActivo.vendedor||"—"} · ${pedidoActivo.observaciones||"Sin obs."}`;
     // Estilo faltante en el panel de detalle

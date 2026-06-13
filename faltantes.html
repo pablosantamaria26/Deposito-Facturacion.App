@@ -80,6 +80,15 @@ button{font-family:inherit;border:none;cursor:pointer}
   font-size:13px;color:var(--text);outline:none;font-family:inherit;
   min-width:130px;max-width:160px;
 }
+.date-inp{
+  height:40px;padding:0 12px;border-radius:12px;
+  border:1.5px solid var(--border);background:var(--bg);
+  font-size:13px;color:var(--text);outline:none;font-family:inherit;
+  flex:1;min-width:0;
+}
+.date-inp:focus{border-color:var(--accent)}
+.date-inp.active{border-color:var(--red);background:#fff5f5}
+.period-tab.dim{opacity:.4}
 
 /* ── STATS BAR ── */
 .stats-bar{
@@ -279,15 +288,18 @@ button{font-family:inherit;border:none;cursor:pointer}
 
 <div class="filters">
   <div class="period-tabs" id="periodTabs">
-    <button class="period-tab" data-days="7">7 días</button>
-    <button class="period-tab active" data-days="30">30 días</button>
-    <button class="period-tab" data-days="90">90 días</button>
+    <button class="period-tab active" data-days="7">7 días</button>
+    <button class="period-tab" data-days="15">15 días</button>
+    <button class="period-tab" data-days="30">30 días</button>
   </div>
   <div class="filter-row">
-    <input id="searchCliente" class="search-inp" type="search" placeholder="🔍 Buscar cliente..."/>
+    <input id="fechaEspecifica" class="date-inp" type="date" title="Buscar por fecha de entrega específica"/>
     <select id="provSelect" class="prov-sel">
       <option value="">Todos los proveedores</option>
     </select>
+  </div>
+  <div class="filter-row">
+    <input id="searchCliente" class="search-inp" type="search" placeholder="🔍 Cliente, N° o artículo..."/>
   </div>
 </div>
 
@@ -363,10 +375,11 @@ const WORKER  = "https://frosty-term-20ea.santamariapablodaniel.workers.dev";
 // ════════════════════════
 // STATE
 // ════════════════════════
-let allItems       = [];   // items_pedido con pedidos embebidos
-let allProveedores = [];
-let reemplazosMap  = {};   // { item_id_original → { descripcion, cantidad } }
-let activeDays     = 30;
+let allItems          = [];   // items_pedido con pedidos embebidos
+let allProveedores    = [];
+let reemplazosMap     = {};   // { item_id_original → { descripcion, cantidad } }
+let activeDays        = 7;
+let activeFechaEsp    = "";   // YYYY-MM-DD cuando hay fecha específica seleccionada
 let activeProvId   = "";
 let openClientId   = null;
 let pendingOrder   = null; // { clienteId, clienteNombre, items[] }
@@ -497,14 +510,17 @@ function fillProvSelect() {
 // FILTER & GROUP
 // ════════════════════════
 function getGroups() {
-  const from       = dateAgo(activeDays);
-  const search     = document.getElementById("searchCliente").value.trim().toLowerCase();
-  const selProv    = allProveedores.find(p => p.id === activeProvId) || null;
+  const search  = document.getElementById("searchCliente").value.trim().toLowerCase();
+  const selProv = allProveedores.find(p => p.id === activeProvId) || null;
 
-  // Filtrar por fecha y proveedor
+  // Filtrar por período o fecha específica
   const filtered = allItems.filter(item => {
     const fe = item.pedidos?.fecha_entrega || "";
-    if (fe < from) return false;
+    if (activeFechaEsp) {
+      if (fe !== activeFechaEsp) return false;
+    } else {
+      if (fe < dateAgo(activeDays)) return false;
+    }
     if (!matchProv(item.descripcion, selProv)) return false;
     return true;
   });
@@ -513,26 +529,27 @@ function getGroups() {
   const groups = {};
   filtered.forEach(item => {
     const cid  = item.pedidos?.cliente_id    || "?";
-    const cnom = item.pedidos?.cliente_nombre|| "Cliente " + cid;
-    const fe   = item.pedidos?.fecha_entrega || "";
-    const vend = item.pedidos?.vendedor || "";
+    const cnom = item.pedidos?.cliente_nombre || "Cliente " + cid;
+    const fe   = item.pedidos?.fecha_entrega  || "";
+    const vend = item.pedidos?.vendedor        || "";
     if (!groups[cid]) groups[cid] = { cliente_id: cid, cliente_nombre: cnom, vendedor: vend, items: [], lastDate: "" };
     groups[cid].items.push(item);
     if (fe > groups[cid].lastDate) {
       groups[cid].lastDate = fe;
-      if (vend) groups[cid].vendedor = vend; // usar el vendedor del pedido más reciente
+      if (vend) groups[cid].vendedor = vend;
     }
   });
 
   // Ordenar por cantidad de faltantes desc
   let arr = Object.values(groups).sort((a, b) => b.items.length - a.items.length);
 
-  // Filtro por cliente
+  // Filtro por cliente (nombre / N°) o artículo
   if (search) {
-    arr = arr.filter(g =>
-      g.cliente_id.includes(search) ||
-      g.cliente_nombre.toLowerCase().includes(search)
-    );
+    arr = arr.filter(g => {
+      if (g.cliente_id.includes(search) || g.cliente_nombre.toLowerCase().includes(search)) return true;
+      // Buscar dentro de los artículos del cliente
+      return g.items.some(it => (it.descripcion || "").toLowerCase().includes(search));
+    });
   }
 
   return { arr, total: filtered.length };
@@ -544,10 +561,13 @@ function getGroups() {
 function render() {
   const { arr, total } = getGroups();
   const statsBar = document.getElementById("statsBar");
+  const periodoLabel = activeFechaEsp
+    ? `entrega ${activeFechaEsp.split("-").reverse().join("/")}`
+    : `últimos ${activeDays}d`;
   if (arr.length) {
-    statsBar.innerHTML = `<strong>${arr.length}</strong> clientes · <strong>${total}</strong> faltantes (últimos <strong>${activeDays}d</strong>)`;
+    statsBar.innerHTML = `<strong>${arr.length}</strong> clientes · <strong>${total}</strong> faltantes (${periodoLabel})`;
   } else {
-    statsBar.textContent = `Sin faltantes en los últimos ${activeDays} días`;
+    statsBar.textContent = `Sin faltantes · ${periodoLabel}`;
   }
 
   const list = document.getElementById("clientList");
@@ -818,9 +838,31 @@ async function confirmarPedido() {
 document.getElementById("periodTabs").addEventListener("click", e => {
   const btn = e.target.closest(".period-tab");
   if (!btn) return;
-  document.querySelectorAll(".period-tab").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".period-tab").forEach(b => b.classList.remove("active","dim"));
   btn.classList.add("active");
   activeDays = parseInt(btn.dataset.days);
+  // Limpiar fecha específica si se elige un período
+  activeFechaEsp = "";
+  document.getElementById("fechaEspecifica").value = "";
+  document.getElementById("fechaEspecifica").classList.remove("active");
+  openClientId = null; render();
+});
+
+document.getElementById("fechaEspecifica").addEventListener("change", e => {
+  activeFechaEsp = e.target.value || "";
+  const tabs = document.querySelectorAll(".period-tab");
+  if (activeFechaEsp) {
+    // Fecha específica activa: opacar tabs de período
+    tabs.forEach(b => { b.classList.remove("active"); b.classList.add("dim"); });
+    e.target.classList.add("active");
+  } else {
+    // Sin fecha: restaurar tab activa (la de activeDays)
+    e.target.classList.remove("active");
+    tabs.forEach(b => {
+      b.classList.remove("dim");
+      if (parseInt(b.dataset.days) === activeDays) b.classList.add("active");
+    });
+  }
   openClientId = null; render();
 });
 
