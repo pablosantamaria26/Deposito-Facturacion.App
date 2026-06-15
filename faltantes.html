@@ -93,7 +93,7 @@ button{font-family:inherit;border:none;cursor:pointer}
 /* ── STATS BAR ── */
 .stats-bar{
   padding:9px 20px;font-size:12px;color:var(--text3);
-  display:flex;align-items:center;gap:8px;
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
 }
 .stats-bar strong{color:var(--text)}
 
@@ -101,7 +101,18 @@ button{font-family:inherit;border:none;cursor:pointer}
 .client-list{padding:10px 14px;display:flex;flex-direction:column;gap:10px}
 
 /* ── CLIENT CARD ── */
-.client-card{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.client-card{
+  background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);
+  overflow:hidden;
+  will-change:transform;
+}
+.client-card.dismissing{
+  animation:slideOutLeft .28s ease-in forwards;
+  pointer-events:none;overflow:hidden;
+}
+@keyframes slideOutLeft{
+  to{transform:translateX(-105%);opacity:0;max-height:0;margin-bottom:-10px}
+}
 .client-header{
   padding:15px 16px;display:flex;align-items:center;gap:12px;
   cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;
@@ -120,6 +131,17 @@ button{font-family:inherit;border:none;cursor:pointer}
 }
 .client-chevron{font-size:11px;color:var(--text3);flex-shrink:0;transition:transform .2s}
 .client-card.open .client-chevron{transform:rotate(180deg)}
+
+/* ── DISMISS BTN ── */
+.dismiss-btn{
+  width:30px;height:30px;border-radius:9px;flex-shrink:0;
+  background:transparent;color:var(--text3);font-size:18px;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .15s;margin-right:-4px;line-height:1;
+}
+.dismiss-btn:active{background:var(--red-s);color:var(--red)}
+.dismiss-btn.restore{color:var(--accent)}
+.dismiss-btn.restore:active{background:rgba(99,102,241,.12)}
 
 /* ── ITEMS PANEL ── */
 .items-panel{display:none;border-top:1px solid var(--border)}
@@ -190,8 +212,7 @@ button{font-family:inherit;border:none;cursor:pointer}
 .hist-art{color:var(--text);font-weight:500;line-height:1.3}
 .hist-remp{
   color:#1d4ed8;font-size:11px;font-weight:600;
-  grid-column:1/-1;padding-left:0;
-  padding-top:2px;
+  grid-column:1/-1;padding-left:0;padding-top:2px;
 }
 .hist-sin{color:var(--text3);font-size:11px;font-style:italic;grid-column:1/-1}
 
@@ -205,6 +226,75 @@ button{font-family:inherit;border:none;cursor:pointer}
 }
 .gen-btn:disabled{opacity:.4;box-shadow:none;cursor:default}
 .gen-btn:active:not(:disabled){transform:scale(.98)}
+
+/* ── SECTION CHIPS (en proceso / ignorados) ── */
+.sec-group{display:flex;flex-direction:column;gap:8px;padding:2px 0}
+.sec-chip{
+  display:flex;align-items:center;gap:10px;
+  padding:13px 16px;border-radius:14px;
+  border:1.5px solid var(--border);background:var(--surface);
+  font-size:13px;font-weight:600;color:var(--text2);
+  transition:opacity .12s;text-align:left;width:100%;
+}
+.sec-chip:active{opacity:.7}
+.sec-chip.chip-proceso{border-color:#fcd34d;background:#fffbeb;color:#92400e}
+.sec-chip.chip-ignorados{border-color:var(--border);background:var(--bg);color:var(--text3)}
+.chip-icon{font-size:16px}
+.chip-label{flex:1}
+.chip-count{
+  padding:2px 9px;border-radius:99px;font-size:11px;font-weight:800;
+  background:var(--text3);color:#fff;
+}
+.sec-chip.chip-proceso .chip-count{background:#d97706}
+.chip-arr{font-size:10px;margin-left:2px;opacity:.6}
+
+/* ── EN PROCESO CARDS ── */
+.sec-cards{padding:0 0 8px;display:flex;flex-direction:column;gap:8px}
+.ep-card{
+  background:#fffbeb;border:1.5px solid #fcd34d;border-radius:14px;
+  padding:13px 16px;display:flex;align-items:center;gap:12px;
+}
+.ep-avatar{
+  width:40px;height:40px;border-radius:11px;flex-shrink:0;
+  background:#fef3c7;display:flex;align-items:center;justify-content:center;
+  font-size:16px;font-weight:900;color:#d97706;
+}
+.ep-info{flex:1;min-width:0}
+.ep-nombre{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ep-meta{font-size:11px;color:#92400e;margin-top:2px}
+.ep-badge{
+  font-size:11px;font-weight:700;color:#d97706;
+  padding:3px 10px;border-radius:99px;background:#fef3c7;
+  border:1px solid #fcd34d;flex-shrink:0;
+}
+
+/* ── IGNORADOS CARDS ── */
+.ign-card{
+  background:var(--bg);border:1.5px solid var(--border);border-radius:14px;
+  padding:12px 16px;display:flex;align-items:center;gap:12px;
+}
+.ign-avatar{
+  width:36px;height:36px;border-radius:10px;flex-shrink:0;
+  background:rgba(0,0,0,.07);display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:900;color:var(--text3);
+}
+.ign-info{flex:1;min-width:0}
+.ign-nombre{font-size:13px;font-weight:600;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ign-meta{font-size:11px;color:var(--text3);margin-top:1px}
+.ign-restore{
+  flex-shrink:0;height:32px;padding:0 12px;border-radius:8px;
+  font-size:12px;font-weight:700;color:var(--accent);
+  background:none;border:1.5px solid var(--accent);transition:all .15s;
+}
+.ign-restore:active{background:var(--accent);color:#fff}
+
+/* ── LABEL EN SEARCH ── */
+.search-tag{
+  display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:99px;
+  margin-left:6px;vertical-align:middle;
+}
+.search-tag.ignorado{background:rgba(0,0,0,.06);color:var(--text3)}
+.search-tag.en-proceso{background:#fef3c7;color:#d97706}
 
 /* ── EMPTY ── */
 .empty-state{text-align:center;padding:56px 24px}
@@ -389,15 +479,19 @@ const WORKER  = "https://frosty-term-20ea.santamariapablodaniel.workers.dev";
 // ════════════════════════
 // STATE
 // ════════════════════════
-let allItems          = [];   // items_pedido con pedidos embebidos
-let allProveedores    = [];
-let reemplazosMap     = {};   // { item_id_original → { descripcion, cantidad } }
-let activeDays        = 7;
-let activeFechaEsp    = "";   // YYYY-MM-DD cuando hay fecha específica seleccionada
+let allItems       = [];
+let allProveedores = [];
+let reemplazosMap  = {};
+let enProcesoMap   = {};  // { clienteId → { numero_diario, estado } }
+let ignorados      = new Set(JSON.parse(localStorage.getItem("faltantes_ignorados") || "[]"));
+let activeDays     = 7;
+let activeFechaEsp = "";
 let activeProvId   = "";
 let openClientId   = null;
-let pendingOrder   = null; // { clienteId, clienteNombre, items[] }
-const selMap       = {};   // { clienteId: { descKey: {descripcion, cantidad} } }
+let pendingOrder   = null;
+const selMap       = {};
+let showIgnorados  = false;
+let showEnProceso  = false;
 
 // ════════════════════════
 // SUPABASE
@@ -440,7 +534,6 @@ function nextWeekday() {
 function escHtml(s) {
   return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
-// Hash rápido para usar como DOM id
 function strId(s) {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = Math.imul(31, h) + s.charCodeAt(i) | 0;
@@ -449,24 +542,19 @@ function strId(s) {
 function setSyncDot(state) {
   document.getElementById("syncDot").className = "sync-dot " + state;
 }
+function saveIgnorados() {
+  localStorage.setItem("faltantes_ignorados", JSON.stringify([...ignorados]));
+}
 
 // ════════════════════════
 // PROVEEDOR MATCHING
 // ════════════════════════
 const PROV_OVERRIDE = {
-  "entresol":      "ENTRE SOL",
-  "bio_bag":       "BIO BAG",
-  "make_fresh":    "MAKE FRESH",
-  "la_americana":  "AMERICANA",
-  "la_gauchita":   "GAUCHITA",
-  "broche_eco":    "BROCHE",
-  "santamaria_cs": "SANTAMARIA",
-  "mis_plast":     "MIS PLAST",
-  "supy":          "SUPER GOMA",
+  "entresol":"ENTRE SOL","bio_bag":"BIO BAG","make_fresh":"MAKE FRESH",
+  "la_americana":"AMERICANA","la_gauchita":"GAUCHITA","broche_eco":"BROCHE",
+  "santamaria_cs":"SANTAMARIA","mis_plast":"MIS PLAST","supy":"SUPER GOMA",
 };
-function provKeyword(prov) {
-  return PROV_OVERRIDE[prov.id] || prov.nombre.toUpperCase();
-}
+function provKeyword(prov) { return PROV_OVERRIDE[prov.id] || prov.nombre.toUpperCase(); }
 function matchProv(desc, prov) {
   if (!prov) return true;
   return (desc || "").toUpperCase().includes(provKeyword(prov));
@@ -478,7 +566,7 @@ function matchProv(desc, prov) {
 async function loadData() {
   setSyncDot("loading");
   try {
-    const [items, proveedores, reemplazos] = await Promise.all([
+    const [items, proveedores, reemplazos, activosFaltante] = await Promise.all([
       sbGet("items_pedido",
         "es_faltante=eq.true" +
         "&faltante_gestionado=neq.true" +
@@ -491,13 +579,24 @@ async function loadData() {
         "&select=descripcion,cantidad,reemplaza_item_id" +
         "&limit=2000"
       ),
+      sbGet("pedidos",
+        "es_pedido_faltante=eq.true" +
+        "&estado=in.(pendiente,armado,en_facturacion)" +
+        "&select=cliente_id,cliente_nombre,numero_diario,estado"
+      ),
     ]);
+
     allItems       = Array.isArray(items)       ? items       : [];
     allProveedores = Array.isArray(proveedores) ? proveedores : [];
     reemplazosMap  = {};
     (Array.isArray(reemplazos) ? reemplazos : []).forEach(r => {
       if (r.reemplaza_item_id) reemplazosMap[r.reemplaza_item_id] = r;
     });
+    enProcesoMap = {};
+    (Array.isArray(activosFaltante) ? activosFaltante : []).forEach(p => {
+      enProcesoMap[p.cliente_id] = p;
+    });
+
     fillProvSelect();
     render();
     setSyncDot("ok");
@@ -525,10 +624,10 @@ function fillProvSelect() {
 // FILTER & GROUP
 // ════════════════════════
 function getGroups() {
-  const search  = document.getElementById("searchCliente").value.trim().toLowerCase();
-  const selProv = allProveedores.find(p => p.id === activeProvId) || null;
+  const search    = document.getElementById("searchCliente").value.trim().toLowerCase();
+  const selProv   = allProveedores.find(p => p.id === activeProvId) || null;
+  const isSearching = search.length > 0;
 
-  // Filtrar por período o fecha específica
   const filtered = allItems.filter(item => {
     const fe = item.pedidos?.fecha_entrega || "";
     if (activeFechaEsp) {
@@ -540,7 +639,6 @@ function getGroups() {
     return true;
   });
 
-  // Agrupar por cliente
   const groups = {};
   filtered.forEach(item => {
     const cid  = item.pedidos?.cliente_id    || "?";
@@ -555,38 +653,58 @@ function getGroups() {
     }
   });
 
-  // Ordenar por cantidad de faltantes desc
   let arr = Object.values(groups).sort((a, b) => b.items.length - a.items.length);
 
-  // Filtro por cliente (nombre / N°) o artículo
   if (search) {
     arr = arr.filter(g => {
       if (g.cliente_id.includes(search) || g.cliente_nombre.toLowerCase().includes(search)) return true;
-      // Buscar dentro de los artículos del cliente
       return g.items.some(it => (it.descripcion || "").toLowerCase().includes(search));
     });
+    // En búsqueda: mostrar todo (incluido ignorados/en-proceso), con flags para visual
+    return {
+      main: arr.map(g => ({
+        ...g,
+        _isIgnored:    ignorados.has(g.cliente_id),
+        _isEnProceso:  !!enProcesoMap[g.cliente_id],
+      })),
+      ignoradosArr: [], enProcesoArr: [],
+      total: filtered.length, isSearching: true
+    };
   }
 
-  return { arr, total: filtered.length };
+  const mainArr      = arr.filter(g => !ignorados.has(g.cliente_id) && !enProcesoMap[g.cliente_id]);
+  const enProcesoArr = arr.filter(g =>  !!enProcesoMap[g.cliente_id]);
+  const ignoradosArr = arr.filter(g =>  ignorados.has(g.cliente_id) && !enProcesoMap[g.cliente_id]);
+
+  return { main: mainArr, ignoradosArr, enProcesoArr, total: filtered.length, isSearching: false };
 }
 
 // ════════════════════════
 // RENDER
 // ════════════════════════
 function render() {
-  const { arr, total } = getGroups();
+  const { main, ignoradosArr, enProcesoArr, total, isSearching } = getGroups();
   const statsBar = document.getElementById("statsBar");
   const periodoLabel = activeFechaEsp
     ? `entrega ${activeFechaEsp.split("-").reverse().join("/")}`
     : `últimos ${activeDays}d`;
-  if (arr.length) {
-    statsBar.innerHTML = `<strong>${arr.length}</strong> clientes · <strong>${total}</strong> faltantes (${periodoLabel})`;
-  } else {
-    statsBar.textContent = `Sin faltantes · ${periodoLabel}`;
+
+  // Stats
+  const totalVisible = isSearching ? main.length : main.length;
+  const parts = [];
+  if (main.length || isSearching) {
+    parts.push(`<strong>${main.length}</strong> cliente${main.length !== 1 ? "s" : ""} · <strong>${total}</strong> faltantes (${periodoLabel})`);
   }
+  if (!isSearching) {
+    if (enProcesoArr.length) parts.push(`<span style="color:#d97706;font-weight:700">${enProcesoArr.length} en proceso</span>`);
+    if (ignoradosArr.length) parts.push(`<span style="color:var(--text3)">${ignoradosArr.length} ignorado${ignoradosArr.length !== 1 ? "s" : ""}</span>`);
+  }
+  statsBar.innerHTML = parts.length ? parts.join(" · ") : `Sin faltantes · ${periodoLabel}`;
 
   const list = document.getElementById("clientList");
-  if (!arr.length) {
+
+  const totalAll = main.length + enProcesoArr.length + ignoradosArr.length;
+  if (!totalAll) {
     list.innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">✅</div>
@@ -596,7 +714,78 @@ function render() {
     return;
   }
 
-  list.innerHTML = arr.map(g => renderCard(g)).join("");
+  let html = "";
+
+  // ── Sección principal ──
+  if (main.length) {
+    html += main.map(g => renderCard(g, { isIgnored: g._isIgnored || false, isEnProceso: g._isEnProceso || false })).join("");
+  } else if (!isSearching && (enProcesoArr.length || ignoradosArr.length)) {
+    html += `
+      <div class="empty-state" style="padding:28px 24px">
+        <div class="empty-icon" style="font-size:36px">✅</div>
+        <div class="empty-title" style="font-size:15px">Todo gestionado</div>
+        <div class="empty-sub">Los demás clientes están en proceso o ignorados</div>
+      </div>`;
+  }
+
+  // ── En proceso ──
+  if (enProcesoArr.length) {
+    const lbl = { pendiente:"En depósito", armado:"Listo para facturar", en_facturacion:"En facturación" };
+    html += `<div class="sec-group">
+      <button class="sec-chip chip-proceso" onclick="toggleSection('enProceso')">
+        <span class="chip-icon">📋</span>
+        <span class="chip-label">En proceso</span>
+        <span class="chip-count">${enProcesoArr.length}</span>
+        <span class="chip-arr">${showEnProceso ? "▲" : "▼"}</span>
+      </button>`;
+    if (showEnProceso) {
+      html += `<div class="sec-cards">`;
+      enProcesoArr.forEach(g => {
+        const ped = enProcesoMap[g.cliente_id];
+        html += `
+          <div class="ep-card">
+            <div class="ep-avatar">${escHtml(g.cliente_nombre.charAt(0))}</div>
+            <div class="ep-info">
+              <div class="ep-nombre">${escHtml(g.cliente_nombre)}</div>
+              <div class="ep-meta">Pedido N°${ped.numero_diario} · ${lbl[ped.estado] || ped.estado}</div>
+            </div>
+            <div class="ep-badge">${g.items.length} falt.</div>
+          </div>`;
+      });
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  // ── Ignorados ──
+  if (ignoradosArr.length) {
+    html += `<div class="sec-group">
+      <button class="sec-chip chip-ignorados" onclick="toggleSection('ignorados')">
+        <span class="chip-icon">🙈</span>
+        <span class="chip-label">Ignorados</span>
+        <span class="chip-count">${ignoradosArr.length}</span>
+        <span class="chip-arr">${showIgnorados ? "▲" : "▼"}</span>
+      </button>`;
+    if (showIgnorados) {
+      html += `<div class="sec-cards">`;
+      ignoradosArr.forEach(g => {
+        html += `
+          <div class="ign-card">
+            <div class="ign-avatar">${escHtml(g.cliente_nombre.charAt(0))}</div>
+            <div class="ign-info">
+              <div class="ign-nombre">${escHtml(g.cliente_nombre)}</div>
+              <div class="ign-meta">N° ${g.cliente_id} · ${g.items.length} faltante${g.items.length !== 1 ? "s" : ""} · Último: ${fmtDate(g.lastDate)}</div>
+            </div>
+            <button class="ign-restore" onclick="desigNorarCliente('${escHtml(g.cliente_id)}')">Mostrar</button>
+          </div>`;
+      });
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  html += `<div style="height:10px"></div>`;
+  list.innerHTML = html;
 
   // Restaurar abierto
   if (openClientId) {
@@ -604,11 +793,12 @@ function render() {
     if (c) { c.classList.add("open"); updateGenBtn(openClientId); }
   }
 
-  // Listeners toggle
-  arr.forEach(g => {
+  // Listeners en tarjetas principales
+  main.forEach(g => {
     const c = document.getElementById("cc-" + g.cliente_id);
     if (!c) return;
-    c.querySelector(".client-header").addEventListener("click", () => {
+    c.querySelector(".client-header").addEventListener("click", e => {
+      if (e.target.closest(".dismiss-btn")) return;
       if (c.classList.contains("open")) {
         c.classList.remove("open"); openClientId = null;
       } else {
@@ -627,19 +817,33 @@ function render() {
   });
 }
 
-function renderCard(g) {
+// ════════════════════════
+// RENDER CARD
+// ════════════════════════
+function renderCard(g, { isIgnored = false, isEnProceso = false } = {}) {
   const agg = aggregate(g.items);
   const initial = g.cliente_nombre.charAt(0).toUpperCase();
+  const tags = [
+    isIgnored   ? `<span class="search-tag ignorado">ignorado</span>`   : "",
+    isEnProceso ? `<span class="search-tag en-proceso">en proceso</span>` : "",
+  ].join("");
+  const metaExtra = tags ? ` · ${tags}` : "";
+  const dismissIsRestore = isIgnored;
+
   return `
-    <div class="client-card" id="cc-${g.cliente_id}">
+    <div class="client-card" id="cc-${g.cliente_id}" data-cid="${escHtml(g.cliente_id)}">
       <div class="client-header">
         <div class="client-avatar">${escHtml(initial)}</div>
         <div class="client-info">
           <div class="client-nombre">${escHtml(g.cliente_nombre)}</div>
-          <div class="client-meta">N° ${g.cliente_id} · Último faltante: ${fmtDate(g.lastDate)}</div>
+          <div class="client-meta">N° ${g.cliente_id} · Último faltante: ${fmtDate(g.lastDate)}${metaExtra}</div>
         </div>
         <div class="client-badge">${g.items.length}</div>
         <div class="client-chevron">▼</div>
+        <button class="dismiss-btn ${dismissIsRestore ? "restore" : ""}"
+          data-dismiss="${escHtml(g.cliente_id)}"
+          title="${dismissIsRestore ? "Volver a mostrar" : "Ignorar cliente"}"
+        >${dismissIsRestore ? "👁" : "×"}</button>
       </div>
       <div class="items-panel">
         <input class="items-search" type="search" placeholder="🔍 Filtrar productos..."
@@ -659,7 +863,98 @@ function renderCard(g) {
     </div>`;
 }
 
-// Agrega items por descripcion: cuenta veces, suma cantidades, guarda historial completo
+// ════════════════════════
+// IGNORE / UNIGNORE
+// ════════════════════════
+function ignorarCliente(clienteId) {
+  ignorados.add(clienteId);
+  saveIgnorados();
+  // Si hay una tarjeta visible, animarla antes de re-render
+  const card = document.getElementById("cc-" + clienteId);
+  if (card && !card._isIgnored) {
+    card.classList.add("dismissing");
+    // Si estaba abierta, cerrarla
+    if (openClientId === clienteId) openClientId = null;
+    setTimeout(() => render(), 300);
+  } else {
+    render();
+  }
+}
+
+function desigNorarCliente(clienteId) {
+  ignorados.delete(clienteId);
+  saveIgnorados();
+  render();
+  toast("Cliente vuelto a la lista principal");
+}
+
+// ════════════════════════
+// TOGGLE SECCIONES
+// ════════════════════════
+function toggleSection(sec) {
+  if (sec === "enProceso") showEnProceso = !showEnProceso;
+  if (sec === "ignorados") showIgnorados = !showIgnorados;
+  render();
+}
+
+// ════════════════════════
+// SWIPE TO DISMISS
+// ════════════════════════
+let _sw = null;
+
+function initSwipe() {
+  document.addEventListener("touchstart", e => {
+    const card = e.target.closest(".client-card");
+    if (!card || card.classList.contains("dismissing")) return;
+    _sw = {
+      x0: e.touches[0].clientX,
+      y0: e.touches[0].clientY,
+      cid: card.dataset.cid,
+      card,
+      locked: false,
+    };
+  }, { passive: true });
+
+  document.addEventListener("touchmove", e => {
+    if (!_sw || _sw.locked) return;
+    const dx = e.touches[0].clientX - _sw.x0;
+    const dy = Math.abs(e.touches[0].clientY - _sw.y0);
+    // Si el desplazamiento vertical supera al horizontal → es scroll, no swipe
+    if (dy > Math.abs(dx) + 8) { _sw = null; return; }
+    if (dx < -6) {
+      const tx = Math.max(-130, dx);
+      _sw.card.style.transform = `translateX(${tx}px)`;
+      _sw.card.style.opacity   = String(Math.max(0.2, 1 + tx / 130));
+    }
+  }, { passive: true });
+
+  document.addEventListener("touchend", e => {
+    if (!_sw) return;
+    const dx = e.changedTouches[0].clientX - _sw.x0;
+    if (dx < -80) {
+      // Swipe confirmado
+      _sw.card.style.transition = "transform .22s ease-out, opacity .22s ease-out";
+      _sw.card.style.transform  = "translateX(-110%)";
+      _sw.card.style.opacity    = "0";
+      const cid = _sw.cid;
+      _sw = null;
+      setTimeout(() => ignorarCliente(cid), 220);
+    } else {
+      // Cancelar — volver a posición
+      _sw.card.style.transition = "transform .2s ease, opacity .2s ease";
+      _sw.card.style.transform  = "";
+      _sw.card.style.opacity    = "";
+      setTimeout(() => {
+        if (_sw?.card) { _sw.card.style.transition = ""; }
+      }, 220);
+      _sw = null;
+    }
+  }, { passive: true });
+}
+
+// ════════════════════════
+// AGGREGATE
+// ════════════════════════
 function aggregate(items) {
   const map = {};
   items.forEach(it => {
@@ -674,7 +969,6 @@ function aggregate(items) {
     if (d > map[key].lastDate) map[key].lastDate = d;
     map[key].ocurrencias.push({ fecha: d, cantidad: cant, itemId: it.id || null });
   });
-  // Ordenar ocurrencias por fecha desc
   Object.values(map).forEach(g => g.ocurrencias.sort((a, b) => (b.fecha > a.fecha ? 1 : -1)));
   return Object.values(map).sort((a, b) => b.veces - a.veces || b.totalCant - a.totalCant);
 }
@@ -702,8 +996,6 @@ function renderItems(aggArr, clienteId) {
   return aggArr.map(it => {
     const dk = strId(it.descripcion);
     const vLabel = it.veces > 1 ? `${it.veces}× faltó · ` : "";
-
-    // Reemplazos únicos para el resumen inline
     const rDescs = [...new Set(
       (it.itemIds || []).filter(id => reemplazosMap[id]).map(id => reemplazosMap[id].descripcion)
     )];
@@ -713,13 +1005,11 @@ function renderItems(aggArr, clienteId) {
            <span class="item-remp-val">${rDescs.map(escHtml).join(" · ")}</span>
          </div>`
       : "";
-
     const histHtml = (it.ocurrencias?.length > 1 || rDescs.length)
       ? renderHistorial(it.ocurrencias, dk, clienteId) : "";
     const histBtn = histHtml
       ? `<button class="item-hist-btn" data-hid="${clienteId}-${dk}" title="Ver historial">▼</button>`
       : "";
-
     return `
       <div class="item-row" id="ir-${clienteId}-${dk}"
            data-cid="${escHtml(String(clienteId))}" data-dk="${escHtml(dk)}"
@@ -739,7 +1029,7 @@ function renderItems(aggArr, clienteId) {
 }
 
 // ════════════════════════
-// ITEM FILTER (búsqueda)
+// ITEM FILTER
 // ════════════════════════
 function filterItems(clienteId) {
   const q = (document.getElementById(`is-${clienteId}`)?.value || "").trim().toLowerCase();
@@ -790,7 +1080,6 @@ function updateGenBtn(clienteId) {
 // ════════════════════════
 let _submitting    = false;
 let _fechaSugerida = "";
-
 const DAYS_ES = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
 
 function openModal(clienteId, clienteNombre, vendedor) {
@@ -815,38 +1104,28 @@ async function sugerirFechaEntrega(clienteId) {
       `&order=fecha_entrega.desc&limit=20`
     );
     if (!historicos.length) return;
-
-    // Contar día de semana de cada entrega histórica
     const dayCount = {};
     historicos.forEach(p => {
       if (!p.fecha_entrega) return;
       const dow = new Date(p.fecha_entrega + "T12:00:00").getDay();
       dayCount[dow] = (dayCount[dow] || 0) + 1;
     });
-
-    // Día más frecuente
     const sorted = Object.entries(dayCount).sort((a, b) => b[1] - a[1]);
     if (!sorted.length) return;
     const [bestDow, bestCount] = sorted[0];
     const confidence = Math.round(bestCount / historicos.length * 100);
-    if (confidence < 50) return; // sin patrón claro, no sugerimos
-
-    // Próxima fecha con ese día de semana (a partir de mañana)
+    if (confidence < 50) return;
     const dow  = parseInt(bestDow);
     const next = new Date();
     next.setDate(next.getDate() + 1);
     while (next.getDay() !== dow) next.setDate(next.getDate() + 1);
     const nextISO = next.toISOString().split("T")[0];
-
     _fechaSugerida = nextISO;
     document.getElementById("modalSugerText").textContent =
       `Suele recibir los ${DAYS_ES[dow]} (${confidence}% de sus pedidos) → ${fmtDate(nextISO)}`;
     document.getElementById("modalSugerencia").style.display = "flex";
-    // Pre-completar la fecha con la sugerencia
     document.getElementById("modalFecha").value = nextISO;
-  } catch(e) {
-    console.error("sugerirFechaEntrega:", e);
-  }
+  } catch(e) { console.error("sugerirFechaEntrega:", e); }
 }
 
 function usarFechaSugerida() {
@@ -855,8 +1134,7 @@ function usarFechaSugerida() {
 
 function closeModal() {
   document.getElementById("genModal").classList.remove("open");
-  pendingOrder    = null;
-  _fechaSugerida  = "";
+  pendingOrder = null; _fechaSugerida = "";
 }
 
 async function confirmarPedido() {
@@ -866,29 +1144,23 @@ async function confirmarPedido() {
   _submitting = true;
   const btn = document.getElementById("btnConfirm");
   btn.disabled = true; btn.textContent = "Enviando...";
-  // Guardar referencia antes de cerrar el modal
   const { clienteId, clienteNombre, vendedor, items } = pendingOrder;
   try {
     const res = await fetch(`${WORKER}/crear-pedido-faltante`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        cliente_id:     clienteId,
-        cliente_nombre: clienteNombre,
-        vendedor:       vendedor,
-        fecha_entrega:  fecha,
-        items,
-      }),
+      body: JSON.stringify({ cliente_id: clienteId, cliente_nombre: clienteNombre, vendedor, fecha_entrega: fecha, items }),
     });
     const data = await res.json();
     if (data.ok) {
       closeModal();
       toast(`✅ Pedido N°${data.numero_diario || ""} generado para depósito`);
-      // Limpiar selección del cliente
       delete selMap[clienteId];
       updateGenBtn(clienteId);
       document.querySelectorAll(`[id^="ir-${clienteId}-"]`).forEach(r => r.classList.remove("checked"));
       document.querySelectorAll(`[id^="ic-${clienteId}-"]`).forEach(c => c.textContent = "");
+      // Recargar para que el cliente pase a "en proceso"
+      await loadData();
     } else {
       toast("❌ " + (data.error || "Error al crear el pedido"));
     }
@@ -910,7 +1182,6 @@ document.getElementById("periodTabs").addEventListener("click", e => {
   document.querySelectorAll(".period-tab").forEach(b => b.classList.remove("active","dim"));
   btn.classList.add("active");
   activeDays = parseInt(btn.dataset.days);
-  // Limpiar fecha específica si se elige un período
   activeFechaEsp = "";
   document.getElementById("fechaEspecifica").value = "";
   document.getElementById("fechaEspecifica").classList.remove("active");
@@ -921,11 +1192,9 @@ document.getElementById("fechaEspecifica").addEventListener("change", e => {
   activeFechaEsp = e.target.value || "";
   const tabs = document.querySelectorAll(".period-tab");
   if (activeFechaEsp) {
-    // Fecha específica activa: opacar tabs de período
     tabs.forEach(b => { b.classList.remove("active"); b.classList.add("dim"); });
     e.target.classList.add("active");
   } else {
-    // Sin fecha: restaurar tab activa (la de activeDays)
     e.target.classList.remove("active");
     tabs.forEach(b => {
       b.classList.remove("dim");
@@ -950,11 +1219,24 @@ document.getElementById("genModal").addEventListener("click", e => {
 
 // Delegado único para toda la lista
 document.getElementById("clientList").addEventListener("click", e => {
-  // 1. Botón historial ▼
+  // 1. Botón dismiss / restore
+  const dismissBtn = e.target.closest(".dismiss-btn");
+  if (dismissBtn) {
+    e.stopPropagation();
+    const cid = dismissBtn.dataset.dismiss;
+    if (ignorados.has(cid)) {
+      desigNorarCliente(cid);
+    } else {
+      ignorarCliente(cid);
+    }
+    return;
+  }
+
+  // 2. Botón historial ▼
   const histBtn = e.target.closest(".item-hist-btn");
   if (histBtn) { toggleHistory(histBtn.dataset.hid); return; }
 
-  // 2. Item row → toggle selección
+  // 3. Item row → toggle selección
   const row = e.target.closest(".item-row");
   if (row) {
     const { cid, dk, desc, cant, ids } = row.dataset;
@@ -962,7 +1244,7 @@ document.getElementById("clientList").addEventListener("click", e => {
     return;
   }
 
-  // 3. Botón Generar pedido
+  // 4. Botón Generar pedido
   const btn = e.target.closest(".gen-btn");
   if (btn && !btn.disabled) {
     const { cid, nom, vend } = btn.dataset;
@@ -973,6 +1255,7 @@ document.getElementById("clientList").addEventListener("click", e => {
 // ════════════════════════
 // INIT
 // ════════════════════════
+initSwipe();
 loadData();
 </script>
 </body>
