@@ -1288,7 +1288,10 @@ function workingMs(from, to) {
     const segEnd = dayEnd < end ? dayEnd : end;
     if (dow !== 0 && dow !== 6) { // lunes–viernes
       const fromMin = cur.getUTCHours() * 60 + cur.getUTCMinutes();
-      const toMin   = segEnd.getUTCHours() * 60 + segEnd.getUTCMinutes();
+      // Si segEnd es medianoche (dayEnd), usar 24*60 en vez de 0 para no perder el tramo final del día
+      const toMin = dayEnd < end
+        ? 24 * 60
+        : segEnd.getUTCHours() * 60 + segEnd.getUTCMinutes();
       totalMins += _workMinsSegment(fromMin, toMin);
     }
     cur = dayEnd;
