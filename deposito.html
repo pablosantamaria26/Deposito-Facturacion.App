@@ -1258,7 +1258,45 @@ function toast(msg,tipo=""){
   document.body.appendChild(el); clearTimeout(tt); tt=setTimeout(()=>el.remove(),2800);
 }
 
-// ── TIMER ──
+// ── HORARIO LABORAL (Argentina UTC-3) ──
+// Turno 7:00-16:00, almuerzo 12:00-12:30, sin sábado ni domingo
+const ARG_OFF = 3 * 3600 * 1000; // ms a restar para obtener hora ARG en UTC
+const WRK_S = 7*60, WRK_E = 16*60;    // inicio/fin turno en minutos
+const LNH_S = 12*60, LNH_E = 12*60+30; // almuerzo
+
+function _workMinsSegment(fromMin, toMin) {
+  const a = Math.max(fromMin, WRK_S), b = Math.min(toMin, WRK_E);
+  if (b <= a) return 0;
+  let m = b - a;
+  const ls = Math.max(a, LNH_S), le = Math.min(b, LNH_E);
+  if (le > ls) m -= (le - ls);
+  return Math.max(0, m);
+}
+
+// Milisegundos laborales entre dos timestamps
+function workingMs(from, to) {
+  if (!(from instanceof Date)) from = new Date(from);
+  if (!(to   instanceof Date)) to   = new Date(to);
+  if (to <= from) return 0;
+  let totalMins = 0;
+  // Shifteamos a "ARG como UTC" para poder usar métodos getUTC*
+  let cur = new Date(from.getTime() - ARG_OFF);
+  const end = new Date(to.getTime()   - ARG_OFF);
+  while (cur < end) {
+    const dow = cur.getUTCDay();
+    const dayEnd = new Date(cur); dayEnd.setUTCHours(24, 0, 0, 0);
+    const segEnd = dayEnd < end ? dayEnd : end;
+    if (dow !== 0 && dow !== 6) { // lunes–viernes
+      const fromMin = cur.getUTCHours() * 60 + cur.getUTCMinutes();
+      const toMin   = segEnd.getUTCHours() * 60 + segEnd.getUTCMinutes();
+      totalMins += _workMinsSegment(fromMin, toMin);
+    }
+    cur = dayEnd;
+  }
+  return totalMins * 60000;
+}
+
+// ── TIMER (descuenta almuerzo y horas fuera de turno) ──
 let _timerMs = 0, _timerStart = null, _timerInterval = null;
 
 function iniciarTimer(pedidoId) {
@@ -1270,13 +1308,19 @@ function iniciarTimer(pedidoId) {
 }
 
 function pausarTimer(pedidoId) {
-  if (_timerStart !== null) { _timerMs += Date.now() - _timerStart; _timerStart = null; }
+  if (_timerStart !== null) {
+    _timerMs += workingMs(new Date(_timerStart), new Date());
+    _timerStart = null;
+  }
   clearInterval(_timerInterval); _timerInterval = null;
   if (pedidoId) localStorage.setItem('dep_timer_' + pedidoId, String(_timerMs));
 }
 
 function finalizarTimer(pedidoId, clienteNombre, operario) {
-  if (_timerStart !== null) { _timerMs += Date.now() - _timerStart; _timerStart = null; }
+  if (_timerStart !== null) {
+    _timerMs += workingMs(new Date(_timerStart), new Date());
+    _timerStart = null;
+  }
   clearInterval(_timerInterval); _timerInterval = null;
   if (_timerMs > 0) guardarMetrica(pedidoId, clienteNombre, operario, _timerMs);
   localStorage.removeItem('dep_timer_' + pedidoId);
@@ -1293,8 +1337,8 @@ function fmtTimer(ms) {
 function actualizarTimerUI() {
   const el = document.getElementById("timerDisplay");
   if (!el) return;
-  const total = _timerMs + (_timerStart !== null ? Date.now() - _timerStart : 0);
-  el.textContent = fmtTimer(total);
+  const extra = _timerStart !== null ? workingMs(new Date(_timerStart), new Date()) : 0;
+  el.textContent = fmtTimer(_timerMs + extra);
 }
 
 // ── MÉTRICAS ──
@@ -1319,18 +1363,21 @@ function renderMetrics(hechos, total, tiempos) {
     metricsHtml = `
       <div class="metrics-row">
         <div class="metric-item">
-          <span class="metric-lbl">⏱ Tiempo promedio</span>
+          <span class="metric-lbl">⏱ Promedio armado</span>
           <span class="metric-val">${fmtTimer(avg)}</span>
         </div>
         <div class="metric-item">
-          <span class="metric-lbl">⚡ Pedido más rápido</span>
-          <span class="metric-val">${fmtTimer(fast.ms)}</span>
+          <span class="metric-lbl">⚡ Más rápido</span>
+          <span class="metric-val" title="${fast.c}">${fmtTimer(fast.ms)}</span>
         </div>
         <div class="metric-item">
-          <span class="metric-lbl">🐢 Pedido más lento</span>
-          <span class="metric-val">${fmtTimer(slow.ms)}</span>
+          <span class="metric-lbl">🐢 Más lento</span>
+          <span class="metric-val" title="${slow.c}">${fmtTimer(slow.ms)}</span>
         </div>
-      </div>`;
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:5px">⏱ Tiempo laboral real · excluye almuerzo y fuera de turno · ${tiempos.length} pedido${tiempos.length!==1?"s":""} registrado${tiempos.length!==1?"s":""} en este dispositivo</div>`;
+  } else if (tiempos !== null) {
+    metricsHtml = `<div style="font-size:12px;color:var(--muted);margin-top:8px;border-top:1px solid var(--border);padding-top:8px">Sin tiempos registrados esta semana en este dispositivo</div>`;
   }
 
   panel.innerHTML = `
@@ -1366,16 +1413,17 @@ async function cargarProgreso() {
   try {
     const desde = getSemanaStart();
     const todos = await sbGet("pedidos",
-      `created_at=gte.${encodeURIComponent(desde)}&select=id,estado,created_at,armado_at,cliente_nombre&limit=500`);
-    _progresoTotal = todos.length;
+      `created_at=gte.${encodeURIComponent(desde)}&select=id,estado&limit=500`);
+    _progresoTotal  = todos.length;
     _progresoHechos = todos.filter(p => p.estado !== "pendiente").length;
-    const tiempos = todos
-      .filter(p => p.armado_at && p.created_at)
-      .map(p => {
-        const ms = new Date(p.armado_at) - new Date(p.created_at);
-        return ms > 0 ? { ms, c: p.cliente_nombre } : null;
-      })
-      .filter(Boolean);
+
+    // Tiempos de armado: usar timer laboral local (no created_at→armado_at que incluye días sin trabajar)
+    const semStart = desde.split("T")[0]; // "YYYY-MM-DD"
+    const allMetrics = JSON.parse(localStorage.getItem("depositoMetrics") || "[]");
+    const tiempos = allMetrics
+      .filter(m => m.f >= semStart && m.ms > 0 && m.ms < 90 * 60000) // descarta sesiones > 90 min (probable olvido)
+      .map(m => ({ ms: m.ms, c: m.c }));
+
     renderMetrics(_progresoHechos, _progresoTotal, tiempos);
   } catch(_) {}
 }
