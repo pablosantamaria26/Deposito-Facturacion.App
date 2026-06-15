@@ -90,6 +90,19 @@ button{font-family:inherit;border:none;cursor:pointer}
 .date-inp.active{border-color:var(--red);background:#fff5f5}
 .period-tab.dim{opacity:.4}
 
+/* ── MIN ITEMS TABS ── */
+.min-tabs{display:flex;gap:6px;align-items:center}
+.min-label{font-size:11px;font-weight:700;color:var(--text3);white-space:nowrap;letter-spacing:.3px}
+.min-tab{
+  flex:1;height:34px;border-radius:10px;
+  font-size:12px;font-weight:700;color:var(--text3);
+  background:var(--bg);border:1.5px solid var(--border);transition:all .15s;
+}
+.min-tab.active{
+  background:var(--accent);color:#fff;border-color:var(--accent);
+  box-shadow:0 2px 10px rgba(99,102,241,.28);
+}
+
 /* ── STATS BAR ── */
 .stats-bar{
   padding:9px 20px;font-size:12px;color:var(--text3);
@@ -398,6 +411,13 @@ button{font-family:inherit;border:none;cursor:pointer}
       <option value="">Todos los proveedores</option>
     </select>
   </div>
+  <div class="min-tabs" id="minTabs">
+    <span class="min-label">Mín.</span>
+    <button class="min-tab" data-min="0">Todos</button>
+    <button class="min-tab" data-min="3">3+</button>
+    <button class="min-tab active" data-min="6">6+</button>
+    <button class="min-tab" data-min="10">10+</button>
+  </div>
   <div class="filter-row">
     <input id="searchCliente" class="search-inp" type="search" placeholder="🔍 Cliente, N° o artículo..."/>
   </div>
@@ -487,6 +507,7 @@ let ignorados      = new Set(JSON.parse(localStorage.getItem("faltantes_ignorado
 let activeDays     = 7;
 let activeFechaEsp = "";
 let activeProvId   = "";
+let activeMinItems = 6;
 let openClientId   = null;
 let pendingOrder   = null;
 const selMap       = {};
@@ -655,6 +676,11 @@ function getGroups() {
 
   let arr = Object.values(groups).sort((a, b) => b.items.length - a.items.length);
 
+  // Filtro mínimo de artículos (no aplica en modo búsqueda — ahí mostramos todo)
+  if (!isSearching && activeMinItems > 0) {
+    arr = arr.filter(g => g.items.length >= activeMinItems);
+  }
+
   if (search) {
     arr = arr.filter(g => {
       if (g.cliente_id.includes(search) || g.cliente_nombre.toLowerCase().includes(search)) return true;
@@ -691,9 +717,10 @@ function render() {
 
   // Stats
   const totalVisible = isSearching ? main.length : main.length;
+  const minLabel = (!isSearching && activeMinItems > 0) ? ` · <span style="color:var(--accent);font-weight:700">${activeMinItems}+ ítems</span>` : "";
   const parts = [];
   if (main.length || isSearching) {
-    parts.push(`<strong>${main.length}</strong> cliente${main.length !== 1 ? "s" : ""} · <strong>${total}</strong> faltantes (${periodoLabel})`);
+    parts.push(`<strong>${main.length}</strong> cliente${main.length !== 1 ? "s" : ""} · <strong>${total}</strong> faltantes (${periodoLabel})${minLabel}`);
   }
   if (!isSearching) {
     if (enProcesoArr.length) parts.push(`<span style="color:#d97706;font-weight:700">${enProcesoArr.length} en proceso</span>`);
@@ -1210,6 +1237,15 @@ document.getElementById("searchCliente").addEventListener("input", () => {
 
 document.getElementById("provSelect").addEventListener("change", e => {
   activeProvId = e.target.value;
+  openClientId = null; render();
+});
+
+document.getElementById("minTabs").addEventListener("click", e => {
+  const btn = e.target.closest(".min-tab");
+  if (!btn) return;
+  document.querySelectorAll(".min-tab").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  activeMinItems = parseInt(btn.dataset.min);
   openClientId = null; render();
 });
 
