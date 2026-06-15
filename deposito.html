@@ -777,7 +777,7 @@ async function abrirPedido(id) {
   try {
     const [ps, items] = await Promise.all([
       sbGet("pedidos", `id=eq.${id}`),
-      sbGet("items_pedido", `pedido_id=eq.${id}&order=id.asc`)
+      sbGet("items_pedido", `pedido_id=eq.${id}&order=posicion.asc.nullslast,id.asc`)
     ]);
     pedidoActivo = ps[0];
     itemsActivos = items;
@@ -1190,7 +1190,7 @@ async function cargarFaltantesPreviosDeposito(clienteId, pedidoActualId) {
         es_auto_faltante: true,
       })));
       // Recargar items para que aparezcan en la lista (y en el bloque correcto)
-      const reloaded = await sbGet("items_pedido", `pedido_id=eq.${pedidoActualId}&order=id.asc`);
+      const reloaded = await sbGet("items_pedido", `pedido_id=eq.${pedidoActualId}&order=posicion.asc.nullslast,id.asc`);
       itemsActivos = reloaded;
       renderItems();
       toast(`⚠️ ${aInsertar.length} faltante${aInsertar.length > 1 ? "s" : ""} de la semana pasada agregado${aInsertar.length > 1 ? "s" : ""}`, "mod");

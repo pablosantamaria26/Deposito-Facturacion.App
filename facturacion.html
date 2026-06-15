@@ -1105,7 +1105,7 @@ async function seleccionar(id) {
   try {
     const [ps, items] = await Promise.all([
       sbGet("pedidos", `id=eq.${id}`),
-      sbGet("items_pedido", `pedido_id=eq.${id}&order=id.asc`)
+      sbGet("items_pedido", `pedido_id=eq.${id}&order=posicion.asc.nullslast,id.asc`)
     ]);
     pedidoActivo = ps[0];
     itemsActivos = items;
@@ -1179,7 +1179,7 @@ function renderHeader() {
 
 async function recargarItems() {
   if (!pedidoActivo) return;
-  const nuevos = await sbGet("items_pedido", `pedido_id=eq.${pedidoActivo.id}&order=id.asc`);
+  const nuevos = await sbGet("items_pedido", `pedido_id=eq.${pedidoActivo.id}&order=posicion.asc.nullslast,id.asc`);
   if (nuevos.length !== itemsActivos.length) {
     // Cambió la cantidad de items — re-render completo
     itemsActivos = nuevos;
@@ -1587,7 +1587,7 @@ async function confirmarSustitucion() {
       reemplaza_item_id: itemId
     });
     // Recargar todos los ítems para reflejar el nuevo estado
-    itemsActivos = await sbGet("items_pedido", `pedido_id=eq.${pedidoActivo.id}&order=id.asc`);
+    itemsActivos = await sbGet("items_pedido", `pedido_id=eq.${pedidoActivo.id}&order=posicion.asc.nullslast,id.asc`);
     renderItemsF();
     toast("✏️ Reemplazo registrado", "ok");
   } catch(e) { toast("Error al registrar reemplazo", "error"); }
@@ -1903,7 +1903,7 @@ async function verProceso(id) {
   try {
     const [ps, items] = await Promise.all([
       sbGet("pedidos", `id=eq.${id}`),
-      sbGet("items_pedido", `pedido_id=eq.${id}&order=id.asc`)
+      sbGet("items_pedido", `pedido_id=eq.${id}&order=posicion.asc.nullslast,id.asc`)
     ]);
     _proActual = ps[0];
     const p = _proActual;

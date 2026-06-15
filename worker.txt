@@ -869,11 +869,12 @@ export default {
           const numeroDiario = pedidoData?.[0]?.numero_diario;
           if (!pedidoId) return jsonResponse({ error: "No se obtuvo id del pedido" }, 500);
 
-          const itemsRows = items.map(it => ({
+          const itemsRows = items.map((it, idx) => ({
             pedido_id:            pedidoId,
             descripcion:          String(it.descripcion || "").toUpperCase(),
             cantidad:             Number(it.cantidad) || 1,
             resuelve_faltante_id: (it.item_ids && it.item_ids[0]) ? it.item_ids[0] : null,
+            posicion:             idx + 1,
           }));
           const itemsRes = await supabaseInsert(env, "items_pedido", itemsRows);
           if (!itemsRes) {
@@ -939,10 +940,10 @@ export default {
             return jsonResponse({ status: "ok", sig: pedidoRow.sig, pedido_id: null, note: "duplicate" });
           }
 
-          // Insertar items
+          // Insertar items (posicion preserva el orden del vendedor)
           const items = parsearProductos(bodyJson.productos);
           if (items.length > 0) {
-            const itemsRows = items.map(i => ({ pedido_id: pedidoId, descripcion: i.descripcion, cantidad: i.cantidad }));
+            const itemsRows = items.map((i, idx) => ({ pedido_id: pedidoId, descripcion: i.descripcion, cantidad: i.cantidad, posicion: idx + 1 }));
             await fetch(`${env.SUPABASE_URL}/rest/v1/items_pedido?pedido_id=eq.${pedidoId}`, {
               method: "DELETE",
               headers: { "apikey": env.SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}` },

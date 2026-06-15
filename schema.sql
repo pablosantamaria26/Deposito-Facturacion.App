@@ -101,6 +101,17 @@ CREATE INDEX IF NOT EXISTS idx_items_faltante_gestionado ON items_pedido(faltant
 CREATE INDEX IF NOT EXISTS idx_items_es_auto_faltante    ON items_pedido(es_auto_faltante)    WHERE es_auto_faltante = true;
 
 -- ============================================================
+-- MIGRACIÓN v3: Preservar orden del vendedor
+-- ============================================================
+
+-- Posición del item en el pedido original (orden del vendedor)
+-- NULL = item agregado posterior (faltante auto-inyectado, etc.)
+ALTER TABLE items_pedido ADD COLUMN IF NOT EXISTS posicion INTEGER;
+
+-- Índice compuesto para ORDER BY rápido por pedido
+CREATE INDEX IF NOT EXISTS idx_items_pedido_posicion ON items_pedido(pedido_id, posicion NULLS LAST);
+
+-- ============================================================
 -- RLS — Row Level Security (todo público por ahora, ajustar con auth)
 -- ============================================================
 ALTER TABLE pedidos      ENABLE ROW LEVEL SECURITY;
