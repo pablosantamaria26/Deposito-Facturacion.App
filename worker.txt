@@ -870,14 +870,31 @@ export default {
           if (!pedidoId) return jsonResponse({ error: "No se obtuvo id del pedido" }, 500);
 
           const itemsRows = items.map(it => ({
-            pedido_id:   pedidoId,
-            descripcion: String(it.descripcion || "").toUpperCase(),
-            cantidad:    Number(it.cantidad) || 1,
+            pedido_id:            pedidoId,
+            descripcion:          String(it.descripcion || "").toUpperCase(),
+            cantidad:             Number(it.cantidad) || 1,
+            resuelve_faltante_id: (it.item_ids && it.item_ids[0]) ? it.item_ids[0] : null,
           }));
           const itemsRes = await supabaseInsert(env, "items_pedido", itemsRows);
           if (!itemsRes) {
             return jsonResponse({ error: "Pedido creado pero error al insertar los artículos. ID: " + pedidoId }, 500);
           }
+
+          // Marcar los items originales como "en gestión" → deposito y faltantes.html los excluyen
+          const originalIds = items.flatMap(it => it.item_ids || []).filter(Boolean);
+          if (originalIds.length) {
+            await fetch(`${env.SUPABASE_URL}/rest/v1/items_pedido?id=in.(${originalIds.join(",")})`, {
+              method: "PATCH",
+              headers: {
+                "Content-Type": "application/json",
+                "apikey": env.SUPABASE_SERVICE_KEY,
+                "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+                "Prefer": "return=minimal",
+              },
+              body: JSON.stringify({ faltante_gestionado: true }),
+            }).catch(() => {});
+          }
+
           return jsonResponse({ ok: true, pedido_id: pedidoId, numero_diario: numeroDiario });
         }
 

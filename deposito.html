@@ -344,6 +344,29 @@
   .empty .icon{font-size:52px;margin-bottom:12px}
   .empty p{font-size:18px;font-weight:600}
 
+  /* ── BLOQUES PEDIDO FALTANTE ── */
+  .blq-wrap{padding:0 16px}
+  .blq-header{
+    display:flex;align-items:flex-start;gap:12px;
+    padding:14px 16px;border-radius:var(--radius);margin:10px 0 2px;
+  }
+  .blq-header.ingresaron{
+    background:linear-gradient(135deg,#f0fdf4,#dcfce7);
+    border:2px solid #86efac;border-left:6px solid #16a34a;
+  }
+  .blq-header.consultar{
+    background:linear-gradient(135deg,#fffbeb,#fef3c7);
+    border:2px solid #fcd34d;border-left:6px solid #d97706;
+    margin-top:20px;
+  }
+  .blq-icon{font-size:26px;flex-shrink:0;line-height:1;padding-top:1px}
+  .blq-title{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.7px;margin-bottom:3px}
+  .blq-header.ingresaron .blq-title{color:#15803d}
+  .blq-header.consultar  .blq-title{color:#92400e}
+  .blq-note{font-size:11px;font-weight:500;line-height:1.4}
+  .blq-header.ingresaron .blq-note{color:#16a34a}
+  .blq-header.consultar  .blq-note{color:#b45309}
+
   /* ── RESPONSIVE ── */
   @media(min-width:700px){
     #app{max-width:600px;margin:0 auto}
@@ -391,6 +414,8 @@
     body:not(.light-forced) .btn-edit-cancel { background:#28324a;border-color:var(--border);color:var(--muted) }
     body:not(.light-forced) .btn-edit-toggle { color:var(--muted) }
     body:not(.light-forced) #detFaltantesPrevios { background:#2d1e04;border-color:#a16207 }
+    body:not(.light-forced) .blq-header.ingresaron { background:linear-gradient(135deg,#0f2e1e,#14532d);border-color:#15803d }
+    body:not(.light-forced) .blq-header.consultar  { background:linear-gradient(135deg,#362808,#451f00);border-color:#a16207 }
     body:not(.light-forced) html,
     body:not(.light-forced) { background:var(--bg);color:var(--text) }
     /* ── Métricas dark ── */
@@ -432,6 +457,8 @@
   body.dark-forced .btn-edit-cancel { background:#28324a;border-color:var(--border);color:var(--muted) }
   body.dark-forced .btn-edit-toggle { color:var(--muted) }
   body.dark-forced #detFaltantesPrevios { background:#2d1e04;border-color:#a16207 }
+  body.dark-forced .blq-header.ingresaron { background:linear-gradient(135deg,#0f2e1e,#14532d);border-color:#15803d }
+  body.dark-forced .blq-header.consultar  { background:linear-gradient(135deg,#362808,#451f00);border-color:#a16207 }
   /* ── Métricas dark ── */
   body.dark-forced .metrics-panel { background:var(--card); border-color:var(--border); }
   body.dark-forced .prog-bar-outer { background:var(--bg); border-color:var(--border); }
@@ -833,39 +860,79 @@ async function abrirPedido(id) {
 }
 
 // ── RENDER ITEMS ──
+function renderItemRow(item, idx) {
+  const armado = item.armado;
+  const mod    = item.modificado;
+  return `
+    <div class="item-row ${armado?"armado":""} ${mod?"modificado-row":""}" id="irow-${item.id}">
+      <div class="item-main">
+        <button class="check-btn ${armado?"on":""}" onclick="toggleItem('${item.id}',${idx})">
+          ${armado?"✓":""}
+        </button>
+        <div class="item-info">
+          <div class="item-desc ${armado?"tachado":""}" id="idesc-${item.id}">${item.descripcion}</div>
+          ${mod ? `<div class="mod-badge">🔔 MODIFICADO</div>` : ""}
+        </div>
+        <div class="item-qty-badge" id="iqty-${item.id}">${item.cantidad}</div>
+        <button class="btn-edit-toggle" onclick="toggleEdit('${item.id}',${idx})" title="Editar artículo">✏️</button>
+      </div>
+      <div class="item-edit-bar" id="iedit-${item.id}" style="display:flex">
+        <input class="edit-input" id="einput-${item.id}" value="${item.descripcion}" placeholder="Nombre del artículo"/>
+        <input class="edit-qty"   id="eqty-${item.id}"   type="number" min="0" value="${item.cantidad}" style="width:80px"/>
+        <button class="btn-edit-save"   onclick="guardarEdit('${item.id}',${idx})">✓ Guardar</button>
+        <button class="btn-edit-cancel" onclick="cancelarEdit('${item.id}')">✗</button>
+      </div>
+    </div>`;
+}
+
 function renderItems() {
-  // Modo foco: mostrar solo los no armados
-  const items = _modoFoco ? itemsActivos.filter(i => !i.armado) : itemsActivos;
   const pendientes = itemsActivos.filter(i => !i.armado).length;
   const focoEl = document.getElementById("focoCount");
   if (focoEl) focoEl.textContent = _modoFoco ? `${pendientes} pendiente${pendientes!==1?"s":""}` : "";
 
   const box = document.getElementById("listaItems");
-  box.innerHTML = items.map((item, i) => {
-    const armado = item.armado;
-    const mod    = item.modificado;
-    return `
-      <div class="item-row ${armado?"armado":""} ${mod?"modificado-row":""}" id="irow-${item.id}">
-        <div class="item-main">
-          <button class="check-btn ${armado?"on":""}" onclick="toggleItem('${item.id}',${i})">
-            ${armado?"✓":""}
-          </button>
-          <div class="item-info">
-            <div class="item-desc ${armado?"tachado":""}" id="idesc-${item.id}">${item.descripcion}</div>
-            ${mod ? `<div class="mod-badge">🔔 MODIFICADO</div>` : ""}
+
+  if (pedidoActivo?.es_pedido_faltante) {
+    // ── Pedido de faltantes: dos bloques visuales ──
+    const blq1All = itemsActivos.filter(i => !i.es_auto_faltante); // seleccionados por Pablo
+    const blq2All = itemsActivos.filter(i =>  i.es_auto_faltante); // auto-inyectados por depósito
+    const blq1 = _modoFoco ? blq1All.filter(i => !i.armado) : blq1All;
+    const blq2 = _modoFoco ? blq2All.filter(i => !i.armado) : blq2All;
+
+    let html = "";
+    if (blq1.length > 0) {
+      html += `
+        <div class="blq-wrap">
+          <div class="blq-header ingresaron">
+            <div class="blq-icon">✅</div>
+            <div>
+              <div class="blq-title">Ingresaron al depósito</div>
+              <div class="blq-note">Artículos confirmados — revisá y tildá cada uno</div>
+            </div>
           </div>
-          <div class="item-qty-badge" id="iqty-${item.id}">${item.cantidad}</div>
-          <button class="btn-edit-toggle" onclick="toggleEdit('${item.id}',${i})" title="Editar artículo">✏️</button>
-        </div>
-        <div class="item-edit-bar" id="iedit-${item.id}" style="display:flex">
-          <input class="edit-input" id="einput-${item.id}" value="${item.descripcion}" placeholder="Nombre del artículo"/>
-          <input class="edit-qty"   id="eqty-${item.id}"   type="number" min="0" value="${item.cantidad}" style="width:80px"/>
-          <button class="btn-edit-save"   onclick="guardarEdit('${item.id}',${i})">✓ Guardar</button>
-          <button class="btn-edit-cancel" onclick="cancelarEdit('${item.id}')">✗</button>
-        </div>
-      </div>`;
-  }).join("");
-  // Ocultar barras de edición por defecto
+        </div>`;
+      blq1.forEach(item => { html += renderItemRow(item, itemsActivos.indexOf(item)); });
+    }
+    if (blq2.length > 0) {
+      html += `
+        <div class="blq-wrap">
+          <div class="blq-header consultar">
+            <div class="blq-icon">⚠️</div>
+            <div>
+              <div class="blq-title">Otros faltantes detectados</div>
+              <div class="blq-note">Consultar con Laura si se puede reemplazar algo si no hay el específico</div>
+            </div>
+          </div>
+        </div>`;
+      blq2.forEach(item => { html += renderItemRow(item, itemsActivos.indexOf(item)); });
+    }
+    box.innerHTML = html;
+  } else {
+    // ── Pedido normal ──
+    const items = _modoFoco ? itemsActivos.filter(i => !i.armado) : itemsActivos;
+    box.innerHTML = items.map((item, i) => renderItemRow(item, i)).join("");
+  }
+
   document.querySelectorAll(".item-edit-bar").forEach(b => b.style.display = "none");
   actualizarProgreso();
 }
@@ -1093,7 +1160,8 @@ async function cargarFaltantesPreviosDeposito(clienteId, pedidoActualId) {
     if (!previos.length) return;
     const faltantes = [];
     for (const p of previos) {
-      const items = await sbGet("items_pedido", `pedido_id=eq.${p.id}&es_faltante=eq.true`);
+      const items = await sbGet("items_pedido",
+        `pedido_id=eq.${p.id}&es_faltante=eq.true&faltante_gestionado=neq.true`);
       faltantes.push(...items);
     }
     if (!faltantes.length) return;
@@ -1115,17 +1183,21 @@ async function cargarFaltantesPreviosDeposito(clienteId, pedidoActualId) {
     );
     if (aInsertar.length > 0) {
       await sbInsert("items_pedido", aInsertar.map(f => ({
-        pedido_id: pedidoActualId,
-        descripcion: f.descripcion,
-        cantidad: f.cantidad,
-        armado: false
+        pedido_id:        pedidoActualId,
+        descripcion:      f.descripcion,
+        cantidad:         f.cantidad,
+        armado:           false,
+        es_auto_faltante: true,
       })));
-      // Recargar items para que aparezcan en la lista
+      // Recargar items para que aparezcan en la lista (y en el bloque correcto)
       const reloaded = await sbGet("items_pedido", `pedido_id=eq.${pedidoActualId}&order=id.asc`);
       itemsActivos = reloaded;
       renderItems();
       toast(`⚠️ ${aInsertar.length} faltante${aInsertar.length > 1 ? "s" : ""} de la semana pasada agregado${aInsertar.length > 1 ? "s" : ""}`, "mod");
     }
+
+    // Para pedidos de faltantes los bloques ya muestran todo — no mostrar el panel duplicado
+    if (pedidoActivo?.es_pedido_faltante) return;
 
     document.getElementById("detFaltantesList").innerHTML =
       unicos.map(f => `<div style="font-size:14px;font-weight:700;padding:4px 0;border-bottom:1px solid #fde68a;display:flex;gap:10px;">

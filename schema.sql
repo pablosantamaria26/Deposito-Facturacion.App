@@ -81,6 +81,26 @@ ALTER PUBLICATION supabase_realtime ADD TABLE pedidos;
 ALTER PUBLICATION supabase_realtime ADD TABLE items_pedido;
 
 -- ============================================================
+-- MIGRACIÓN v2: Gestión de faltantes con trazabilidad
+-- Ejecutar en Supabase Dashboard → SQL Editor
+-- ============================================================
+
+-- Marca un item auto-inyectado por deposito (no seleccionado por Pablo en faltantes.html)
+ALTER TABLE items_pedido ADD COLUMN IF NOT EXISTS es_auto_faltante BOOLEAN DEFAULT false;
+
+-- Marca el item original como "ya está siendo gestionado por un pedido de faltantes"
+-- → se usa para que deposito no lo re-inyecte y faltantes.html no lo muestre
+ALTER TABLE items_pedido ADD COLUMN IF NOT EXISTS faltante_gestionado BOOLEAN DEFAULT false;
+
+-- UUID del item original que este item resuelve (en un pedido de faltantes)
+-- → cuando facturación marca el item como enviado, el original queda resuelto
+ALTER TABLE items_pedido ADD COLUMN IF NOT EXISTS resuelve_faltante_id UUID;
+
+-- Índices de soporte
+CREATE INDEX IF NOT EXISTS idx_items_faltante_gestionado ON items_pedido(faltante_gestionado) WHERE faltante_gestionado = true;
+CREATE INDEX IF NOT EXISTS idx_items_es_auto_faltante    ON items_pedido(es_auto_faltante)    WHERE es_auto_faltante = true;
+
+-- ============================================================
 -- RLS — Row Level Security (todo público por ahora, ajustar con auth)
 -- ============================================================
 ALTER TABLE pedidos      ENABLE ROW LEVEL SECURITY;

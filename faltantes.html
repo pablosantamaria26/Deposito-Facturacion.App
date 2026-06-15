@@ -481,6 +481,7 @@ async function loadData() {
     const [items, proveedores, reemplazos] = await Promise.all([
       sbGet("items_pedido",
         "es_faltante=eq.true" +
+        "&faltante_gestionado=neq.true" +
         "&select=id,descripcion,cantidad,created_at,pedidos(cliente_id,cliente_nombre,fecha_entrega,vendedor)" +
         "&order=created_at.desc&limit=2000"
       ),
@@ -722,7 +723,8 @@ function renderItems(aggArr, clienteId) {
     return `
       <div class="item-row" id="ir-${clienteId}-${dk}"
            data-cid="${escHtml(String(clienteId))}" data-dk="${escHtml(dk)}"
-           data-desc="${escHtml(it.descripcion)}" data-cant="${it.totalCant}">
+           data-desc="${escHtml(it.descripcion)}" data-cant="${it.totalCant}"
+           data-ids="${it.itemIds.join(',')}">
         <div class="item-check" id="ic-${clienteId}-${dk}"></div>
         <div class="item-body">
           <div class="item-desc">${escHtml(it.descripcion)}</div>
@@ -750,7 +752,7 @@ function filterItems(clienteId) {
 // ════════════════════════
 // CHECKBOX SELECTION
 // ════════════════════════
-function toggleItem(clienteId, dk, descripcion, cantidad) {
+function toggleItem(clienteId, dk, descripcion, cantidad, itemIds) {
   if (!selMap[clienteId]) selMap[clienteId] = {};
   const sel = selMap[clienteId];
   const row = document.getElementById(`ir-${clienteId}-${dk}`);
@@ -760,7 +762,7 @@ function toggleItem(clienteId, dk, descripcion, cantidad) {
     row?.classList.remove("checked");
     if (chk) chk.textContent = "";
   } else {
-    sel[dk] = { descripcion, cantidad };
+    sel[dk] = { descripcion, cantidad, item_ids: Array.isArray(itemIds) ? itemIds.filter(Boolean) : [] };
     row?.classList.add("checked");
     if (chk) chk.textContent = "✓";
   }
@@ -955,8 +957,8 @@ document.getElementById("clientList").addEventListener("click", e => {
   // 2. Item row → toggle selección
   const row = e.target.closest(".item-row");
   if (row) {
-    const { cid, dk, desc, cant } = row.dataset;
-    if (cid && dk) toggleItem(cid, dk, desc, Number(cant));
+    const { cid, dk, desc, cant, ids } = row.dataset;
+    if (cid && dk) toggleItem(cid, dk, desc, Number(cant), ids ? ids.split(",").filter(Boolean) : []);
     return;
   }
 

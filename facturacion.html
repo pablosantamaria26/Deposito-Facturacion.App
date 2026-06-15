@@ -1506,6 +1506,16 @@ async function _ejecutarFacturar() {
       pedido_id: pedidoActivo.id, accion: "pedido_facturado", usuario: currentUser,
       detalle: { ok: itemsActivos.filter(i=>i.facturado).length, faltantes: totalFaltantes, auto_marcados: sinMarcar.length }
     });
+
+    // Si es un pedido de faltantes: resolver los items originales que este pedido cubre
+    if (pedidoActivo.es_pedido_faltante) {
+      const originalIds = itemsActivos.map(i => i.resuelve_faltante_id).filter(Boolean);
+      if (originalIds.length) {
+        await sbPatch("items_pedido", `id=in.(${originalIds.join(",")})`, {
+          es_faltante: false, faltante_gestionado: false
+        });
+      }
+    }
     pedidoActivo.estado = "facturado";
     renderHeader(); actualizarStats();
     await cargarPedidos();
