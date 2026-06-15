@@ -1340,8 +1340,10 @@ function fmtTimer(ms) {
 function actualizarTimerUI() {
   const el = document.getElementById("timerDisplay");
   if (!el) return;
-  const extra = _timerStart !== null ? workingMs(new Date(_timerStart), new Date()) : 0;
-  el.textContent = fmtTimer(_timerMs + extra);
+  // Display: tiempo real de la sesión actual (siempre corre, incluso fuera de horario)
+  // La corrección a horas laborales se aplica solo al guardar la métrica
+  const sessionMs = _timerStart !== null ? Date.now() - _timerStart : 0;
+  el.textContent = fmtTimer(sessionMs);
 }
 
 // ── MÉTRICAS ──
