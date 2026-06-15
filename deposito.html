@@ -930,7 +930,7 @@ function renderItems() {
   } else {
     // ── Pedido normal ──
     const items = _modoFoco ? itemsActivos.filter(i => !i.armado) : itemsActivos;
-    box.innerHTML = items.map((item, i) => renderItemRow(item, i)).join("");
+    box.innerHTML = items.map(item => renderItemRow(item, itemsActivos.indexOf(item))).join("");
   }
 
   document.querySelectorAll(".item-edit-bar").forEach(b => b.style.display = "none");
@@ -1161,7 +1161,7 @@ async function cargarFaltantesPreviosDeposito(clienteId, pedidoActualId) {
     const faltantes = [];
     for (const p of previos) {
       const items = await sbGet("items_pedido",
-        `pedido_id=eq.${p.id}&es_faltante=eq.true&faltante_gestionado=neq.true`);
+        `pedido_id=eq.${p.id}&es_faltante=eq.true&faltante_gestionado=neq.true&es_reemplazo=neq.true`);
       faltantes.push(...items);
     }
     if (!faltantes.length) return;
@@ -1183,11 +1183,12 @@ async function cargarFaltantesPreviosDeposito(clienteId, pedidoActualId) {
     );
     if (aInsertar.length > 0) {
       await sbInsert("items_pedido", aInsertar.map(f => ({
-        pedido_id:        pedidoActualId,
-        descripcion:      f.descripcion,
-        cantidad:         f.cantidad,
-        armado:           false,
-        es_auto_faltante: true,
+        pedido_id:            pedidoActualId,
+        descripcion:          f.descripcion,
+        cantidad:             f.cantidad,
+        armado:               false,
+        es_auto_faltante:     true,
+        resuelve_faltante_id: f.id,
       })));
       // Recargar items para que aparezcan en la lista (y en el bloque correcto)
       const reloaded = await sbGet("items_pedido", `pedido_id=eq.${pedidoActualId}&order=posicion.asc.nullslast,id.asc`);

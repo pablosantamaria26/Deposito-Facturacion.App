@@ -1507,14 +1507,12 @@ async function _ejecutarFacturar() {
       detalle: { ok: itemsActivos.filter(i=>i.facturado).length, faltantes: totalFaltantes, auto_marcados: sinMarcar.length }
     });
 
-    // Si es un pedido de faltantes: resolver los items originales que este pedido cubre
-    if (pedidoActivo.es_pedido_faltante) {
-      const originalIds = itemsActivos.map(i => i.resuelve_faltante_id).filter(Boolean);
-      if (originalIds.length) {
-        await sbPatch("items_pedido", `id=in.(${originalIds.join(",")})`, {
-          es_faltante: false, faltante_gestionado: false
-        });
-      }
+    // Resolver items originales que este pedido cubre (pedido de faltantes O items auto-inyectados en pedido normal)
+    const originalIds = itemsActivos.map(i => i.resuelve_faltante_id).filter(Boolean);
+    if (originalIds.length) {
+      await sbPatch("items_pedido", `id=in.(${originalIds.join(",")})`, {
+        es_faltante: false, faltante_gestionado: false
+      });
     }
     pedidoActivo.estado = "facturado";
     renderHeader(); actualizarStats();
@@ -1773,7 +1771,7 @@ async function cargarFaltantesPrevios(clienteId, pedidoActualId) {
     const faltantes = [];
     for (const p of previos) {
       const items = await sbGet("items_pedido",
-        `pedido_id=eq.${p.id}&es_faltante=eq.true`);
+        `pedido_id=eq.${p.id}&es_faltante=eq.true&faltante_gestionado=neq.true&es_reemplazo=neq.true`);
       faltantes.push(...items);
     }
     if (!faltantes.length) return;
