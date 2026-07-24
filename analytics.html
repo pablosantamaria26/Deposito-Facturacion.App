@@ -606,19 +606,36 @@ a { text-decoration: none; }
 
 .mes-chart-wrap { height: 200px; margin-bottom: 14px; }
 
-.mes-table-wrap { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.mes-legend {
+  font-size: 11.5px; color: rgba(255,255,255,0.45); margin: -4px 0 12px; padding-left: 2px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.mes-legend b { color: rgba(255,255,255,0.65); font-weight: 700; }
+
+.mes-table-wrap { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .mes-row {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 9px 10px; border-radius: 8px;
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 12px 14px; border-radius: 12px;
   background: rgba(255,255,255,0.04);
 }
 .mes-row-active { background: rgba(130,177,255,0.12); border: 1px solid rgba(130,177,255,0.2); }
-.mes-row-mes  { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.85); }
-.mes-row-datos { font-size: 11px; color: rgba(255,255,255,0.5); text-align: right; }
-.mes-row-num  { font-weight: 700; color: rgba(255,255,255,0.85); }
-.mes-row-sep  { margin: 0 3px; color: rgba(255,255,255,0.2); }
-.mes-green    { color: #81CFAA !important; }
-.mes-red      { color: #FF8A8A !important; }
+.mes-row-top {
+  display: flex; align-items: baseline; justify-content: space-between;
+  flex-wrap: wrap; gap: 4px 10px;
+}
+.mes-row-mes    { font-size: 13.5px; font-weight: 700; color: rgba(255,255,255,0.92); }
+.mes-row-counts { font-size: 12.5px; color: rgba(255,255,255,0.55); }
+.mes-row-chips  { display: flex; flex-wrap: wrap; gap: 6px; }
+.mes-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10.5px; font-weight: 700; white-space: nowrap;
+  padding: 3px 9px; border-radius: 99px;
+}
+.mes-chip-pos  { background: rgba(76,175,130,0.20);  color: #81CFAA; }
+.mes-chip-neg  { background: rgba(255,100,100,0.18); color: #FF8A8A; }
+.mes-chip-good { background: rgba(76,175,130,0.20);  color: #81CFAA; }
+.mes-chip-warn { background: rgba(255,183,77,0.20);  color: #FFCB80; }
+.mes-chip-bad  { background: rgba(255,100,100,0.18); color: #FF8A8A; }
 .mes-badge-now { font-size: 9px; font-weight: 700; background: rgba(130,177,255,0.3); color: #82B1FF; padding: 2px 6px; border-radius: 99px; margin-left: 4px; vertical-align: middle; }
 .mes-section-label {
   font-size: 13px; font-weight: 600; color: #1a3456;
@@ -849,6 +866,42 @@ async function sbSumAll(table, column, params, pageSize = 1000) {
   return total;
 }
 
+// Igual que sbSumAll pero suma VARIAS columnas en la misma pasada de paginación.
+// Se usa para no abrir una cadena de fetch paginada por columna (ej. cantidad + es_faltante
+// por mes) — con muchos meses en paralelo, duplicar las cadenas satura la conexión a Supabase
+// y empieza a tirar errores (se ve como CORS en el navegador, pero es rate-limit/conexión).
+// totals._count = cantidad de FILAS (líneas de pedido) encontradas, además de la suma de
+// cada columna pedida — necesario para tasas tipo "% de líneas con faltante", que deben
+// compararse contra la cantidad de líneas, no contra una suma de unidades.
+async function sbSumAllMulti(table, columns, params, pageSize = 1000) {
+  const totals = { _count: 0 };
+  columns.forEach(c => { totals[c] = 0; });
+  let offset = 0;
+  while (true) {
+    const rows = await sbGet(table, `${params}&select=${columns.join(",")}&limit=${pageSize}&offset=${offset}`);
+    if (!Array.isArray(rows) || rows.length === 0) break;
+    totals._count += rows.length;
+    rows.forEach(r => { columns.forEach(c => { totals[c] += Number(r[c]) || 0; }); });
+    if (rows.length < pageSize) break;
+    offset += pageSize;
+  }
+  return totals;
+}
+
+// Trae TODAS las filas que matchean el filtro, paginando de a 1000 — para reemplazar
+// queries con un limit fijo que puede truncar en silencio si el volumen crece.
+async function sbGetAll(table, params, pageSize = 1000) {
+  let all = [], offset = 0;
+  while (true) {
+    const rows = await sbGet(table, `${params}&limit=${pageSize}&offset=${offset}`);
+    if (!Array.isArray(rows) || rows.length === 0) break;
+    all = all.concat(rows);
+    if (rows.length < pageSize) break;
+    offset += pageSize;
+  }
+  return all;
+}
+
 // ════════════════════════════════════════════
 // TOAST
 // ════════════════════════════════════════════
@@ -1024,9 +1077,13 @@ async function loadResumenComparativo(period) {
   const inR = (d, a, b) => d >= a && d <= b;
   const fetchDesde = desdeAnterior.toISOString();
 
+  // todosItm pagina completo (sbGetAll): en modo "mes" esto ronda 2 meses de items_pedido,
+  // que hoy son >10.000 filas — con el limit=5000 fijo se perdía más de la mitad y la tasa
+  // de faltantes de la comparativa salía mal. También se excluyen cancelados, igual que
+  // Historial Mensual (hoy no hay ninguno cancelado, pero si lo hay no debe contar).
   const [todosPed, todosItm] = await Promise.all([
-    sbGet("pedidos",      `created_at=gte.${fetchDesde}&select=id,estado,created_at&limit=2000`),
-    sbGet("items_pedido", `created_at=gte.${fetchDesde}&select=es_faltante,created_at&limit=5000`)
+    sbGet("pedidos", `created_at=gte.${fetchDesde}&estado=neq.cancelado&select=id,estado,created_at&limit=2000`),
+    sbGetAll("items_pedido", `created_at=gte.${fetchDesde}&select=es_faltante,created_at`)
   ]);
 
   const pedActual   = todosPed.filter(p => inR(new Date(p.created_at), desdeActual, hastaActual));
@@ -1666,9 +1723,12 @@ async function runAI() {
 
   try {
     // Recopilar datos para Gemini
+    // faltantes90 pagina completo (sbGetAll): con 90 días esto puede superar largo los 500/1000
+    // registros de un limit fijo, y un top-faltantes calculado sobre una muestra parcial
+    // (encima sin order=, o sea las filas más viejas) le da al informe una recomendación errónea.
     const [pedidos90, faltantes90, top5] = await Promise.all([
       sbGet("pedidos", `created_at=gte.${makeISO(90)}&select=estado,vendedor,cliente_id,created_at&limit=1000`),
-      sbGet("items_pedido", `es_faltante=eq.true&created_at=gte.${makeISO(90)}&select=descripcion&limit=500`),
+      sbGetAll("items_pedido", `es_faltante=eq.true&created_at=gte.${makeISO(90)}&select=descripcion`),
       sbGet("pedidos", `created_at=gte.${makeISO(7)}&select=cliente_nombre,vendedor,estado&limit=100`)
     ]);
 
@@ -1834,36 +1894,43 @@ async function loadHistorialMensual() {
     });
   }
 
-  // sbSumAll pagina automáticamente → suma exacta sin importar cuántas filas haya
+  // sbSumAllMulti pagina automáticamente → suma exacta sin importar cuántas filas haya.
+  // Una sola cadena de fetch por mes (trae cantidad Y es_faltante juntas) en vez de dos —
+  // con 14 meses en paralelo, duplicar las cadenas satura la conexión a Supabase.
   const _allPromises = [
     sbGet("pedidos", `created_at=gte.${desde.toISOString()}&estado=neq.cancelado&select=created_at,estado&limit=10000`),
     prevCorte
-      ? sbSumAll("items_pedido", "cantidad", `created_at=gte.${prevInicio.toISOString()}&created_at=lte.${prevCorte.toISOString()}`)
-      : Promise.resolve(0),
+      ? sbSumAllMulti("items_pedido", ["cantidad","es_faltante"], `created_at=gte.${prevInicio.toISOString()}&created_at=lte.${prevCorte.toISOString()}`)
+      : Promise.resolve({ cantidad: 0, es_faltante: 0 }),
     ...monthKeys.map(({start, end}) =>
-      sbSumAll("items_pedido", "cantidad", `created_at=gte.${start.toISOString()}&created_at=lte.${end.toISOString()}`)
+      sbSumAllMulti("items_pedido", ["cantidad","es_faltante"], `created_at=gte.${start.toISOString()}&created_at=lte.${end.toISOString()}`)
     )
   ];
 
-  const _allResults    = await Promise.all(_allPromises);
-  const pedidos        = _allResults[0];
-  const artPrevPunto   = _allResults[1];         // ya es número
-  const artMonthTotals = _allResults.slice(2);   // ya son números, artMonthTotals[i] ↔ monthKeys[i]
-  const artCurTotal    = artMonthTotals[0];
+  const _allResults     = await Promise.all(_allPromises);
+  const pedidos         = _allResults[0];
+  const artPrevPunto    = _allResults[1].cantidad;      // ya es número
+  const monthSums       = _allResults.slice(2);         // { _count, cantidad, es_faltante } por mes, alineado con monthKeys
+  const artMonthTotals  = monthSums.map(s => s.cantidad);
+  const faltMonthTotals = monthSums.map(s => s.es_faltante);
+  const lineasMonthTotals = monthSums.map(s => s._count); // total de líneas de pedido del mes (denominador correcto para % faltantes)
+  const artCurTotal     = artMonthTotals[0];
 
   // Agregar por mes (para chart e historial)
   const byMonth = {};
   pedidos.forEach(p => {
     const d   = new Date(p.created_at);
     const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-    if (!byMonth[key]) byMonth[key] = { pedidos:0, facturados:0, articulos:0, year:d.getFullYear(), month:d.getMonth() };
+    if (!byMonth[key]) byMonth[key] = { pedidos:0, facturados:0, articulos:0, faltantes:0, lineas:0, year:d.getFullYear(), month:d.getMonth() };
     byMonth[key].pedidos++;
     if (p.estado === "facturado") byMonth[key].facturados++;
   });
-  // Artículos por mes desde totales server-side (sin límite de filas)
+  // Artículos, faltantes y total de líneas por mes desde totales server-side (sin límite de filas)
   monthKeys.forEach(({key, year, month}, idx) => {
-    if (!byMonth[key]) byMonth[key] = { pedidos:0, facturados:0, articulos:0, year, month };
-    byMonth[key].articulos = artMonthTotals[idx];
+    if (!byMonth[key]) byMonth[key] = { pedidos:0, facturados:0, articulos:0, faltantes:0, lineas:0, year, month };
+    byMonth[key].articulos  = artMonthTotals[idx];
+    byMonth[key].faltantes  = faltMonthTotals[idx];
+    byMonth[key].lineas     = lineasMonthTotals[idx];
   });
 
   // Filtrar meses de arranque: excluir los que tienen menos del 20% del mes más activo
@@ -1963,18 +2030,59 @@ async function loadHistorialMensual() {
       <div class="mes-nota">📅 ${bizActual} día${bizActual>1?"s":""} háb. de ${MESES_F[today.getMonth()]} · vs ${MESES_F[prevDt.getMonth()]} hasta día ${diaEquiv}${prev ? ` · Completo: ${prev.pedidos} ped. · ${prev.articulos.toLocaleString("es-AR")} arts.` : ""}</div>`;
   }
 
+  // — Variación del mes en curso vs el mismo punto del mes anterior (fila "Hoy") —
+  let curDeltaPed = null, curDeltaArt = null;
+  if (bizActual > 0 && prevCorte) {
+    const curPedsNow    = cur ? cur.pedidos : 0;
+    const pedPrevPuntoT = pedidos.filter(p => {
+      const d = new Date(p.created_at); return d >= prevInicio && d <= prevCorte;
+    }).length;
+    curDeltaPed = pedPrevPuntoT > 0 ? Math.round(((curPedsNow   - pedPrevPuntoT) / pedPrevPuntoT) * 100) : null;
+    curDeltaArt = artPrevPunto  > 0 ? Math.round(((artCurTotal  - artPrevPunto)  / artPrevPunto)  * 100) : null;
+  }
+
+  // — Variación mes a mes para el resto de las filas (mes completo vs mes completo anterior en la lista) —
+  const deltaByKey = {};
+  sorted.forEach(([key, v], i) => {
+    if (i === 0) return; // el más viejo de la lista no tiene mes anterior con qué compararse
+    const [, prevV] = sorted[i - 1];
+    deltaByKey[key] = {
+      ped: prevV.pedidos   > 0 ? Math.round(((v.pedidos   - prevV.pedidos)   / prevV.pedidos)   * 100) : null,
+      art: prevV.articulos > 0 ? Math.round(((v.articulos - prevV.articulos) / prevV.articulos) * 100) : null,
+    };
+  });
+  // Chip de variación (pedidos/artículos): flecha + color según si creció o bajó vs. el mes de referencia
+  const chipVar = (pct, label) => {
+    if (pct == null) return "";
+    const cls   = pct >= 0 ? "mes-chip-pos" : "mes-chip-neg";
+    const arrow = pct >= 0 ? "↑" : "↓";
+    return `<span class="mes-chip ${cls}">${arrow} ${Math.abs(pct)}% ${label}</span>`;
+  };
+  // Chip de faltantes: verde = bien abastecido, ámbar = atención, rojo = crítico
+  const chipFalt = (tasaFalt) => {
+    const cls  = tasaFalt > 15 ? "mes-chip-bad" : tasaFalt <= 5 ? "mes-chip-good" : "mes-chip-warn";
+    const icon = tasaFalt > 15 ? "⚠" : tasaFalt <= 5 ? "✓" : "•";
+    return `<span class="mes-chip ${cls}">${icon} ${tasaFalt}% faltantes</span>`;
+  };
+
   // — Tabla de todos los meses —
   const filas = sorted.slice().reverse().slice(0, 14).map(([key, v]) => {
     const label    = `${MESES_F[v.month]} ${v.year}`;
-    const tasaFact = v.pedidos > 0 ? Math.round((v.facturados / v.pedidos) * 100) : 0;
     const esCur    = key === curKey;
+    const delta    = esCur ? { ped: curDeltaPed, art: curDeltaArt } : (deltaByKey[key] || { ped: null, art: null });
+    const tasaFalt = v.lineas > 0 ? Math.round((v.faltantes / v.lineas) * 100) : 0;
+    const refNota  = esCur ? "vs. mismo punto del mes anterior" : "vs. mes anterior";
     return `
       <div class="mes-row${esCur ? " mes-row-active" : ""}">
-        <div class="mes-row-mes">${label}${esCur ? ` <span class="mes-badge-now">Hoy</span>` : ""}</div>
-        <div class="mes-row-datos">
-          <span class="mes-row-num">${v.pedidos}</span><span class="mes-row-sep"> ped ·</span>
-          <span class="mes-row-num">${v.articulos.toLocaleString("es-AR")}</span><span class="mes-row-sep"> arts ·</span>
-          <span class="mes-row-num ${tasaFact >= 80 ? "mes-green" : tasaFact < 60 ? "mes-red" : ""}">${tasaFact}%</span>
+        <div class="mes-row-top">
+          <div class="mes-row-mes">${label}${esCur ? ` <span class="mes-badge-now">Hoy</span>` : ""}</div>
+          <div class="mes-row-counts">${v.pedidos} pedidos · ${v.articulos.toLocaleString("es-AR")} artículos vendidos</div>
+        </div>
+        <div class="mes-row-chips">
+          ${chipVar(delta.ped, "pedidos")}
+          ${chipVar(delta.art, "artículos")}
+          ${chipFalt(tasaFalt)}
+          ${(delta.ped != null || delta.art != null) ? `<span style="font-size:10px;color:rgba(255,255,255,0.3);align-self:center">${refNota}</span>` : ""}
         </div>
       </div>`;
   }).join("");
@@ -1984,7 +2092,7 @@ async function loadHistorialMensual() {
       <div class="mes-header" style="display:flex;align-items:flex-start;justify-content:space-between">
         <div>
           <div class="mes-title">📅 Historial mensual</div>
-          <div class="mes-sub">Pedidos · Artículos · % facturado — mes a mes</div>
+          <div class="mes-sub">Cuántos pedidos y artículos se vendieron cada mes, y cómo veníamos de faltantes</div>
         </div>
         <button id="btnReporteMensual" onclick="enviarReporteMensual()" style="background:rgba(130,177,255,0.20);border:1px solid rgba(130,177,255,0.30);color:#82B1FF;border-radius:10px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:10px">📧 Email</button>
       </div>
@@ -1992,6 +2100,9 @@ async function loadHistorialMensual() {
       ${compHtml}
       <div class="mes-chart-wrap">
         <canvas id="chartMesHistoria"></canvas>
+      </div>
+      <div class="mes-legend">
+        <b>↑↓</b> variación de pedidos/artículos vs. el mes anterior · <b>faltantes</b> = % de lo vendido que no se pudo entregar completo
       </div>
       <div class="mes-table-wrap">${filas}</div>
     </div>`;
@@ -2042,20 +2153,26 @@ async function enviarReporteMensual() {
   toast("Preparando reporte mensual...");
 
   try {
-    const today    = new Date();
-    const prevDt   = new Date(today.getFullYear(), today.getMonth()-1, 1);
-    const desde    = getMonthStart(1);
-    const hasta    = getMonthEnd(1);
-    const bizActual= countBizDays(today.getFullYear(), today.getMonth(), today.getDate());
-    const diaEquiv = nthBizDay(prevDt.getFullYear(), prevDt.getMonth(), bizActual);
+    const today      = new Date();
+    const prevDt     = new Date(today.getFullYear(), today.getMonth()-1, 1);
+    const bizActual  = countBizDays(today.getFullYear(), today.getMonth(), today.getDate());
+    const diaEquiv   = bizActual > 0 ? nthBizDay(prevDt.getFullYear(), prevDt.getMonth(), bizActual) : 0;
+    const prevInicio = new Date(prevDt.getFullYear(), prevDt.getMonth(), 1);
+    const prevCorte  = diaEquiv > 0
+      ? new Date(prevDt.getFullYear(), prevDt.getMonth(), diaEquiv, 23, 59, 59, 999)
+      : null;
+    const desdeMes = getMonthStart(0).toISOString();
 
-    const [pedMes, totalArt, faltMes] = await Promise.all([
-      sbGet("pedidos",
-        `created_at=gte.${getMonthStart(0).toISOString()}&estado=neq.cancelado&select=created_at,estado,vendedor&limit=3000`),
-      sbSumAll("items_pedido", "cantidad",
-        `created_at=gte.${getMonthStart(0).toISOString()}`),
-      sbGet("items_pedido",
-        `es_faltante=eq.true&created_at=gte.${getMonthStart(0).toISOString()}&select=descripcion&limit=2000`)
+    const [pedMes, sumsMes, faltMes, pedPrevPunto, sumsPrevPunto] = await Promise.all([
+      sbGet("pedidos", `created_at=gte.${desdeMes}&estado=neq.cancelado&select=created_at,estado,vendedor&limit=3000`),
+      sbSumAllMulti("items_pedido", ["cantidad","es_faltante"], `created_at=gte.${desdeMes}`),
+      sbGet("items_pedido", `es_faltante=eq.true&created_at=gte.${desdeMes}&select=descripcion&limit=2000`),
+      prevCorte
+        ? sbGet("pedidos", `created_at=gte.${prevInicio.toISOString()}&created_at=lte.${prevCorte.toISOString()}&estado=neq.cancelado&select=id&limit=3000`)
+        : Promise.resolve([]),
+      prevCorte
+        ? sbSumAllMulti("items_pedido", ["cantidad"], `created_at=gte.${prevInicio.toISOString()}&created_at=lte.${prevCorte.toISOString()}`)
+        : Promise.resolve({ cantidad: 0 })
     ]);
 
     // Top faltantes del mes
@@ -2072,16 +2189,34 @@ async function enviarReporteMensual() {
     const factPed   = pedMes.filter(p => p.estado === "facturado").length;
     const tasaFact  = totalPed > 0 ? Math.round((factPed/totalPed)*100) : 0;
 
+    // Tasa de faltantes = líneas con faltante / total de líneas de pedido (no unidades vendidas)
+    const lineasMes     = sumsMes._count;
+    const faltantesMes  = sumsMes.es_faltante;
+    const tasaFaltantes = lineasMes > 0 ? Math.round((faltantesMes / lineasMes) * 100) : 0;
+
+    // Comparativa vs. el mismo punto (mismos días hábiles) del mes anterior
+    const pedPrevN = pedPrevPunto.length;
+    const artPrevN = sumsPrevPunto.cantidad;
+    const pctPed   = prevCorte && pedPrevN > 0 ? Math.round(((totalPed - pedPrevN) / pedPrevN) * 100) : null;
+    const pctArt   = prevCorte && artPrevN > 0 ? Math.round(((sumsMes.cantidad - artPrevN) / artPrevN) * 100) : null;
+
     const payload = {
       tipo: "mensual",
       mes: `${MESES_F[today.getMonth()]} ${today.getFullYear()}`,
       fecha_envio: today.toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long",year:"numeric"}),
       dias_habiles: bizActual,
-      dia_equiv_mes_ant: diaEquiv,
       pedidos_mes: totalPed,
-      articulos_mes: totalArt,
+      articulos_mes: sumsMes.cantidad,
       facturados_mes: factPed,
       tasa_facturacion: tasaFact,
+      lineas_mes: lineasMes,
+      faltantes_mes: faltantesMes,
+      tasa_faltantes: tasaFaltantes,
+      comparativa: {
+        mes_anterior_label: MESES_F[prevDt.getMonth()],
+        pct_pedidos: pctPed,
+        pct_articulos: pctArt,
+      },
       top_faltantes: topFalt,
       top_vendedores: topVend
     };

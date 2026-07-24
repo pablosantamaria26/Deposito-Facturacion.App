@@ -31,6 +31,119 @@ function jsonResponse(data, status = 200) {
   });
 }
 
+function escapeHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// =========================================================
+// INFORME MENSUAL — plantilla HTML del email (tablas + estilos inline,
+// como requieren los clientes de correo; nada de flexbox/grid)
+// =========================================================
+function buildInformeMensualHtml(d) {
+  const fmt   = n => Number(n || 0).toLocaleString("es-AR");
+  const pct   = n => (n == null ? "—" : `${n >= 0 ? "+" : ""}${n}%`);
+  const arrow = n => (n == null ? "" : n >= 0 ? "▲" : "▼");
+  const color = n => (n == null ? "#888888" : n >= 0 ? "#1e9e5a" : "#d64545");
+
+  const comp = d.comparativa || {};
+  const mesAnt = comp.mes_anterior_label || "mes anterior";
+
+  const compFila = (label, valorActual, pctVal) => `
+    <td width="50%" style="text-align:center;padding:8px">
+      <div style="font-size:11px;font-weight:700;color:#888888;text-transform:uppercase;letter-spacing:.04em">${escapeHtml(label)}</div>
+      <div style="font-size:28px;font-weight:900;color:#1a3456;margin:4px 0">${valorActual}</div>
+      ${pctVal != null ? `<div style="font-size:12px;font-weight:700;color:${color(pctVal)}">${arrow(pctVal)} ${pct(pctVal)} vs ${escapeHtml(mesAnt)}</div>` : `<div style="font-size:12px;color:#aaaaaa">sin datos de ${escapeHtml(mesAnt)}</div>`}
+    </td>`;
+
+  const faltRows = (d.top_faltantes || []).length
+    ? d.top_faltantes.map(([desc, n], i) => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #eeeeee;font-size:13px;color:#333333">${i + 1}. ${escapeHtml(desc)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eeeeee;font-size:13px;color:#d64545;font-weight:700;text-align:right;white-space:nowrap">${n}×</td>
+      </tr>`).join("")
+    : `<tr><td style="padding:12px;font-size:13px;color:#888888">Sin faltantes registrados este mes 🎉</td></tr>`;
+
+  const vendRows = (d.top_vendedores || []).length
+    ? d.top_vendedores.map(([v, n], i) => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #eeeeee;font-size:13px;color:#333333">${i + 1}. ${escapeHtml(v)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eeeeee;font-size:13px;color:#1e6fd6;font-weight:700;text-align:right;white-space:nowrap">${n} ped.</td>
+      </tr>`).join("")
+    : `<tr><td style="padding:12px;font-size:13px;color:#888888">Sin datos de vendedores</td></tr>`;
+
+  const tasaFalt   = d.tasa_faltantes ?? 0;
+  const faltBg     = tasaFalt > 15 ? "#fdeeee" : tasaFalt <= 5 ? "#eaf7ef" : "#fff6e8";
+  const faltColor  = tasaFalt > 15 ? "#c0392b" : tasaFalt <= 5 ? "#1e9e5a" : "#b8860b";
+  const faltIcon   = tasaFalt > 15 ? "⚠️" : tasaFalt <= 5 ? "✅" : "•";
+
+  return `<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,Helvetica,sans-serif">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:24px 0">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.06)">
+
+        <tr><td style="background:#1a3456;padding:28px 32px">
+          <div style="font-size:20px;font-weight:800;color:#ffffff">📊 Informe mensual — ${escapeHtml(d.mes)}</div>
+          <div style="font-size:13px;color:rgba(255,255,255,0.65);margin-top:4px">Generado el ${escapeHtml(d.fecha_envio)} · ${d.dias_habiles} días hábiles del mes</div>
+        </td></tr>
+
+        <tr><td style="padding:24px 32px 8px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              ${compFila("Pedidos", fmt(d.pedidos_mes), comp.pct_pedidos)}
+              ${compFila("Artículos vendidos", fmt(d.articulos_mes), comp.pct_articulos)}
+            </tr>
+          </table>
+        </td></tr>
+
+        <tr><td style="padding:8px 32px 20px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #eeeeee;padding-top:12px">
+            <tr><td style="text-align:center;padding-top:12px">
+              <div style="font-size:11px;font-weight:700;color:#888888;text-transform:uppercase;letter-spacing:.04em">% Facturado</div>
+              <div style="font-size:22px;font-weight:900;color:#1a3456;margin:4px 0">${d.tasa_facturacion}%</div>
+              <div style="font-size:12px;color:#888888">${fmt(d.facturados_mes)} de ${fmt(d.pedidos_mes)} pedidos ya facturados</div>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        <tr><td style="padding:0 32px 24px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${faltBg};border-radius:10px">
+            <tr><td style="padding:14px 18px">
+              <div style="font-size:13px;font-weight:800;color:${faltColor}">${faltIcon} ${tasaFalt}% de faltantes este mes</div>
+              <div style="font-size:12px;color:#555555;margin-top:2px">${fmt(d.faltantes_mes)} de ${fmt(d.lineas_mes)} líneas de pedido no se pudieron entregar completas</div>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        <tr><td style="padding:0 32px 8px">
+          <div style="font-size:14px;font-weight:800;color:#1a3456;margin-bottom:6px">🧊 Top artículos que más faltaron</div>
+        </td></tr>
+        <tr><td style="padding:0 32px 24px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eeeeee;border-radius:8px;overflow:hidden">
+            ${faltRows}
+          </table>
+        </td></tr>
+
+        <tr><td style="padding:0 32px 8px">
+          <div style="font-size:14px;font-weight:800;color:#1a3456;margin-bottom:6px">🏆 Top vendedores del mes</div>
+        </td></tr>
+        <tr><td style="padding:0 32px 28px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eeeeee;border-radius:8px;overflow:hidden">
+            ${vendRows}
+          </table>
+        </td></tr>
+
+        <tr><td style="background:#f8f9fb;padding:16px 32px;text-align:center">
+          <div style="font-size:11px;color:#999999">Informe generado automáticamente por Mercado Limpio Analytics</div>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
 // =========================================================
 // SUPABASE HELPERS
 // =========================================================
@@ -237,9 +350,27 @@ async function ejecutarAccionIA(env, nombre, args, vendedor) {
 // =========================================================
 // IA — CONSTRUIR SYSTEM PROMPT con contexto real de Supabase
 // =========================================================
-function buildSystemPrompt(ctx) {
+function buildSystemPrompt(ctx, perfil, memorias) {
   let sys = ctx.prompt_base ||
     "Sos Soporte Mercado Limpio, asistente de ventas de la distribuidora. Hablás en español rioplatense, sos directo y breve (máximo 3-4 oraciones). Nunca inventás datos.";
+
+  // Perfil del vendedor (tabla perfil_vendedor): apodo + tono pedido + su "dolor"
+  if (perfil) {
+    const TONOS = {
+      directo: "andá al grano, frases cortas, cero vueltas",
+      calmo:   "explicá con calma y paciencia, paso a paso",
+      humor:   "usá humor liviano rioplatense sin perder claridad",
+      coach:   "hablá como coach de ventas: motivá, reconocé los logros y desafialo a más"
+    };
+    sys += `\n\n== PERFIL DEL VENDEDOR ==\n`;
+    if (perfil.apodo) sys += `Llamalo "${perfil.apodo}". `;
+    sys += `Trato pedido por él: ${TONOS[perfil.estilo] || TONOS.directo}.`;
+    if (perfil.dolor) sys += `\nLo que más le cuesta vendiendo: "${perfil.dolor}". Cuando pida ayuda de venta, trabajá ese punto con técnicas concretas y frases listas para decir.`;
+  }
+  // Últimos resúmenes de charlas (conversation_summaries) — memoria corta
+  if (memorias && memorias.length) {
+    sys += `\n== MEMORIA DE CHARLAS RECIENTES ==\n` + memorias.map(m => ("- " + String(m.resumen || "").slice(0, 200))).join("\n");
+  }
 
   // Cobertura general del vendedor
   if (ctx.cobertura) {
@@ -309,6 +440,7 @@ function buildSystemPrompt(ctx) {
     }
   }
 
+  sys += `\nSi te preguntan por un cliente que NO figura en tu contexto, nunca digas que no pertenece a su cartera: pedile el número de cliente o que abra la ficha del cliente. Los datos del CONTEXTO de este mensaje son la verdad ACTUAL: si la memoria previa o mensajes anteriores dicen otra cosa (por ejemplo que un cliente no era de su cartera), ignoralos y respondé con el contexto actual.`;
   sys += `\n== PODÉS HACER ==\nRegistrar visitas, crear notas para el equipo, armar recordatorios. Cuando el vendedor te lo pida, ejecutás la acción y confirmás que lo hiciste.`;
 
   return sys;
@@ -506,22 +638,58 @@ export default {
           }
 
           // ── CHATBOT IA con contexto real y function calling ──
+          // ── PERFIL DEL VENDEDOR (tabla perfil_vendedor) ──
+          if (accion === "get_perfil") {
+            const { vendedor } = bodyJson;
+            if (!vendedor) return jsonResponse({ exito: false, error: "Falta vendedor" });
+            const rows = await supabaseQuery(env, "perfil_vendedor", `vendedor=ilike.${encodeURIComponent(vendedor)}&limit=1`);
+            return jsonResponse({ exito: true, perfil: rows && rows[0] ? rows[0] : null });
+          }
+          if (accion === "save_perfil") {
+            const { vendedor, apodo, estilo, turnos, dolor } = bodyJson;
+            if (!vendedor) return jsonResponse({ exito: false, error: "Falta vendedor" });
+            const res = await fetch(`${env.SUPABASE_URL}/rest/v1/perfil_vendedor?on_conflict=vendedor`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "apikey": env.SUPABASE_SERVICE_KEY,
+                "Authorization": `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+                "Prefer": "return=minimal,resolution=merge-duplicates"
+              },
+              body: JSON.stringify({
+                vendedor: String(vendedor).toUpperCase(),
+                apodo: apodo || null,
+                estilo: estilo || "directo",
+                turnos: turnos || "doble",
+                dolor: dolor || null,
+                updated_at: new Date().toISOString()
+              })
+            });
+            return jsonResponse({ exito: res.ok, error: res.ok ? undefined : "No se pudo guardar (¿existe la tabla perfil_vendedor?)" });
+          }
+
           if (accion === "chatbot_ia") {
             const { vendedor, cliente_id, mensaje, historial } = bodyJson;
             if (!mensaje)   return jsonResponse({ text: "Escribí tu consulta." });
             if (!vendedor)  return jsonResponse({ text: "No se identificó el vendedor." });
 
+            // Si el vendedor menciona un número de cliente en el texto (chat
+            // abierto sin ficha), usarlo como cliente en foco para el contexto
+            const idMencionado = ((mensaje || "").match(/\b(\d{4,6})\b/) || [])[1] || null;
+            const clienteEnFoco = cliente_id || idMencionado;
+
             const apiKey = env.GEMINI_API_KEY;
             if (!apiKey)    return jsonResponse({ text: "Error: Falta GEMINI_API_KEY." });
 
             // 1. Traer contexto completo desde Supabase (1 sola query)
-            const context = await supabaseRPC(env, "build_ia_context", {
-              p_vendedor:   vendedor,
-              p_cliente_id: cliente_id || null,
-            });
+            const [context, perfilRows, memRows] = await Promise.all([
+              supabaseRPC(env, "build_ia_context", { p_vendedor: vendedor, p_cliente_id: clienteEnFoco }),
+              supabaseQuery(env, "perfil_vendedor", `vendedor=ilike.${encodeURIComponent(vendedor)}&limit=1`),
+              supabaseQuery(env, "conversation_summaries", `vendedor=ilike.${encodeURIComponent(vendedor)}&order=created_at.desc&limit=2&select=resumen,created_at`)
+            ]);
 
-            // 2. Construir system prompt enriquecido
-            const sys = buildSystemPrompt(context || {});
+            // 2. Construir system prompt enriquecido (contexto + perfil + memoria)
+            const sys = buildSystemPrompt(context || {}, perfilRows && perfilRows[0], memRows || []);
 
             // 3. Armar historial de conversación
             const contents = [];
@@ -545,7 +713,9 @@ export default {
                   contents,
                   systemInstruction: { parts: [{ text: sys }] },
                   tools: [{ functionDeclarations: HERRAMIENTAS_IA }],
-                  generationConfig: { maxOutputTokens: 400, temperature: 0.7 },
+                  // thinkingBudget 0: apaga el razonamiento interno de 2.5-flash
+                  // (innecesario para respuestas cortas) → responde ~2x más rápido
+                  generationConfig: { maxOutputTokens: 400, temperature: 0.7, thinkingConfig: { thinkingBudget: 0 } },
                 }),
               }
             );
@@ -570,10 +740,10 @@ export default {
               || (accionesTomadas.length > 0 ? "✅ Listo, lo registré." : "No pude generar una respuesta.");
 
             // 6. Registrar en timeline que hubo chat con IA (fire-and-forget)
-            if (cliente_id) {
+            if (clienteEnFoco) {
               ctx.waitUntil(
                 supabaseInsert(env, "timeline_cliente", {
-                  cliente_id, vendedor,
+                  cliente_id: clienteEnFoco, vendedor,
                   tipo:    "chat_ia",
                   resumen: mensaje.slice(0, 100),
                   origen:  "ia",
@@ -704,11 +874,92 @@ export default {
           if (accion === "cliente_lookup") {
             const { vendedor, clienteId } = bodyJson;
             if (!vendedor || !clienteId) return jsonResponse({ exito: false, error: "Faltan campos" });
-            const data = await supabaseRPC(env, "cliente_lookup", {
-              p_vendedor: vendedor, p_cliente_id: String(clienteId),
-            });
+            const [data, descRows] = await Promise.all([
+              supabaseRPC(env, "cliente_lookup", { p_vendedor: vendedor, p_cliente_id: String(clienteId) }),
+              supabaseQuery(env, "clientes", `id=eq.${encodeURIComponent(String(clienteId))}&select=descuento`),
+            ]);
             if (!data || !data.cliente) return jsonResponse({ exito: false, error: "Cliente no encontrado" });
-            return jsonResponse({ exito: true, cliente: data.cliente, ultimoPedido: data.ultimoPedido || null, ticket: data.ticket || "" });
+            const descuento = descRows && descRows[0] ? descRows[0].descuento : null;
+            return jsonResponse({ exito: true, cliente: { ...data.cliente, descuento }, ultimoPedido: data.ultimoPedido || null, ticket: data.ticket || "" });
+          }
+
+          // ── GESTOR DE CARTERA — vendedores, migración masiva y descuentos ──
+          // (usado por la consola de administración App-actualizacion-BaseClientes)
+          if (accion === "crear_vendedor") {
+            const { nombre, username, pin } = bodyJson;
+            if (!nombre || !username || !pin) return jsonResponse({ exito: false, error: "Faltan nombre, username o pin" });
+            const res = await supabaseInsert(env, "vendedores", {
+              nombre: String(nombre).trim().toUpperCase(),
+              username: String(username).trim().toLowerCase(),
+              pin: String(pin).trim(),
+              activo: true,
+            });
+            if (!res) return jsonResponse({ exito: false, error: "No se pudo crear (¿username duplicado?)" });
+            return jsonResponse({ exito: true, vendedor: res[0] || null });
+          }
+
+          if (accion === "listar_vendedores") {
+            const rows = await supabaseQuery(env, "vendedores", "select=id,nombre,username,activo&order=nombre.asc");
+            return jsonResponse({ exito: true, vendedores: rows || [] });
+          }
+
+          // Cartera de uno o varios vendedores (preview para migrar o editar descuentos)
+          if (accion === "preview_cartera") {
+            const { vendedores } = bodyJson; // string único o array
+            const lista = Array.isArray(vendedores) ? vendedores : [vendedores];
+            if (!lista.length || !lista[0]) return jsonResponse({ exito: false, error: "Falta vendedor(es)" });
+            const inClause = lista.map(v => String(v).trim().toUpperCase()).join(",");
+            const rows = await supabaseQuery(env, "clientes",
+              `vendedor=in.(${encodeURIComponent(inClause)})&select=id,nombre,apellido,localidad,vendedor,descuento&order=localidad.asc`
+            );
+            return jsonResponse({ exito: true, clientes: rows || [] });
+          }
+
+          if (accion === "set_descuento") {
+            const { clienteId, descuento } = bodyJson;
+            if (!clienteId) return jsonResponse({ exito: false, error: "Falta clienteId" });
+            const v = (descuento === "" || descuento === null || descuento === undefined) ? null : Number(descuento);
+            const res = await supabasePatch(env, "clientes", `id=eq.${encodeURIComponent(String(clienteId))}`, { descuento: v });
+            return jsonResponse({ exito: res !== null });
+          }
+
+          // Guarda varios descuentos juntos — un PATCH seguro por cliente, en paralelo
+          if (accion === "set_descuentos_bulk") {
+            const { cambios } = bodyJson; // [{ id, descuento }, ...]
+            if (!Array.isArray(cambios) || !cambios.length) return jsonResponse({ exito: false, error: "Sin cambios" });
+            const resultados = await Promise.all(cambios.map(c => {
+              const v = (c.descuento === "" || c.descuento === null || c.descuento === undefined) ? null : Number(c.descuento);
+              return supabasePatch(env, "clientes", `id=eq.${encodeURIComponent(String(c.id))}`, { descuento: v });
+            }));
+            return jsonResponse({ exito: true, actualizados: resultados.filter(r => r !== null).length, total: cambios.length });
+          }
+
+          // Resumen corto en lenguaje natural para el modal de confirmación (decorativo,
+          // el frontend siempre tiene un template de respaldo si esto falla o tarda)
+          if (accion === "resumen_ia_cambio") {
+            const { origenes, zona, destino, count } = bodyJson;
+            const apiKey = env.GEMINI_API_KEY;
+            if (!apiKey) return jsonResponse({ exito: false });
+            try {
+              const prompt = `Redactá UNA sola oración breve en español rioplatense confirmando esta acción administrativa (sin emojis, sin comillas): mover ${count} clientes de ${(origenes||[]).join('/')} hacia ${destino}${zona ? ' en la zona ' + zona : ''}.`;
+              const resp = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    contents: [{ role: "user", parts: [{ text: prompt }] }],
+                    generationConfig: { maxOutputTokens: 60, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
+                  }),
+                }
+              );
+              const j = await resp.json();
+              const texto = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+              if (!texto) return jsonResponse({ exito: false });
+              return jsonResponse({ exito: true, texto });
+            } catch (e) {
+              return jsonResponse({ exito: false });
+            }
           }
 
           // ── START JORNADA ──
@@ -897,6 +1148,39 @@ export default {
           }
 
           return jsonResponse({ ok: true, pedido_id: pedidoId, numero_diario: numeroDiario });
+        }
+
+        // ── INFORME MENSUAL POR EMAIL (analytics.html → botón "📧 Email") ──
+        if (path === "/enviar-reporte-analitica") {
+          if (!bodyJson || bodyJson.tipo !== "mensual") {
+            return jsonResponse({ ok: false, message: "Tipo de reporte no soportado" }, 400);
+          }
+          if (!env.RESEND_API_KEY || !env.REPORT_FROM_EMAIL || !env.REPORT_TO_EMAIL) {
+            return jsonResponse({ ok: false, message: "Falta configurar RESEND_API_KEY / REPORT_FROM_EMAIL / REPORT_TO_EMAIL en el Worker" }, 500);
+          }
+
+          const html = buildInformeMensualHtml(bodyJson);
+          const destinatarios = env.REPORT_TO_EMAIL.split(",").map(s => s.trim()).filter(Boolean);
+
+          const resendRes = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: env.REPORT_FROM_EMAIL,
+              to: destinatarios,
+              subject: `📊 Informe mensual — ${bodyJson.mes}`,
+              html,
+            }),
+          });
+
+          if (!resendRes.ok) {
+            const errText = await resendRes.text();
+            return jsonResponse({ ok: false, message: `Resend: ${errText}` }, 502);
+          }
+          return jsonResponse({ ok: true });
         }
 
         // ── RUTA PEDIDO (app-pedidos — sin cambio) ──
