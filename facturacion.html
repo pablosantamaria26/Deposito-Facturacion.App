@@ -768,6 +768,7 @@
             <span class="ped-meta" id="phMeta"></span>
             <span id="phArmador" style="display:none;font-size:12px;font-weight:700;color:var(--prox);"></span>
             <div id="phChips" class="ped-chips"></div>
+            <span id="phDescuentoChip" class="chip" style="display:none;"></span>
           </div>
           <div id="phNumDiario" style="display:none;margin-top:4px;"></div>
         </div>
@@ -1123,6 +1124,7 @@ async function seleccionar(id) {
     if (_ip) { _ip.scrollTop = 0; _ip.onscroll = _checkScrollLock; setTimeout(_checkScrollLock, 80); }
     cargarNotas(pedidoActivo.cliente_id, true);
     cargarFaltantesPrevios(pedidoActivo.cliente_id, pedidoActivo.id);
+    cargarDescuentoCliente(pedidoActivo.cliente_id); // no bloquea: llega y se muestra aparte
 
     document.getElementById("noSel").style.display = "none";
     const pp = document.getElementById("pedidoPanel");
@@ -1175,6 +1177,30 @@ function renderHeader() {
     (pedidoActivo.estado === "facturado"
       ? `<div class="chip" style="color:var(--success);border-color:#86efac;">✅ FACTURADO</div>`
       : "");
+}
+
+// Descuento del cliente — cargado desde Gestor de Clientes (tabla clientes.descuento).
+// Se pide aparte (no viaja con el pedido) y no bloquea la apertura del pedido.
+async function cargarDescuentoCliente(clienteId) {
+  const chip = document.getElementById("phDescuentoChip");
+  if (!chip) return;
+  chip.style.display = "none";
+  if (!clienteId) return;
+
+  try {
+    const rows = await sbGet("clientes", `id=eq.${encodeURIComponent(clienteId)}&select=descuento`);
+    // Si mientras tanto se abrió otro pedido, no pisar el chip del pedido nuevo
+    if (!pedidoActivo || String(pedidoActivo.cliente_id) !== String(clienteId)) return;
+
+    const d = rows && rows[0] ? rows[0].descuento : null;
+    const tiene = d !== null && d !== undefined && d !== "";
+    chip.textContent = tiene ? `💲 Descuento ${Number(d)}%` : "Sin descuento";
+    chip.style.cssText = tiene
+      ? "display:inline-block;background:#111827;color:#fff;border-color:#111827;font-weight:800;"
+      : "display:inline-block;";
+  } catch (_) {
+    // silencioso: si falla, el chip queda oculto (no bloquea facturación)
+  }
 }
 
 async function recargarItems() {
