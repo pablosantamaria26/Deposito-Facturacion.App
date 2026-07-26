@@ -865,6 +865,22 @@
   </div>
 </div>
 
+<!-- Modal: aviso de descuento a aplicar en el sistema de facturación -->
+<div class="modal-over" id="modalDescuento">
+  <div class="modal-box">
+    <div class="modal-title" id="mdTitle">💲 Descuento a aplicar</div>
+    <div class="modal-sub" id="mdSub">Este cliente tiene un descuento acordado. Aplicalo en el sistema de facturación antes de facturar.</div>
+    <label style="display:flex;align-items:flex-start;gap:8px;margin:14px 0 6px;font-size:13px;text-align:left;cursor:pointer;">
+      <input type="checkbox" id="mdCheckVisto" style="width:18px;height:18px;flex-shrink:0;margin-top:1px;">
+      <span>Ya lo vi y lo apliqué en el sistema de facturación</span>
+    </label>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="cerrarModalDescuento()">Ahora no</button>
+      <button class="modal-btn ok" id="mdBtnConfirmar" onclick="confirmarModalDescuento()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: notas del cliente -->
 <div class="modal-over" id="modalNotas">
   <div class="modal-box notas-box">
@@ -1181,26 +1197,80 @@ function renderHeader() {
 
 // Descuento del cliente — cargado desde Gestor de Clientes (tabla clientes.descuento).
 // Se pide aparte (no viaja con el pedido) y no bloquea la apertura del pedido.
+let _descClienteActual = null; // { id, descuento, esInactivo, reactivacionPendiente }
+const _descuentosConfirmadosSesion = new Set(); // pedido.id ya confirmados en esta sesión
+
 async function cargarDescuentoCliente(clienteId) {
   const chip = document.getElementById("phDescuentoChip");
   if (!chip) return;
   chip.style.display = "none";
+  _descClienteActual = null;
   if (!clienteId) return;
 
   try {
-    const rows = await sbGet("clientes", `id=eq.${encodeURIComponent(clienteId)}&select=descuento`);
+    const rows = await sbGet("clientes", `id=eq.${encodeURIComponent(clienteId)}&select=descuento,es_inactivo,reactivacion_pendiente`);
     // Si mientras tanto se abrió otro pedido, no pisar el chip del pedido nuevo
     if (!pedidoActivo || String(pedidoActivo.cliente_id) !== String(clienteId)) return;
 
-    const d = rows && rows[0] ? rows[0].descuento : null;
-    const tiene = d !== null && d !== undefined && d !== "";
-    chip.textContent = tiene ? `💲 Descuento ${Number(d)}%` : "Sin descuento";
+    const row = rows && rows[0] ? rows[0] : {};
+    const d = row.descuento != null && row.descuento !== "" ? Number(row.descuento) : null;
+    const tiene = d !== null;
+    _descClienteActual = { id: clienteId, descuento: d, esInactivo: !!row.es_inactivo, reactivacionPendiente: !!row.reactivacion_pendiente };
+
+    chip.textContent = tiene ? `💲 Descuento ${d}%` : (row.es_inactivo ? "0% — hace mucho no compra" : "Sin descuento");
     chip.style.cssText = tiene
       ? "display:inline-block;background:#111827;color:#fff;border-color:#111827;font-weight:800;"
       : "display:inline-block;";
+
+    mostrarModalDescuentoSiCorresponde();
   } catch (_) {
     // silencioso: si falla, el chip queda oculto (no bloquea facturación)
   }
+}
+
+function mostrarModalDescuentoSiCorresponde() {
+  if (!pedidoActivo || !_descClienteActual) return;
+  if (_descuentosConfirmadosSesion.has(pedidoActivo.id)) return;
+
+  const c = _descClienteActual;
+  const esReactivacion = c.reactivacionPendiente;
+  const tieneDescuentoFijo = c.descuento != null && c.descuento > 0;
+  if (!esReactivacion && !tieneDescuentoFijo) return;
+
+  document.getElementById("mdTitle").textContent = esReactivacion
+    ? "💲 Cliente reactivado — bienvenida 5%"
+    : `💲 Descuento acordado: ${c.descuento}%`;
+  document.getElementById("mdSub").textContent = esReactivacion
+    ? "El vendedor marcó que este cliente vuelve a comprar. Activale el 5% de descuento de bienvenida en el sistema de facturación antes de facturar."
+    : `Este cliente tiene ${c.descuento}% de descuento acordado. Aplicalo en el sistema de facturación antes de facturar.`;
+  document.getElementById("mdCheckVisto").checked = false;
+  document.getElementById("modalDescuento").style.display = "flex";
+}
+
+function cerrarModalDescuento() {
+  document.getElementById("modalDescuento").style.display = "none";
+}
+
+async function confirmarModalDescuento() {
+  if (!document.getElementById("mdCheckVisto").checked) {
+    toast("Marcá que ya lo aplicaste para confirmar", "error");
+    return;
+  }
+  const c = _descClienteActual;
+  if (c && c.reactivacionPendiente) {
+    try {
+      await sbPatch("clientes", `id=eq.${encodeURIComponent(c.id)}`, {
+        descuento: 5, es_inactivo: false, reactivacion_pendiente: false
+      });
+      const chip = document.getElementById("phDescuentoChip");
+      if (chip) {
+        chip.textContent = "💲 Descuento 5%";
+        chip.style.cssText = "display:inline-block;background:#111827;color:#fff;border-color:#111827;font-weight:800;";
+      }
+    } catch (_) { toast("No se pudo guardar, pero quedó confirmado en esta pantalla", "error"); }
+  }
+  if (pedidoActivo) _descuentosConfirmadosSesion.add(pedidoActivo.id);
+  cerrarModalDescuento();
 }
 
 async function recargarItems() {

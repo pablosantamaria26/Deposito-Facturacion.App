@@ -915,6 +915,22 @@ export default {
             return jsonResponse({ exito: true, clientes: rows || [] });
           }
 
+          // Búsqueda global de clientes (sin filtro de vendedor) — la usa Pablo
+          // desde Gestor de Clientes para autorizar 7%/10% a un cliente puntual.
+          if (accion === "buscar_cliente_global") {
+            const { q } = bodyJson;
+            const query = String(q || "").trim();
+            if (!query) return jsonResponse({ exito: true, items: [] });
+            const esNumero = /^\d+$/.test(query);
+            const filtro = esNumero
+              ? `id=ilike.${encodeURIComponent(query + "%")}`
+              : `or=(nombre.ilike.${encodeURIComponent("%" + query + "%")},apellido.ilike.${encodeURIComponent("%" + query + "%")})`;
+            const rows = await supabaseQuery(env, "clientes",
+              `${filtro}&select=id,nombre,apellido,localidad,vendedor,descuento,es_inactivo&order=id.asc&limit=10`
+            );
+            return jsonResponse({ exito: true, items: rows || [] });
+          }
+
           if (accion === "set_descuento") {
             const { clienteId, descuento } = bodyJson;
             if (!clienteId) return jsonResponse({ exito: false, error: "Falta clienteId" });
