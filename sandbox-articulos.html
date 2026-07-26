@@ -181,6 +181,24 @@ async function sbGet(table, params = "") {
   if (!res.ok) throw new Error(`${table} ${res.status}`);
   return res.json();
 }
+// Supabase corta cada respuesta en 1000 filas por más que pidas más con &limit=.
+// Esta versión pagina con el header Range hasta traer todo — la usamos siempre
+// que necesitemos el dataset COMPLETO (catálogo, pedidos), no una muestra.
+async function sbGetAll(table, params = "") {
+  const PAGE = 1000;
+  let desde = 0, todas = [];
+  while (true) {
+    const res = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {
+      headers: sbHeaders({ Range: `${desde}-${desde + PAGE - 1}` })
+    });
+    if (!res.ok) throw new Error(`${table} ${res.status}`);
+    const rows = await res.json();
+    todas = todas.concat(rows);
+    if (rows.length < PAGE) break;
+    desde += PAGE;
+  }
+  return todas;
+}
 async function sbUpsert(table, rows, onConflict) {
   const res = await fetch(`${SB_URL}/rest/v1/${table}?on_conflict=${onConflict}`, {
     method: "POST",
@@ -217,7 +235,7 @@ let filasNuevas = [];
 
 async function cargarCatalogoActual() {
   try {
-    const rows = await sbGet("articulos", "select=codigo,descripcion,costo,pct_util,mayorista&limit=10000");
+    const rows = await sbGetAll("articulos", "select=codigo,descripcion,costo,pct_util,mayorista&order=codigo.asc");
     catalogoActual.clear();
     rows.forEach(r => catalogoActual.set(String(r.codigo), r));
     document.getElementById("catalogoCount").textContent = `Catálogo actual en Supabase: ${catalogoActual.size} artículos`;
@@ -308,9 +326,9 @@ document.getElementById("btnBuscarPendientes").addEventListener("click", async (
   let descs, mapeados, articulos;
   try {
     [descs, mapeados, articulos] = await Promise.all([
-      sbGet("items_pedido", "select=descripcion&limit=5000"),
-      sbGet("articulo_mapping", "select=descripcion_pedido&limit=5000"),
-      sbGet("articulos", "select=codigo,descripcion&limit=10000")
+      sbGetAll("items_pedido", "select=descripcion&order=id.asc"),
+      sbGetAll("articulo_mapping", "select=descripcion_pedido&order=id.asc"),
+      sbGetAll("articulos", "select=codigo,descripcion&order=codigo.asc")
     ]);
   } catch (e) {
     status.textContent = "Error leyendo Supabase — ¿corriste el SQL de las tablas nuevas?";
@@ -396,7 +414,7 @@ let carrito = []; // [{ codigo, descripcion, cantidad, precio }]
 
 async function cargarClientesCache() {
   try {
-    const rows = await sbGet("clientes", "activo=eq.true&select=id,nombre,apellido,domicilio,localidad,descuento,es_inactivo,reactivacion_pendiente&limit=3000");
+    const rows = await sbGetAll("clientes", "activo=eq.true&select=id,nombre,apellido,domicilio,localidad,descuento,es_inactivo,reactivacion_pendiente&order=id.asc");
     clientesCache = new Map(rows.map(r => [String(r.id), r]));
   } catch (e) { /* la búsqueda de clientes simplemente queda vacía */ }
 }
