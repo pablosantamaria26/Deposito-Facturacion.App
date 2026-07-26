@@ -236,10 +236,19 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null }).slice(1);
 
-  filasNuevas = rows.filter(r => r[0] != null).map(r => ({
+  const todasLasFilas = rows.filter(r => r[0] != null).map(r => ({
     codigo: String(r[0]), descripcion: String(r[1] || "").trim(),
     costo: Number(r[3]), pct_util: Number(r[4]), mayorista: Number(r[5])
   }));
+
+  // El Excel tiene códigos repetidos para productos DISTINTOS (códigos internos
+  // reciclados, no un identificador único real) — si dos filas con el mismo
+  // código van juntas en el mismo guardado, Supabase rechaza el lote entero.
+  // Nos quedamos con la última fila de cada código y avisamos cuántas se pisaron.
+  const porCodigo = new Map();
+  todasLasFilas.forEach(f => porCodigo.set(f.codigo, f));
+  filasNuevas = [...porCodigo.values()];
+  const duplicados = todasLasFilas.length - filasNuevas.length;
 
   let nuevos = 0, cambiados = 0, sinCambio = 0;
   const tbody = document.getElementById("diffTableBody");
@@ -261,7 +270,8 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
   tbody.innerHTML = rowsHtml.join("") || `<tr><td colspan="5" style="text-align:center;color:var(--ink-muted);">Sin diferencias con el catálogo actual.</td></tr>`;
   document.getElementById("diffTableWrap").style.display = "block";
   document.getElementById("diffResumen").textContent =
-    `${filasNuevas.length} artículos en el Excel — ${nuevos} nuevos, ${cambiados} con precio distinto, ${sinCambio} sin cambio.`;
+    `${filasNuevas.length} artículos en el Excel — ${nuevos} nuevos, ${cambiados} con precio distinto, ${sinCambio} sin cambio.`
+    + (duplicados > 0 ? ` ⚠️ ${duplicados} filas tenían un código repetido de otro producto — se usó la última de cada una.` : "");
   document.getElementById("btnAplicarPrecios").disabled = (nuevos + cambiados) === 0;
 
   // Refresca la búsqueda de artículos de la Fase 4 con los datos recién leídos del Excel
