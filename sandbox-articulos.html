@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sandbox — Catálogo, IA y Pedido Rápido</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #f4f6f9; --surface: #fff; --surface-2: #eef1f6;
+    --ink: #14181f; --ink-2: #4b5566; --ink-muted: #7c8698; --border: #e1e6ee;
+    --accent: #2554e0; --good: #157a3d; --good-bg: #e5f6ec;
+    --warn: #b3660a; --warn-bg: #fdf1e0; --crit: #b0201f; --crit-bg: #fbe7e6;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px 16px 60px; }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  header { margin-bottom: 24px; }
+  header h1 { font-size: 20px; font-weight: 800; margin: 0 0 6px; }
+  header p { margin: 0; color: var(--ink-2); font-size: 13.5px; }
+  .warn-banner { background: var(--warn-bg); color: var(--warn); border-radius: 10px; padding: 10px 14px; font-size: 12.5px; font-weight: 700; margin-top: 10px; }
+  section { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; margin-bottom: 20px; }
+  section h2 { font-size: 15px; font-weight: 800; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+  section .sub { font-size: 12.5px; color: var(--ink-muted); margin: 0 0 14px; }
+  .badge-fase { font-size: 10px; font-weight: 800; background: var(--surface-2); color: var(--ink-muted); padding: 2px 8px; border-radius: 99px; }
+  button { font-family: inherit; cursor: pointer; border: none; border-radius: 9px; font-weight: 700; font-size: 13px; padding: 9px 16px; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:disabled { background: var(--surface-2); color: var(--ink-muted); cursor: not-allowed; }
+  .btn-secondary { background: var(--surface-2); color: var(--ink-2); }
+  input[type="text"], input[type="number"], textarea { font-family: inherit; font-size: 13.5px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--ink); width: 100%; }
+  textarea { min-height: 110px; resize: vertical; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 10px; }
+  th { text-align: left; font-size: 10.5px; text-transform: uppercase; color: var(--ink-muted); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 800; }
+  .pill.good { background: var(--good-bg); color: var(--good); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.crit { background: var(--crit-bg); color: var(--crit); }
+  .status-line { font-size: 12.5px; color: var(--ink-muted); margin-top: 8px; }
+  .scroll-box { max-height: 340px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
+  .total-box { background: var(--surface-2); border-radius: 10px; padding: 14px 16px; margin-top: 10px; }
+  .total-box .num { font-size: 26px; font-weight: 800; }
+  .total-box .missing { font-size: 12px; color: var(--warn); margin-top: 4px; }
+  .btn-mini { padding: 4px 10px; font-size: 11.5px; border-radius: 7px; }
+
+  /* ── Tomar pedido (Fase 4) ── */
+  .ac-wrap { position: relative; }
+  .ac-drop {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 10;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.08); max-height: 260px; overflow-y: auto; margin-top: 4px; display: none;
+  }
+  .ac-drop.open { display: block; }
+  .ac-item { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .ac-item:last-child { border-bottom: none; }
+  .ac-item:hover, .ac-item.active { background: var(--surface-2); }
+  .ac-item .id { color: var(--ink-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .cliente-card { display: none; background: var(--surface-2); border-radius: 10px; padding: 12px 14px; margin-top: 10px; }
+  .cliente-card.show { display: block; }
+  .cliente-card .nombre { font-weight: 800; font-size: 14.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .cliente-card .dir { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+  .desc-badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 800; background: #111827; color: #fff; }
+  .desc-badge.inactivo { background: var(--surface); color: var(--ink-muted); border: 1px solid var(--border); font-weight: 700; }
+  .reactivar-line { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 9px 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; font-size: 12.5px; cursor: pointer; }
+  .reactivar-line input { width: 17px; height: 17px; flex-shrink: 0; margin-top: 1px; }
+  .cart-row td { vertical-align: middle; }
+  .cart-row .qty-input { width: 60px; text-align: center; padding: 5px 6px; }
+  .cart-empty { text-align: center; color: var(--ink-muted); padding: 20px; font-size: 12.5px; }
+  .totales-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .totales-grid .box { background: var(--surface-2); border-radius: 10px; padding: 12px 14px; }
+  .totales-grid .box.destacado { background: #111827; color: #fff; }
+  .totales-grid .lbl { font-size: 10.5px; text-transform: uppercase; font-weight: 700; opacity: 0.7; }
+  .totales-grid .val { font-size: 22px; font-weight: 800; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🧪 Sandbox — Catálogo, IA y Pedido Rápido</h1>
+    <p>Página de prueba, sin link desde ninguna app real. Toca datos reales de Supabase (tablas nuevas <code>articulos</code> / <code>articulo_mapping</code>, no afecta nada existente) para poder juzgar si esto sirve antes de meterlo en producción.</p>
+    <div class="warn-banner" id="tableCheckWarn" style="display:none;">⚠️ Las tablas <code>articulos</code>/<code>articulo_mapping</code> todavía no existen en Supabase. Corré el SQL que te pasé (migration_articulos_sandbox.sql) antes de usar esta página.</div>
+  </header>
+
+  <!-- ═══════════ FASE 2: Cargar lista de precios ═══════════ -->
+  <section>
+    <h2>📋 Cargar lista de precios <span class="badge-fase">Fase 2</span></h2>
+    <p class="sub">Subí "Lista costo-previo venta ml.xlsx" — matchea por código exacto, sin IA. Te muestra qué cambió antes de aplicar nada.</p>
+    <div class="row">
+      <input type="file" id="fileInput" accept=".xlsx,.xls" style="width:auto;" />
+      <button class="btn-secondary" id="btnRecargarArticulos">🔄 Recargar catálogo actual</button>
+      <span class="status-line" id="catalogoCount"></span>
+    </div>
+    <div id="diffResumen" class="status-line"></div>
+    <div class="scroll-box" id="diffTableWrap" style="display:none;">
+      <table>
+        <thead><tr><th>Código</th><th>Descripción</th><th>Precio actual</th><th>Precio nuevo</th><th>Estado</th></tr></thead>
+        <tbody id="diffTableBody"></tbody>
+      </table>
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn-primary" id="btnAplicarPrecios" disabled>✔ Aplicar cambios a Supabase</button>
+      <span class="status-line" id="aplicarStatus"></span>
+    </div>
+  </section>
+
+  <!-- ═══════════ FASE 3: Matching con IA ═══════════ -->
+  <section>
+    <h2>🤖 Matchear descripciones reales de pedidos <span class="badge-fase">Fase 3</span></h2>
+    <p class="sub">Busca frases reales de <code>items_pedido</code> que todavía no tienen artículo asignado, y le pide a Gemini que las empareje contra el catálogo (mismo patrón que ya usa cobertura.html para stock).</p>
+    <div class="row">
+      <button class="btn-primary" id="btnBuscarPendientes">🔍 Buscar frases sin matchear</button>
+      <span class="status-line" id="pendientesStatus"></span>
+    </div>
+    <div class="scroll-box" id="matchTableWrap" style="display:none;">
+      <table>
+        <thead><tr><th>Frase del pedido</th><th>Artículo sugerido</th><th>Confianza</th><th></th></tr></thead>
+        <tbody id="matchTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════ FASE 4: Tomar pedido — prototipo rediseñado ═══════════ -->
+  <section>
+    <h2>🧾 Tomar pedido — prototipo <span class="badge-fase">Fase 4</span></h2>
+    <p class="sub">Pensado para el vendedor: cliente + descuento a la vista, artículos reales con precio, total en vivo con y sin descuento. El botón "Enviar" acá es solo una demo — no manda nada a producción.</p>
+
+    <div class="ac-wrap">
+      <input type="text" id="clienteBuscar" placeholder="Buscar cliente por N°, nombre o dirección…" autocomplete="off" />
+      <div class="ac-drop" id="clienteDrop"></div>
+    </div>
+    <div class="cliente-card" id="clienteCard">
+      <div class="nombre" id="clienteNombre"></div>
+      <div class="dir" id="clienteDir"></div>
+      <label class="reactivar-line" id="reactivarLine" style="display:none;">
+        <input type="checkbox" id="chkReactivarSim" />
+        <span><b>Este cliente vuelve a comprar</b> — activar 5% de bienvenida</span>
+      </label>
+    </div>
+
+    <div class="ac-wrap" style="margin-top:16px;">
+      <input type="text" id="articuloBuscar" placeholder="Buscar artículo por nombre…" autocomplete="off" />
+      <div class="ac-drop" id="articuloDrop"></div>
+    </div>
+
+    <div class="scroll-box" style="margin-top:12px;">
+      <table>
+        <thead><tr><th>Artículo</th><th>Cant.</th><th>Precio</th><th>Subtotal</th><th></th></tr></thead>
+        <tbody id="cartBody"><tr><td colspan="5" class="cart-empty">Sin artículos todavía — buscá arriba y agregá.</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="totales-grid">
+      <div class="box">
+        <div class="lbl">Total bruto</div>
+        <div class="val" id="totalBruto">$0</div>
+      </div>
+      <div class="box destacado">
+        <div class="lbl" id="lblTotalNeto">Total con descuento</div>
+        <div class="val" id="totalNeto">$0</div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:14px;">
+      <button class="btn-primary" id="btnEnviarDemo">📤 Enviar pedido (demo)</button>
+      <span class="status-line" id="enviarStatus"></span>
+    </div>
+  </section>
+</div>
+
+<script>
+const SB_URL = "https://gjeyvbidomxzofcdycya.supabase.co";
+const SB_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
+const WORKER_URL = "https://frosty-term-20ea.santamariapablodaniel.workers.dev";
+
+function sbHeaders(extra = {}) {
+  return { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, "Content-Type": "application/json", ...extra };
+}
+async function sbGet(table, params = "") {
+  const res = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, { headers: sbHeaders() });
+  if (!res.ok) throw new Error(`${table} ${res.status}`);
+  return res.json();
+}
+async function sbUpsert(table, rows, onConflict) {
+  const res = await fetch(`${SB_URL}/rest/v1/${table}?on_conflict=${onConflict}`, {
+    method: "POST",
+    headers: sbHeaders({ Prefer: "resolution=merge-duplicates,return=minimal" }),
+    body: JSON.stringify(rows)
+  });
+  return res.ok;
+}
+async function sbInsert(table, rows) {
+  const res = await fetch(`${SB_URL}/rest/v1/${table}`, {
+    method: "POST",
+    headers: sbHeaders({ Prefer: "return=minimal" }),
+    body: JSON.stringify(rows)
+  });
+  return res.ok;
+}
+function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function money(n) { return '$' + Number(n||0).toLocaleString('es-AR', {maximumFractionDigits:2}); }
+
+// Chequeo inicial: ¿existen las tablas nuevas?
+(async () => {
+  try {
+    await sbGet("articulos", "limit=1");
+  } catch (e) {
+    document.getElementById("tableCheckWarn").style.display = "block";
+  }
+})();
+
+/* =========================================================
+   FASE 2 — Cargar lista de precios
+   ========================================================= */
+let catalogoActual = new Map(); // codigo -> {descripcion, costo, pct_util, mayorista}
+let filasNuevas = [];
+
+async function cargarCatalogoActual() {
+  try {
+    const rows = await sbGet("articulos", "select=codigo,descripcion,costo,pct_util,mayorista&limit=10000");
+    catalogoActual.clear();
+    rows.forEach(r => catalogoActual.set(String(r.codigo), r));
+    document.getElementById("catalogoCount").textContent = `Catálogo actual en Supabase: ${catalogoActual.size} artículos`;
+  } catch (e) {
+    document.getElementById("catalogoCount").textContent = "No se pudo leer articulos (¿corriste el SQL?)";
+  }
+}
+cargarCatalogoActual();
+document.getElementById("btnRecargarArticulos").addEventListener("click", cargarCatalogoActual);
+
+document.getElementById("fileInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array" });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null }).slice(1);
+
+  filasNuevas = rows.filter(r => r[0] != null).map(r => ({
+    codigo: String(r[0]), descripcion: String(r[1] || "").trim(),
+    costo: Number(r[3]), pct_util: Number(r[4]), mayorista: Number(r[5])
+  }));
+
+  let nuevos = 0, cambiados = 0, sinCambio = 0;
+  const tbody = document.getElementById("diffTableBody");
+  const rowsHtml = filasNuevas.map(f => {
+    const actual = catalogoActual.get(f.codigo);
+    let estado, cls;
+    if (!actual) { estado = "Nuevo"; cls = "good"; nuevos++; }
+    else if (Number(actual.mayorista) !== f.mayorista) { estado = "Cambió"; cls = "warn"; cambiados++; }
+    else { estado = "Sin cambio"; cls = ""; sinCambio++; return null; } // no mostrar los sin cambio, para no saturar
+    return `<tr>
+      <td>#${escHtml(f.codigo)}</td>
+      <td>${escHtml(f.descripcion)}</td>
+      <td>${actual ? money(actual.mayorista) : "—"}</td>
+      <td>${money(f.mayorista)}</td>
+      <td><span class="pill ${cls}">${estado}</span></td>
+    </tr>`;
+  }).filter(Boolean);
+
+  tbody.innerHTML = rowsHtml.join("") || `<tr><td colspan="5" style="text-align:center;color:var(--ink-muted);">Sin diferencias con el catálogo actual.</td></tr>`;
+  document.getElementById("diffTableWrap").style.display = "block";
+  document.getElementById("diffResumen").textContent =
+    `${filasNuevas.length} artículos en el Excel — ${nuevos} nuevos, ${cambiados} con precio distinto, ${sinCambio} sin cambio.`;
+  document.getElementById("btnAplicarPrecios").disabled = (nuevos + cambiados) === 0;
+
+  // Refresca la búsqueda de artículos de la Fase 4 con los datos recién leídos del Excel
+  // (útil para probar el buscador de pedido sin tener que aplicar los cambios primero).
+  filasNuevas.forEach(f => articulosCache.set(f.codigo, f));
+});
+
+document.getElementById("btnAplicarPrecios").addEventListener("click", async () => {
+  const btn = document.getElementById("btnAplicarPrecios");
+  const status = document.getElementById("aplicarStatus");
+  btn.disabled = true;
+  status.textContent = "Aplicando…";
+  const BATCH = 500;
+  let ok = true;
+  for (let i = 0; i < filasNuevas.length; i += BATCH) {
+    const batch = filasNuevas.slice(i, i + BATCH);
+    const res = await sbUpsert("articulos", batch, "codigo");
+    if (!res) ok = false;
+  }
+  status.textContent = ok ? `✔ ${filasNuevas.length} artículos actualizados` : "Hubo un error — revisá la consola";
+  await cargarCatalogoActual();
+  btn.disabled = false;
+});
+
+/* =========================================================
+   FASE 3 — Matching con IA
+   ========================================================= */
+document.getElementById("btnBuscarPendientes").addEventListener("click", async () => {
+  const status = document.getElementById("pendientesStatus");
+  const tbody = document.getElementById("matchTableBody");
+  status.textContent = "Buscando frases sin matchear…";
+  document.getElementById("matchTableWrap").style.display = "none";
+
+  let descs, mapeados, articulos;
+  try {
+    [descs, mapeados, articulos] = await Promise.all([
+      sbGet("items_pedido", "select=descripcion&limit=5000"),
+      sbGet("articulo_mapping", "select=descripcion_pedido&limit=5000"),
+      sbGet("articulos", "select=codigo,descripcion&limit=10000")
+    ]);
+  } catch (e) {
+    status.textContent = "Error leyendo Supabase — ¿corriste el SQL de las tablas nuevas?";
+    return;
+  }
+
+  const yaMapeadas = new Set(mapeados.map(m => m.descripcion_pedido));
+  const unicas = [...new Set(descs.map(d => (d.descripcion||"").trim()).filter(Boolean))];
+  const pendientes = unicas.filter(d => !yaMapeadas.has(d));
+
+  if (!pendientes.length) {
+    status.textContent = "No hay frases pendientes — todo lo que aparece en pedidos ya tiene mapping.";
+    return;
+  }
+  if (!articulos.length) {
+    status.textContent = "El catálogo de artículos está vacío — cargá la Fase 2 primero.";
+    return;
+  }
+
+  const catalogoTxt = articulos.map(a => `${a.codigo}: ${a.descripcion}`).join("\n");
+  const BATCH = 40;
+  let resultados = [];
+  for (let i = 0; i < pendientes.length; i += BATCH) {
+    const batch = pendientes.slice(i, i + BATCH);
+    status.textContent = `Gemini analizando… ${Math.min(i+BATCH, pendientes.length)}/${pendientes.length}`;
+    const sys = "Sos experto en matching de nombres de productos de una distribuidora argentina de artículos de limpieza y bazar. RESPONDÉ SOLO JSON array válido, sin markdown.";
+    const prompt = `## Catálogo (código: descripción):\n${catalogoTxt}\n\n## Frases reales que escriben los vendedores en los pedidos (sin cantidad, ya se sacó):\n${batch.map(b=>`  ${b}`).join("\n")}\n\nPara cada frase, buscá el código de catálogo más parecido. confianza 0.9+=casi idéntico | 0.7-0.89=probable | omitir si <0.60.\nSOLO JSON: [{"frase":"...","codigo":"...","confianza":0.85}]`;
+
+    try {
+      const r = await fetch(WORKER_URL, { method: "POST", body: JSON.stringify({ sys, prompt }) });
+      const data = await r.json();
+      let text = (data.text || "").replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+      const parsed = JSON.parse(text);
+      resultados = resultados.concat(parsed);
+    } catch (e) { console.warn("Batch error", e); }
+    if (i + BATCH < pendientes.length) await new Promise(r => setTimeout(r, 1200));
+  }
+
+  const artMap = new Map(articulos.map(a => [String(a.codigo), a.descripcion]));
+  tbody.innerHTML = resultados.map((m, idx) => {
+    const desc = artMap.get(String(m.codigo)) || "(código no encontrado)";
+    const confPct = Math.round((m.confianza||0)*100);
+    const cls = confPct >= 85 ? "good" : confPct >= 70 ? "warn" : "crit";
+    return `<tr data-idx="${idx}">
+      <td>${escHtml(m.frase)}</td>
+      <td>#${escHtml(m.codigo)} — ${escHtml(desc)}</td>
+      <td><span class="pill ${cls}">${confPct}%</span></td>
+      <td>
+        <button class="btn-primary btn-mini match-aceptar" data-idx="${idx}">✔ Aceptar</button>
+        <button class="btn-secondary btn-mini match-omitir" data-idx="${idx}">Omitir</button>
+      </td>
+    </tr>`;
+  }).join("");
+  document.getElementById("matchTableWrap").style.display = resultados.length ? "block" : "none";
+  status.textContent = `${resultados.length} sugerencias de ${pendientes.length} frases pendientes (el resto quedó bajo el umbral de confianza).`;
+
+  tbody.querySelectorAll(".match-aceptar").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const m = resultados[Number(btn.dataset.idx)];
+      const ok = await sbInsert("articulo_mapping", [{
+        descripcion_pedido: m.frase, codigo_articulo: String(m.codigo),
+        confianza: m.confianza, source: "gemini", aprobado: true
+      }]);
+      const tr = btn.closest("tr");
+      tr.style.opacity = ok ? "0.4" : "1";
+      if (ok) tr.querySelectorAll("button").forEach(b => b.disabled = true);
+    });
+  });
+  tbody.querySelectorAll(".match-omitir").forEach(btn => {
+    btn.addEventListener("click", () => { btn.closest("tr").remove(); });
+  });
+});
+
+/* =========================================================
+   FASE 4 — Tomar pedido: cliente + descuento + artículos + total
+   ========================================================= */
+let clientesCache = new Map(); // id -> {nombre, apellido, domicilio, localidad, descuento, esInactivo}
+let articulosCache = new Map(); // codigo -> {descripcion, mayorista} — se reusa el mismo Map de la Fase 2
+articulosCache = catalogoActual; // mismo objeto, se llena junto con cargarCatalogoActual()
+
+let clienteSeleccionado = null; // { id, nombre, descuento, esInactivo, reactivacionPendiente }
+let carrito = []; // [{ codigo, descripcion, cantidad, precio }]
+
+async function cargarClientesCache() {
+  try {
+    const rows = await sbGet("clientes", "activo=eq.true&select=id,nombre,apellido,domicilio,localidad,descuento,es_inactivo,reactivacion_pendiente&limit=3000");
+    clientesCache = new Map(rows.map(r => [String(r.id), r]));
+  } catch (e) { /* la búsqueda de clientes simplemente queda vacía */ }
+}
+cargarClientesCache();
+
+// ── Buscador de cliente ──
+const clienteInput = document.getElementById("clienteBuscar");
+const clienteDrop = document.getElementById("clienteDrop");
+clienteInput.addEventListener("input", () => {
+  const q = clienteInput.value.trim().toLowerCase();
+  if (!q) { clienteDrop.classList.remove("open"); return; }
+  const matches = [...clientesCache.entries()]
+    .filter(([id, c]) => id.startsWith(q) || `${c.nombre||""} ${c.apellido||""}`.toLowerCase().includes(q))
+    .slice(0, 8);
+  if (!matches.length) { clienteDrop.classList.remove("open"); return; }
+  clienteDrop.innerHTML = matches.map(([id, c]) => `
+    <div class="ac-item" data-id="${escHtml(id)}">
+      <span class="id">#${escHtml(id)}</span> ${escHtml([c.nombre, c.apellido].filter(Boolean).join(" ") || "—")}
+      <div style="font-size:11px;color:var(--ink-muted);">${escHtml(c.localidad||"")}</div>
+    </div>`).join("");
+  clienteDrop.classList.add("open");
+  clienteDrop.querySelectorAll(".ac-item").forEach(el => {
+    el.addEventListener("click", () => seleccionarCliente(el.dataset.id));
+  });
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".ac-wrap")) { clienteDrop.classList.remove("open"); articuloDrop.classList.remove("open"); }
+});
+
+function seleccionarCliente(id) {
+  const c = clientesCache.get(String(id));
+  if (!c) return;
+  clienteSeleccionado = { id, nombre: [c.nombre, c.apellido].filter(Boolean).join(" ") || `Cliente ${id}`, descuento: c.descuento != null ? Number(c.descuento) : null, esInactivo: !!c.es_inactivo, reactivacionPendiente: !!c.reactivacion_pendiente };
+  clienteInput.value = `#${id} — ${clienteSeleccionado.nombre}`;
+  clienteDrop.classList.remove("open");
+
+  const tieneDesc = clienteSeleccionado.descuento != null;
+  const descBadge = tieneDesc
+    ? `<span class="desc-badge">💲 ${clienteSeleccionado.descuento}%</span>`
+    : (clienteSeleccionado.esInactivo ? `<span class="desc-badge inactivo">0% — hace mucho no compra</span>` : "");
+  document.getElementById("clienteNombre").innerHTML = `${escHtml(clienteSeleccionado.nombre)} ${descBadge}`;
+  document.getElementById("clienteDir").textContent = `${c.domicilio||""}, ${c.localidad||""}`.replace(/^,\s*/, "");
+  document.getElementById("clienteCard").classList.add("show");
+
+  const aplicaReactivar = !tieneDesc && !clienteSeleccionado.reactivacionPendiente;
+  document.getElementById("reactivarLine").style.display = aplicaReactivar ? "flex" : "none";
+  document.getElementById("chkReactivarSim").checked = false;
+
+  recalcularTotales();
+}
+
+// ── Buscador de artículo ──
+const articuloInput = document.getElementById("articuloBuscar");
+const articuloDrop = document.getElementById("articuloDrop");
+articuloInput.addEventListener("input", () => {
+  const q = articuloInput.value.trim().toLowerCase();
+  if (q.length < 2) { articuloDrop.classList.remove("open"); return; }
+  const matches = [...articulosCache.entries()]
+    .filter(([codigo, a]) => (a.descripcion||"").toLowerCase().includes(q))
+    .slice(0, 10);
+  if (!matches.length) { articuloDrop.classList.remove("open"); return; }
+  articuloDrop.innerHTML = matches.map(([codigo, a]) => `
+    <div class="ac-item" data-codigo="${escHtml(codigo)}">
+      ${escHtml(a.descripcion)} <span class="id">— ${money(a.mayorista)}</span>
+    </div>`).join("");
+  articuloDrop.classList.add("open");
+  articuloDrop.querySelectorAll(".ac-item").forEach(el => {
+    el.addEventListener("click", () => agregarAlCarrito(el.dataset.codigo));
+  });
+});
+
+function agregarAlCarrito(codigo) {
+  const a = articulosCache.get(String(codigo));
+  if (!a) return;
+  const existente = carrito.find(l => l.codigo === codigo);
+  if (existente) existente.cantidad += 1;
+  else carrito.push({ codigo, descripcion: a.descripcion, cantidad: 1, precio: Number(a.mayorista) });
+  articuloInput.value = "";
+  articuloDrop.classList.remove("open");
+  renderCarrito();
+}
+
+function renderCarrito() {
+  const tbody = document.getElementById("cartBody");
+  if (!carrito.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="cart-empty">Sin artículos todavía — buscá arriba y agregá.</td></tr>`;
+  } else {
+    tbody.innerHTML = carrito.map((l, idx) => `
+      <tr class="cart-row" data-idx="${idx}">
+        <td>${escHtml(l.descripcion)}</td>
+        <td><input type="number" class="qty-input" min="1" value="${l.cantidad}" data-idx="${idx}"></td>
+        <td>${money(l.precio)}</td>
+        <td>${money(l.cantidad * l.precio)}</td>
+        <td><button class="btn-secondary btn-mini cart-quitar" data-idx="${idx}">✕</button></td>
+      </tr>`).join("");
+    tbody.querySelectorAll(".qty-input").forEach(inp => {
+      inp.addEventListener("input", () => {
+        carrito[Number(inp.dataset.idx)].cantidad = Math.max(1, Number(inp.value) || 1);
+        renderCarrito();
+      });
+    });
+    tbody.querySelectorAll(".cart-quitar").forEach(btn => {
+      btn.addEventListener("click", () => { carrito.splice(Number(btn.dataset.idx), 1); renderCarrito(); });
+    });
+  }
+  recalcularTotales();
+}
+
+function recalcularTotales() {
+  const bruto = carrito.reduce((a, l) => a + l.cantidad * l.precio, 0);
+  document.getElementById("totalBruto").textContent = money(bruto);
+
+  let descuentoAplicado = 0;
+  let etiqueta = "Total con descuento";
+  if (clienteSeleccionado) {
+    if (clienteSeleccionado.descuento != null) descuentoAplicado = clienteSeleccionado.descuento;
+    else if (document.getElementById("chkReactivarSim")?.checked) { descuentoAplicado = 5; etiqueta = "Total con 5% bienvenida"; }
+  }
+  const neto = bruto * (1 - descuentoAplicado/100);
+  document.getElementById("lblTotalNeto").textContent = descuentoAplicado > 0 ? `${etiqueta} (${descuentoAplicado}%)` : "Total (sin descuento)";
+  document.getElementById("totalNeto").textContent = money(neto);
+}
+document.getElementById("chkReactivarSim")?.addEventListener("change", recalcularTotales);
+document.addEventListener("change", (e) => { if (e.target.id === "chkReactivarSim") recalcularTotales(); });
+
+document.getElementById("btnEnviarDemo").addEventListener("click", () => {
+  const status = document.getElementById("enviarStatus");
+  if (!clienteSeleccionado) { status.textContent = "Elegí un cliente primero."; return; }
+  if (!carrito.length) { status.textContent = "El carrito está vacío."; return; }
+  status.textContent = `✔ (Demo) Pedido de ${carrito.length} artículo(s) para ${clienteSeleccionado.nombre} — total ${document.getElementById("totalNeto").textContent}. No se envió a producción.`;
+});
+</script>
+</body>
+</html>
