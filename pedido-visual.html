@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Pedido Rápido — Prototipo</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --surface: #fff; --surface-2: #eef1f6;
+    --ink: #14181f; --ink-2: #4b5566; --ink-muted: #8994a3; --border: #e4e8ee;
+    --accent: #2554e0; --accent-ink: #fff;
+    --good: #157a3d; --good-bg: #e5f6ec;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; overscroll-behavior-y: contain; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; height: 100%;
+  }
+
+  /* ── HEADER: cliente ── */
+  header.top {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: calc(10px + var(--safe-top)) 14px 10px; flex-shrink: 0;
+    position: sticky; top: 0; z-index: 20;
+  }
+  .cliente-search-row { position: relative; }
+  .cliente-search-row input {
+    width: 100%; font-size: 16px; padding: 12px 14px; border-radius: 12px;
+    border: 1.5px solid var(--border); background: var(--surface-2); color: var(--ink);
+  }
+  .cliente-search-row input:focus { outline: none; border-color: var(--accent); background: var(--surface); }
+  .cliente-drop {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 30; margin-top: 4px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 10px 28px rgba(20,24,31,0.12); max-height: 300px; overflow-y: auto; display: none;
+  }
+  .cliente-drop.open { display: block; }
+  .cliente-item { padding: 12px 14px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .cliente-item:last-child { border-bottom: none; }
+  .cliente-item:active { background: var(--surface-2); }
+  .cliente-item .nom { font-weight: 700; font-size: 14.5px; }
+  .cliente-item .sub { font-size: 12px; color: var(--ink-muted); margin-top: 1px; }
+
+  .cliente-chip {
+    display: none; align-items: center; gap: 10px; margin-top: 10px;
+    background: var(--surface-2); border-radius: 12px; padding: 10px 12px;
+  }
+  .cliente-chip.show { display: flex; }
+  .cliente-chip .info { flex: 1; min-width: 0; }
+  .cliente-chip .nom { font-weight: 800; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cliente-chip .dir { font-size: 11.5px; color: var(--ink-muted); }
+  .cliente-chip .cambiar { font-size: 12px; font-weight: 700; color: var(--accent); background: none; border: none; padding: 6px 8px; flex-shrink: 0; }
+  .desc-pill { display: inline-flex; align-items: center; gap: 3px; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 800; background: #111827; color: #fff; margin-top: 3px; }
+  .desc-pill.inactivo { background: var(--surface); color: var(--ink-muted); border: 1px solid var(--border); }
+  .reactivar-chip { display: none; align-items: center; gap: 7px; margin-top: 8px; padding: 8px 10px; background: #fff8e6; border: 1px solid #ffe08a; border-radius: 10px; font-size: 12px; }
+  .reactivar-chip.show { display: flex; }
+  .reactivar-chip input { width: 17px; height: 17px; flex-shrink: 0; }
+
+  /* ── FILTROS: marca + buscador ── */
+  .filtros { padding: 10px 14px 0; flex-shrink: 0; display: none; }
+  .filtros.show { display: block; }
+  .buscador-prod input {
+    width: 100%; font-size: 16px; padding: 11px 14px; border-radius: 12px;
+    border: 1.5px solid var(--border); background: var(--surface); color: var(--ink);
+  }
+  .buscador-prod input:focus { outline: none; border-color: var(--accent); }
+  .marca-chips { display: flex; gap: 7px; overflow-x: auto; padding: 10px 0 12px; scrollbar-width: none; }
+  .marca-chips::-webkit-scrollbar { display: none; }
+  .marca-chip {
+    flex-shrink: 0; padding: 7px 14px; border-radius: 99px; font-size: 12.5px; font-weight: 700;
+    background: var(--surface); border: 1.5px solid var(--border); color: var(--ink-2); cursor: pointer; white-space: nowrap;
+  }
+  .marca-chip.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+  /* ── GRILLA DE PRODUCTOS ── */
+  main.grid-wrap { flex: 1; overflow-y: auto; padding: 4px 14px calc(100px + var(--safe-bottom)); }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--ink-muted); font-size: 14px; }
+  .product-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding-top: 8px; }
+  @media (min-width: 480px) { .product-grid { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 720px) { .product-grid { grid-template-columns: repeat(4, 1fr); } }
+
+  .prod-card {
+    background: var(--surface); border: 1.5px solid var(--border); border-radius: 14px;
+    overflow: hidden; cursor: pointer; position: relative; transition: transform 0.08s, border-color 0.15s;
+    display: flex; flex-direction: column;
+  }
+  .prod-card:active { transform: scale(0.96); }
+  .prod-card.in-cart { border-color: var(--accent); }
+  .prod-photo {
+    width: 100%; aspect-ratio: 1; background: var(--surface-2); display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .prod-photo img { width: 100%; height: 100%; object-fit: cover; }
+  .prod-photo .ph-icon { font-size: 34px; opacity: 0.35; }
+  .prod-info { padding: 8px 9px 10px; flex: 1; display: flex; flex-direction: column; }
+  .prod-nombre { font-size: 12.5px; font-weight: 700; line-height: 1.25; color: var(--ink); flex: 1; }
+  .prod-precio { font-size: 14.5px; font-weight: 800; color: var(--ink); margin-top: 5px; font-variant-numeric: tabular-nums; }
+  .prod-qty-badge {
+    position: absolute; top: 7px; right: 7px; background: var(--accent); color: #fff;
+    width: 26px; height: 26px; border-radius: 50%; display: none; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800; box-shadow: 0 2px 8px rgba(37,84,224,0.4);
+  }
+  .prod-card.in-cart .prod-qty-badge { display: flex; }
+  .prod-verificado {
+    position: absolute; top: 7px; left: 7px; background: var(--good-bg); color: var(--good);
+    font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 99px;
+  }
+
+  /* ── CARRITO flotante ── */
+  .cart-bar {
+    position: fixed; left: 14px; right: 14px; bottom: calc(14px + var(--safe-bottom));
+    background: #111827; color: #fff; border-radius: 16px; padding: 12px 16px;
+    display: none; align-items: center; gap: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); z-index: 25;
+    cursor: pointer;
+  }
+  .cart-bar.show { display: flex; }
+  .cart-bar .count { background: var(--accent); border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; flex-shrink: 0; }
+  .cart-bar .lbl { flex: 1; font-size: 13px; font-weight: 600; opacity: 0.85; }
+  .cart-bar .tot { font-size: 17px; font-weight: 800; }
+
+  /* ── DRAWER carrito ── */
+  .cart-drawer-overlay {
+    position: fixed; inset: 0; background: rgba(15,18,24,0.45); z-index: 40; display: none;
+  }
+  .cart-drawer-overlay.open { display: block; }
+  .cart-drawer {
+    position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface);
+    border-radius: 20px 20px 0 0; z-index: 41; max-height: 82vh; display: flex; flex-direction: column;
+    transform: translateY(100%); transition: transform 0.22s ease-out;
+    padding-bottom: var(--safe-bottom);
+  }
+  .cart-drawer.open { transform: translateY(0); }
+  .cart-drawer .handle { width: 40px; height: 4px; background: var(--border); border-radius: 99px; margin: 10px auto 6px; }
+  .cart-drawer .drawer-head { padding: 6px 18px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+  .cart-drawer .drawer-head h3 { margin: 0; font-size: 16px; }
+  .cart-drawer .drawer-head button { background: none; border: none; font-size: 13px; color: var(--ink-muted); font-weight: 700; }
+  .cart-items { overflow-y: auto; padding: 8px 18px; flex: 1; }
+  .cart-line { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .cart-line:last-child { border-bottom: none; }
+  .cart-line .cl-photo { width: 44px; height: 44px; border-radius: 9px; background: var(--surface-2); overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; opacity: 0.4; }
+  .cart-line .cl-photo img { width: 100%; height: 100%; object-fit: cover; }
+  .cart-line .cl-info { flex: 1; min-width: 0; }
+  .cart-line .cl-nom { font-size: 13px; font-weight: 700; line-height: 1.25; }
+  .cart-line .cl-precio { font-size: 11.5px; color: var(--ink-muted); margin-top: 2px; }
+  .cart-line .cl-qty { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .cl-qty button { width: 28px; height: 28px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--surface); font-size: 16px; font-weight: 700; color: var(--ink-2); }
+  .cl-qty .n { min-width: 20px; text-align: center; font-weight: 800; font-size: 13.5px; }
+
+  .drawer-footer { padding: 12px 18px calc(14px + var(--safe-bottom)); border-top: 1px solid var(--border); }
+  .tot-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--ink-2); margin-bottom: 3px; }
+  .tot-row.final { font-size: 18px; font-weight: 800; color: var(--ink); margin-top: 6px; }
+  .btn-enviar {
+    width: 100%; margin-top: 10px; background: var(--accent); color: #fff; border: none;
+    border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 800; cursor: pointer;
+  }
+  .btn-enviar:disabled { background: var(--surface-2); color: var(--ink-muted); }
+
+  .toast {
+    position: fixed; top: calc(10px + var(--safe-top)); left: 50%; transform: translateX(-50%) translateY(-20px);
+    background: #111827; color: #fff; padding: 10px 18px; border-radius: 99px; font-size: 13px; font-weight: 700;
+    z-index: 60; opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="cliente-search-row">
+    <input type="text" id="clienteBuscar" placeholder="🔍 Buscar cliente por N°, nombre o dirección…" autocomplete="off">
+    <div class="cliente-drop" id="clienteDrop"></div>
+  </div>
+  <div class="cliente-chip" id="clienteChip">
+    <div class="info">
+      <div class="nom" id="chipNombre"></div>
+      <div class="dir" id="chipDir"></div>
+      <div id="chipDescPill"></div>
+    </div>
+    <button class="cambiar" id="btnCambiarCliente">Cambiar</button>
+  </div>
+  <label class="reactivar-chip" id="reactivarChip">
+    <input type="checkbox" id="chkReactivar">
+    <span><b>Vuelve a comprar</b> — activar 5% de bienvenida</span>
+  </label>
+</header>
+
+<div class="filtros" id="filtrosBar">
+  <div class="buscador-prod">
+    <input type="text" id="prodBuscar" placeholder="🔍 Buscar producto…" autocomplete="off">
+  </div>
+  <div class="marca-chips" id="marcaChips"></div>
+</div>
+
+<main class="grid-wrap" id="gridWrap">
+  <div class="empty-state" id="emptyState">👆 Buscá un cliente arriba para empezar a cargar el pedido.</div>
+  <div class="product-grid" id="productGrid" style="display:none;"></div>
+</main>
+
+<div class="cart-bar" id="cartBar">
+  <div class="count" id="cartCount">0</div>
+  <div class="lbl">Ver pedido</div>
+  <div class="tot" id="cartTotalBar">$0</div>
+</div>
+
+<div class="cart-drawer-overlay" id="drawerOverlay"></div>
+<div class="cart-drawer" id="cartDrawer">
+  <div class="handle"></div>
+  <div class="drawer-head">
+    <h3>Tu pedido</h3>
+    <button id="btnCerrarDrawer">Cerrar</button>
+  </div>
+  <div class="cart-items" id="cartItems"></div>
+  <div class="drawer-footer">
+    <div class="tot-row"><span>Subtotal</span><span id="totBruto">$0</span></div>
+    <div class="tot-row" id="rowDescuento" style="display:none;"><span id="lblDescuento">Descuento</span><span id="totDescuentoMonto">-$0</span></div>
+    <div class="tot-row final"><span>Total</span><span id="totFinal">$0</span></div>
+    <button class="btn-enviar" id="btnEnviar" disabled>Enviar pedido</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SB_URL = "https://gjeyvbidomxzofcdycya.supabase.co";
+const SB_ANON = "sb_publishable_CjdA8GwtCljm_PzT8pqk3g_QIhTmUHT";
+
+async function sbGetAll(table, params) {
+  const PAGE = 1000; let desde = 0, todas = [];
+  while (true) {
+    const res = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {
+      headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, Range: `${desde}-${desde + PAGE - 1}` }
+    });
+    const rows = await res.json();
+    todas = todas.concat(rows);
+    if (rows.length < PAGE) break;
+    desde += PAGE;
+  }
+  return todas;
+}
+function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function money(n) { return '$' + Number(n||0).toLocaleString('es-AR', {maximumFractionDigits:2}); }
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._h);
+  toast._h = setTimeout(() => t.classList.remove('show'), 1400);
+}
+
+// ── Estado ──
+let clientesCache = new Map();     // id -> {nombre, apellido, domicilio, localidad, descuento, esInactivo, reactivacionPendiente}
+let articulos = new Map();         // codigo -> {descripcion, mayorista}
+let fotos = new Set();             // codigos con foto real disponible
+let marcas = [];                   // lista de marcas (source de articulo_mapping, ej "catalogo:fibran")
+let productosVisibles = [];        // [{codigo, descripcion, mayorista, marca, tieneFoto}] — el catálogo que se muestra
+let clienteSeleccionado = null;
+let carrito = new Map();           // codigo -> {codigo, descripcion, precio, cantidad, tieneFoto}
+let marcaActiva = "";
+
+// ── Carga inicial ──
+(async () => {
+  const [clientesRows, articulosRows, mappingRows] = await Promise.all([
+    sbGetAll("clientes", "activo=eq.true&select=id,nombre,apellido,domicilio,localidad,descuento,es_inactivo,reactivacion_pendiente&order=id.asc"),
+    sbGetAll("articulos", "select=codigo,descripcion,mayorista&order=codigo.asc"),
+    sbGetAll("articulo_mapping", "select=codigo_articulo,source&aprobado=eq.true")
+  ]);
+  clientesRows.forEach(r => clientesCache.set(String(r.id), r));
+  articulosRows.forEach(r => articulos.set(String(r.codigo), r));
+
+  const marcaSet = new Set();
+  const codigoMarca = new Map();
+  mappingRows.forEach(r => {
+    const codigo = String(r.codigo_articulo);
+    fotos.add(codigo);
+    const marca = (r.source || "").replace(/^catalogo:/, "");
+    if (marca && marca !== "desconocido") { marcaSet.add(marca); codigoMarca.set(codigo, marca); }
+  });
+  marcas = [...marcaSet].sort();
+
+  // Catálogo visible: primero los que tienen foto/verificados, ordenados por marca; el resto queda
+  // disponible solo por búsqueda de texto (no ocupan espacio en la grilla por defecto).
+  productosVisibles = [...articulos.entries()]
+    .filter(([codigo]) => fotos.has(codigo))
+    .map(([codigo, a]) => ({ codigo, descripcion: a.descripcion, mayorista: Number(a.mayorista), marca: codigoMarca.get(codigo) || "otros", tieneFoto: true }));
+
+  renderMarcaChips();
+})();
+
+function renderMarcaChips() {
+  const cont = document.getElementById("marcaChips");
+  const nombreLindo = m => m.charAt(0).toUpperCase() + m.slice(1);
+  cont.innerHTML = [`<div class="marca-chip active" data-marca="">Todos</div>`]
+    .concat(marcas.map(m => `<div class="marca-chip" data-marca="${escHtml(m)}">${escHtml(nombreLindo(m))}</div>`))
+    .join("");
+  cont.querySelectorAll(".marca-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      cont.querySelectorAll(".marca-chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      marcaActiva = chip.dataset.marca;
+      renderGrid();
+    });
+  });
+}
+
+// ── Buscador de cliente ──
+const clienteInput = document.getElementById("clienteBuscar");
+const clienteDrop = document.getElementById("clienteDrop");
+clienteInput.addEventListener("input", () => {
+  const q = clienteInput.value.trim().toLowerCase();
+  if (!q) { clienteDrop.classList.remove("open"); return; }
+  const matches = [...clientesCache.entries()]
+    .filter(([id, c]) => id.startsWith(q) || `${c.nombre||""} ${c.apellido||""}`.toLowerCase().includes(q))
+    .slice(0, 8);
+  if (!matches.length) { clienteDrop.classList.remove("open"); return; }
+  clienteDrop.innerHTML = matches.map(([id, c]) => `
+    <div class="cliente-item" data-id="${escHtml(id)}">
+      <div class="nom">#${escHtml(id)} — ${escHtml([c.nombre, c.apellido].filter(Boolean).join(" ") || "—")}</div>
+      <div class="sub">${escHtml(c.localidad || "")}</div>
+    </div>`).join("");
+  clienteDrop.classList.add("open");
+  clienteDrop.querySelectorAll(".cliente-item").forEach(el => el.addEventListener("click", () => seleccionarCliente(el.dataset.id)));
+});
+document.addEventListener("click", (e) => { if (!e.target.closest(".cliente-search-row")) clienteDrop.classList.remove("open"); });
+
+function seleccionarCliente(id) {
+  const c = clientesCache.get(String(id));
+  if (!c) return;
+  clienteSeleccionado = {
+    id, nombre: [c.nombre, c.apellido].filter(Boolean).join(" ") || `Cliente ${id}`,
+    descuento: c.descuento != null ? Number(c.descuento) : null,
+    esInactivo: !!c.es_inactivo, reactivacionPendiente: !!c.reactivacion_pendiente
+  };
+  clienteInput.value = "";
+  clienteDrop.classList.remove("open");
+
+  const tieneDesc = clienteSeleccionado.descuento != null;
+  document.getElementById("chipNombre").textContent = clienteSeleccionado.nombre;
+  document.getElementById("chipDir").textContent = `${c.domicilio||""}, ${c.localidad||""}`.replace(/^,\s*/, "");
+  document.getElementById("chipDescPill").innerHTML = tieneDesc
+    ? `<span class="desc-pill">💲 ${clienteSeleccionado.descuento}% de descuento</span>`
+    : (clienteSeleccionado.esInactivo ? `<span class="desc-pill inactivo">0% — hace mucho no compra</span>` : "");
+  document.getElementById("clienteChip").classList.add("show");
+
+  const aplicaReactivar = !tieneDesc && !clienteSeleccionado.reactivacionPendiente;
+  document.getElementById("reactivarChip").classList.toggle("show", aplicaReactivar);
+  document.getElementById("chkReactivar").checked = false;
+
+  document.getElementById("filtrosBar").classList.add("show");
+  document.getElementById("emptyState").style.display = "none";
+  document.getElementById("productGrid").style.display = "grid";
+  renderGrid();
+  recalcularTotales();
+}
+
+document.getElementById("btnCambiarCliente").addEventListener("click", () => {
+  clienteSeleccionado = null;
+  document.getElementById("clienteChip").classList.remove("show");
+  document.getElementById("reactivarChip").classList.remove("show");
+  clienteInput.focus();
+  recalcularTotales();
+});
+document.getElementById("chkReactivar").addEventListener("change", recalcularTotales);
+
+// ── Grilla de productos ──
+const prodBuscar = document.getElementById("prodBuscar");
+prodBuscar.addEventListener("input", renderGrid);
+
+function renderGrid() {
+  const q = prodBuscar.value.trim().toLowerCase();
+  let lista = productosVisibles;
+  if (marcaActiva) lista = lista.filter(p => p.marca === marcaActiva);
+  if (q) lista = lista.filter(p => p.descripcion.toLowerCase().includes(q));
+  lista = lista.slice().sort((a,b) => a.descripcion.localeCompare(b.descripcion));
+
+  const grid = document.getElementById("productGrid");
+  if (!lista.length) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">Sin resultados. Probá con otra palabra.</div>`;
+    return;
+  }
+  grid.innerHTML = lista.map(p => {
+    const enCarrito = carrito.get(p.codigo);
+    const foto = `./producto-fotos/${encodeURIComponent(p.codigo)}.jpg`;
+    return `
+    <div class="prod-card ${enCarrito ? 'in-cart' : ''}" data-codigo="${escHtml(p.codigo)}">
+      <span class="prod-verificado">✓ foto real</span>
+      <span class="prod-qty-badge">${enCarrito ? enCarrito.cantidad : ''}</span>
+      <div class="prod-photo">
+        <img src="${foto}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <div class="ph-icon" style="display:none;">🧴</div>
+      </div>
+      <div class="prod-info">
+        <div class="prod-nombre">${escHtml(p.descripcion)}</div>
+        <div class="prod-precio">${money(p.mayorista)}</div>
+      </div>
+    </div>`;
+  }).join("");
+
+  grid.querySelectorAll(".prod-card").forEach(card => {
+    card.addEventListener("click", () => agregarAlCarrito(card.dataset.codigo));
+  });
+}
+
+function agregarAlCarrito(codigo) {
+  const p = productosVisibles.find(x => x.codigo === codigo) || articulos.get(codigo);
+  if (!p) return;
+  const descripcion = p.descripcion, mayorista = p.mayorista ?? p.mayorista;
+  const existente = carrito.get(codigo);
+  if (existente) existente.cantidad += 1;
+  else carrito.set(codigo, { codigo, descripcion: p.descripcion, precio: Number(p.mayorista), cantidad: 1, tieneFoto: fotos.has(codigo) });
+  toast(`+1 ${p.descripcion}`);
+  renderGrid();
+  renderCarrito();
+  recalcularTotales();
+}
+
+// ── Carrito ──
+const cartBar = document.getElementById("cartBar");
+const drawer = document.getElementById("cartDrawer");
+const drawerOverlay = document.getElementById("drawerOverlay");
+
+cartBar.addEventListener("click", abrirDrawer);
+document.getElementById("btnCerrarDrawer").addEventListener("click", cerrarDrawer);
+drawerOverlay.addEventListener("click", cerrarDrawer);
+
+function abrirDrawer() { drawer.classList.add("open"); drawerOverlay.classList.add("open"); }
+function cerrarDrawer() { drawer.classList.remove("open"); drawerOverlay.classList.remove("open"); }
+
+function renderCarrito() {
+  const items = [...carrito.values()];
+  const cont = document.getElementById("cartItems");
+  if (!items.length) {
+    cont.innerHTML = `<div class="empty-state">Todavía no agregaste nada.</div>`;
+  } else {
+    cont.innerHTML = items.map(l => {
+      const foto = `./producto-fotos/${encodeURIComponent(l.codigo)}.jpg`;
+      return `
+      <div class="cart-line" data-codigo="${escHtml(l.codigo)}">
+        <div class="cl-photo"><img src="${foto}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"><div style="display:none;">🧴</div></div>
+        <div class="cl-info">
+          <div class="cl-nom">${escHtml(l.descripcion)}</div>
+          <div class="cl-precio">${money(l.precio)} c/u</div>
+        </div>
+        <div class="cl-qty">
+          <button class="cl-menos">−</button>
+          <span class="n">${l.cantidad}</span>
+          <button class="cl-mas">+</button>
+        </div>
+      </div>`;
+    }).join("");
+    cont.querySelectorAll(".cl-menos").forEach(b => b.addEventListener("click", () => cambiarCantidad(b.closest(".cart-line").dataset.codigo, -1)));
+    cont.querySelectorAll(".cl-mas").forEach(b => b.addEventListener("click", () => cambiarCantidad(b.closest(".cart-line").dataset.codigo, 1)));
+  }
+}
+
+function cambiarCantidad(codigo, delta) {
+  const l = carrito.get(codigo);
+  if (!l) return;
+  l.cantidad += delta;
+  if (l.cantidad <= 0) carrito.delete(codigo);
+  renderCarrito();
+  renderGrid();
+  recalcularTotales();
+}
+
+function recalcularTotales() {
+  const items = [...carrito.values()];
+  const bruto = items.reduce((a,l) => a + l.cantidad * l.precio, 0);
+  const count = items.reduce((a,l) => a + l.cantidad, 0);
+
+  cartBar.classList.toggle("show", count > 0);
+  document.getElementById("cartCount").textContent = count;
+  document.getElementById("cartTotalBar").textContent = money(bruto);
+  document.getElementById("totBruto").textContent = money(bruto);
+
+  let descuentoPct = 0, etiqueta = "Descuento";
+  if (clienteSeleccionado) {
+    if (clienteSeleccionado.descuento != null) { descuentoPct = clienteSeleccionado.descuento; etiqueta = `Descuento (${descuentoPct}%)`; }
+    else if (document.getElementById("chkReactivar").checked) { descuentoPct = 5; etiqueta = "Descuento bienvenida (5%)"; }
+  }
+  const montoDescuento = bruto * descuentoPct / 100;
+  const final = bruto - montoDescuento;
+
+  document.getElementById("rowDescuento").style.display = descuentoPct > 0 ? "flex" : "none";
+  document.getElementById("lblDescuento").textContent = etiqueta;
+  document.getElementById("totDescuentoMonto").textContent = "-" + money(montoDescuento);
+  document.getElementById("totFinal").textContent = money(final);
+
+  document.getElementById("btnEnviar").disabled = !(clienteSeleccionado && count > 0);
+}
+
+document.getElementById("btnEnviar").addEventListener("click", () => {
+  if (!clienteSeleccionado || !carrito.size) return;
+  toast(`✔ (Demo) Pedido armado para ${clienteSeleccionado.nombre} — no se envió a producción todavía.`);
+  cerrarDrawer();
+});
+</script>
+</body>
+</html>
