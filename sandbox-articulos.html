@@ -466,6 +466,15 @@ function seleccionarCliente(id) {
   recalcularTotales();
 }
 
+// ── Códigos verificados contra catálogo real (foto + nombre + precio revisados a mano) ──
+let codigosVerificados = new Set();
+(async () => {
+  try {
+    const rows = await sbGetAll("articulo_mapping", "select=codigo_articulo&aprobado=eq.true");
+    codigosVerificados = new Set(rows.map(r => String(r.codigo_articulo)));
+  } catch (e) { /* sin verificados, el buscador sigue funcionando igual */ }
+})();
+
 // ── Buscador de artículo ──
 const articuloInput = document.getElementById("articuloBuscar");
 const articuloDrop = document.getElementById("articuloDrop");
@@ -474,11 +483,12 @@ articuloInput.addEventListener("input", () => {
   if (q.length < 2) { articuloDrop.classList.remove("open"); return; }
   const matches = [...articulosCache.entries()]
     .filter(([codigo, a]) => (a.descripcion||"").toLowerCase().includes(q))
+    .sort((a,b) => (codigosVerificados.has(String(b[0]))?1:0) - (codigosVerificados.has(String(a[0]))?1:0))
     .slice(0, 10);
   if (!matches.length) { articuloDrop.classList.remove("open"); return; }
   articuloDrop.innerHTML = matches.map(([codigo, a]) => `
     <div class="ac-item" data-codigo="${escHtml(codigo)}">
-      ${escHtml(a.descripcion)} <span class="id">— ${money(a.mayorista)}</span>
+      ${codigosVerificados.has(String(codigo)) ? '<span class="pill good" style="margin-right:5px;">✓ catálogo</span>' : ''}${escHtml(a.descripcion)} <span class="id">— ${money(a.mayorista)}</span>
     </div>`).join("");
   articuloDrop.classList.add("open");
   articuloDrop.querySelectorAll(".ac-item").forEach(el => {
