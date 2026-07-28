@@ -821,6 +821,21 @@ export default {
             return jsonResponse({ exito: true, ts: Date.now() });
           }
 
+          // ── VISITAS POR CLIENTES (Hoja de Ruta: cobertura real sin depender de "Finalizar") ──
+          if (accion === "visitas_por_clientes") {
+            const { vendedor, clienteIds, desde } = bodyJson;
+            if (!vendedor || !Array.isArray(clienteIds) || !clienteIds.length) {
+              return jsonResponse({ exito: true, visitas: [] });
+            }
+            const idsParam = clienteIds.map(id => String(id).trim()).filter(Boolean).join(",");
+            if (!idsParam) return jsonResponse({ exito: true, visitas: [] });
+            const desdeParam = desde ? `&created_at=gte.${encodeURIComponent(desde)}` : "";
+            const rows = await supabaseQuery(env, "visitas",
+              `cliente_id=in.(${idsParam})&vendedor=eq.${encodeURIComponent(String(vendedor).toUpperCase())}${desdeParam}&select=cliente_id,tipo,created_at&order=created_at.desc`
+            );
+            return jsonResponse({ exito: true, visitas: rows || [] });
+          }
+
           // ── REGISTRAR MOVIMIENTO (visita individual desde app-vendedores) ──
           if (accion === "registrar_movimiento") {
             const { vendedor, clienteId, tipo, motivo, observacion } = bodyJson;
