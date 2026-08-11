@@ -1,0 +1,22 @@
+name: Mercado Limpio - Facebook bot
+
+on:
+  schedule:
+    # Lunes, miercoles y viernes a las 10:00 hora Argentina (UTC-3 todo el ano)
+    - cron: "0 13 * * 1,3,5"
+  workflow_dispatch: {}
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar publicacion en el bot de Cloudflare
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://mercadolimpio-fb-bot.santamariapablodaniel.workers.dev/run")
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          CODE=$(echo "$RESPONSE" | tail -n 1)
+          echo "$BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "El bot devolvio un error (HTTP $CODE)"
+            exit 1
+          fi
