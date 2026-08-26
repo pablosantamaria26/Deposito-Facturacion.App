@@ -857,7 +857,7 @@ async function sbGet(table, params = "") {
 async function sbSumAll(table, column, params, pageSize = 1000) {
   let total = 0, offset = 0;
   while (true) {
-    const rows = await sbGet(table, `${params}&select=${column}&limit=${pageSize}&offset=${offset}`);
+    const rows = await sbGet(table, `${params}&select=${column}&order=id&limit=${pageSize}&offset=${offset}`);
     if (!Array.isArray(rows) || rows.length === 0) break;
     rows.forEach(r => { total += Number(r[column]) || 0; });
     if (rows.length < pageSize) break; // última página → terminamos
@@ -873,12 +873,17 @@ async function sbSumAll(table, column, params, pageSize = 1000) {
 // totals._count = cantidad de FILAS (líneas de pedido) encontradas, además de la suma de
 // cada columna pedida — necesario para tasas tipo "% de líneas con faltante", que deben
 // compararse contra la cantidad de líneas, no contra una suma de unidades.
-async function sbSumAllMulti(table, columns, params, pageSize = 1000) {
+// `embed` permite sumar filtrando por una tabla relacionada (ej. "pedidos!inner(created_at,estado)"
+// para acotar los ítems por la fecha/estado del PEDIDO padre, en vez de la fecha de la línea).
+// `order=id` es obligatorio: sin ORDER BY, PostgREST no garantiza el mismo orden entre páginas,
+// así que limit/offset podía saltear o repetir filas y descuadrar el total.
+async function sbSumAllMulti(table, columns, params, pageSize = 1000, embed = "") {
   const totals = { _count: 0 };
   columns.forEach(c => { totals[c] = 0; });
+  const select = embed ? `${columns.join(",")},${embed}` : columns.join(",");
   let offset = 0;
   while (true) {
-    const rows = await sbGet(table, `${params}&select=${columns.join(",")}&limit=${pageSize}&offset=${offset}`);
+    const rows = await sbGet(table, `${params}&select=${select}&order=id&limit=${pageSize}&offset=${offset}`);
     if (!Array.isArray(rows) || rows.length === 0) break;
     totals._count += rows.length;
     rows.forEach(r => { columns.forEach(c => { totals[c] += Number(r[c]) || 0; }); });
@@ -893,7 +898,7 @@ async function sbSumAllMulti(table, columns, params, pageSize = 1000) {
 async function sbGetAll(table, params, pageSize = 1000) {
   let all = [], offset = 0;
   while (true) {
-    const rows = await sbGet(table, `${params}&limit=${pageSize}&offset=${offset}`);
+    const rows = await sbGet(table, `${params}&order=id&limit=${pageSize}&offset=${offset}`);
     if (!Array.isArray(rows) || rows.length === 0) break;
     all = all.concat(rows);
     if (rows.length < pageSize) break;
@@ -901,6 +906,11 @@ async function sbGetAll(table, params, pageSize = 1000) {
   }
   return all;
 }
+
+// Total de artículos para mostrar: `cantidad` admite decimales (hay líneas cargadas como 1,5),
+// así que el agregado del mes puede caer en ,5. Se redondea SOLO para mostrar — los cálculos
+// de variación siguen usando el valor exacto.
+const fmtArt = n => Math.round(Number(n) || 0).toLocaleString("es-AR");
 
 // ════════════════════════════════════════════
 // TOAST
@@ -1082,7 +1092,7 @@ async function loadResumenComparativo(period) {
   // de faltantes de la comparativa salía mal. También se excluyen cancelados, igual que
   // Historial Mensual (hoy no hay ninguno cancelado, pero si lo hay no debe contar).
   const [todosPed, todosItm] = await Promise.all([
-    sbGet("pedidos", `created_at=gte.${fetchDesde}&estado=neq.cancelado&select=id,estado,created_at&limit=2000`),
+    sbGetAll("pedidos", `created_at=gte.${fetchDesde}&estado=neq.cancelado&select=id,estado,created_at`),
     sbGetAll("items_pedido", `created_at=gte.${fetchDesde}&select=es_faltante,created_at`)
   ]);
 
@@ -1283,7 +1293,7 @@ async function enviarReporteEmail() {
       sbGet("v_comparacion_meses",   "limit=1"),
       sbGet("v_proyeccion_semanal",  "limit=8"),
       sbGet("v_rendimiento_vendedores_detalle", "limit=10"),
-      sbGet("items_pedido", `es_faltante=eq.true&created_at=gte.${makeISO(30)}&select=descripcion&limit=500`)
+      sbGetAll("items_pedido", `es_faltante=eq.true&created_at=gte.${makeISO(30)}&select=descripcion`)
     ]);
 
     // Top faltantes
@@ -1689,7 +1699,7 @@ async function loadKPIs() {
   const [pedidosHoy, pedidosSemana, itemsSemana] = await Promise.all([
     sbGet("pedidos",     `created_at=gte.${hoyStr}&select=estado&limit=200`),
     sbGet("pedidos",     `created_at=gte.${semanaStr}&select=estado,id&limit=500`),
-    sbGet("items_pedido",`created_at=gte.${semanaStr}&select=es_faltante&limit=3000`)
+    sbGetAll("items_pedido",`created_at=gte.${semanaStr}&select=es_faltante`)
   ]);
 
   const facturadosHoy  = pedidosHoy.filter(p => p.estado === "facturado").length;
@@ -1727,7 +1737,7 @@ async function runAI() {
     // registros de un limit fijo, y un top-faltantes calculado sobre una muestra parcial
     // (encima sin order=, o sea las filas más viejas) le da al informe una recomendación errónea.
     const [pedidos90, faltantes90, top5] = await Promise.all([
-      sbGet("pedidos", `created_at=gte.${makeISO(90)}&select=estado,vendedor,cliente_id,created_at&limit=1000`),
+      sbGetAll("pedidos", `created_at=gte.${makeISO(90)}&select=estado,vendedor,cliente_id,created_at`),
       sbGetAll("items_pedido", `es_faltante=eq.true&created_at=gte.${makeISO(90)}&select=descripcion`),
       sbGet("pedidos", `created_at=gte.${makeISO(7)}&select=cliente_nombre,vendedor,estado&limit=100`)
     ]);
@@ -1894,16 +1904,29 @@ async function loadHistorialMensual() {
     });
   }
 
+  // Los ítems se acotan por la fecha y el estado del PEDIDO padre (embed !inner), no por la
+  // fecha de la línea: si a un pedido se le agregan o corrigen ítems ya entrado el mes
+  // siguiente, esas unidades tienen que seguir contando en el mes del pedido. Así "pedidos" y
+  // "artículos" miden exactamente el mismo universo y ambos excluyen cancelados.
+  const ITEMS_EMBED    = "pedidos!inner(created_at,estado)";
+  const itemsDelPeriodo = (start, end) =>
+    `pedidos.created_at=gte.${start.toISOString()}&pedidos.created_at=lte.${end.toISOString()}&pedidos.estado=neq.cancelado`;
+
   // sbSumAllMulti pagina automáticamente → suma exacta sin importar cuántas filas haya.
   // Una sola cadena de fetch por mes (trae cantidad Y es_faltante juntas) en vez de dos —
   // con 14 meses en paralelo, duplicar las cadenas satura la conexión a Supabase.
   const _allPromises = [
-    sbGet("pedidos", `created_at=gte.${desde.toISOString()}&estado=neq.cancelado&select=created_at,estado&limit=10000`),
+    // sbGetAll pagina de a 1000. Antes esto era un sbGet con limit=10000, pero Supabase
+    // corta en 1000 filas (tope max-rows del servidor, el limit del cliente no lo sube) y
+    // devuelve las MÁS VIEJAS: los meses recientes quedaban mutilados en silencio — agosto
+    // llegó a mostrar 43 pedidos de los 182 reales, y con eso salían mal el KPI, el gráfico,
+    // la lista y la comparativa "mismo punto".
+    sbGetAll("pedidos", `created_at=gte.${desde.toISOString()}&estado=neq.cancelado&select=created_at,estado`),
     prevCorte
-      ? sbSumAllMulti("items_pedido", ["cantidad","es_faltante"], `created_at=gte.${prevInicio.toISOString()}&created_at=lte.${prevCorte.toISOString()}`)
+      ? sbSumAllMulti("items_pedido", ["cantidad","es_faltante"], itemsDelPeriodo(prevInicio, prevCorte), 1000, ITEMS_EMBED)
       : Promise.resolve({ cantidad: 0, es_faltante: 0 }),
     ...monthKeys.map(({start, end}) =>
-      sbSumAllMulti("items_pedido", ["cantidad","es_faltante"], `created_at=gte.${start.toISOString()}&created_at=lte.${end.toISOString()}`)
+      sbSumAllMulti("items_pedido", ["cantidad","es_faltante"], itemsDelPeriodo(start, end), 1000, ITEMS_EMBED)
     )
   ];
 
@@ -1958,7 +1981,7 @@ async function loadHistorialMensual() {
         <div>
           <div style="font-size:14px;font-weight:800;color:#81CFAA">Cierre de ${MESES_F[prevDt.getMonth()]} ${prevDt.getFullYear()}</div>
           <div style="font-size:13px;color:rgba(255,255,255,0.75);margin-top:3px">
-            ${prev.pedidos} pedidos · ${prev.articulos.toLocaleString("es-AR")} artículos · ${tasaF}% facturado
+            ${prev.pedidos} pedidos · ${fmtArt(prev.articulos)} artículos · ${tasaF}% facturado
           </div>
         </div>
       </div>`;
@@ -1988,8 +2011,8 @@ async function loadHistorialMensual() {
           <div class="mes-comp-divider"></div>
           <div class="mes-comp-item">
             <div class="mes-comp-label">Artículos ${MESES_C[prevDt.getMonth()]} completo</div>
-            <div class="mes-comp-val">${prev.articulos.toLocaleString("es-AR")}</div>
-            <div class="mes-comp-sub">vs ${pp2.articulos.toLocaleString("es-AR")} en ${MESES_C[pp2Dt.getMonth()]} (completo)</div>
+            <div class="mes-comp-val">${fmtArt(prev.articulos)}</div>
+            <div class="mes-comp-sub">vs ${fmtArt(pp2.articulos)} en ${MESES_C[pp2Dt.getMonth()]} (completo)</div>
             <span class="mes-comp-badge ${difArt >= 0 ? "pos":"neg"}">${difArt >= 0 ? "+":""}${pctArt}%</span>
           </div>
         </div>
@@ -2022,12 +2045,12 @@ async function loadHistorialMensual() {
         <div class="mes-comp-divider"></div>
         <div class="mes-comp-item">
           <div class="mes-comp-label">Artículos ${mesLabel}</div>
-          <div class="mes-comp-val">${artCurTotal.toLocaleString("es-AR")}</div>
-          <div class="mes-comp-sub">vs ${artPrevPunto.toLocaleString("es-AR")} en ${MESES_C[prevDt.getMonth()]} (mismo punto)</div>
+          <div class="mes-comp-val">${fmtArt(artCurTotal)}</div>
+          <div class="mes-comp-sub">vs ${fmtArt(artPrevPunto)} en ${MESES_C[prevDt.getMonth()]} (mismo punto)</div>
           <span class="mes-comp-badge ${difArt >= 0 ? "pos":"neg"}">${difArt >= 0 ? "+":""}${pctArt}%</span>
         </div>
       </div>
-      <div class="mes-nota">📅 ${bizActual} día${bizActual>1?"s":""} háb. de ${MESES_F[today.getMonth()]} · vs ${MESES_F[prevDt.getMonth()]} hasta día ${diaEquiv}${prev ? ` · Completo: ${prev.pedidos} ped. · ${prev.articulos.toLocaleString("es-AR")} arts.` : ""}</div>`;
+      <div class="mes-nota">📅 ${bizActual} día${bizActual>1?"s":""} háb. de ${MESES_F[today.getMonth()]} · vs ${MESES_F[prevDt.getMonth()]} hasta día ${diaEquiv}${prev ? ` · Completo: ${prev.pedidos} ped. · ${fmtArt(prev.articulos)} arts.` : ""}</div>`;
   }
 
   // — Variación del mes en curso vs el mismo punto del mes anterior (fila "Hoy") —
@@ -2076,7 +2099,7 @@ async function loadHistorialMensual() {
       <div class="mes-row${esCur ? " mes-row-active" : ""}">
         <div class="mes-row-top">
           <div class="mes-row-mes">${label}${esCur ? ` <span class="mes-badge-now">Hoy</span>` : ""}</div>
-          <div class="mes-row-counts">${v.pedidos} pedidos · ${v.articulos.toLocaleString("es-AR")} artículos vendidos</div>
+          <div class="mes-row-counts">${v.pedidos} pedidos · ${fmtArt(v.articulos)} artículos vendidos</div>
         </div>
         <div class="mes-row-chips">
           ${chipVar(delta.ped, "pedidos")}
@@ -2161,17 +2184,26 @@ async function enviarReporteMensual() {
     const prevCorte  = diaEquiv > 0
       ? new Date(prevDt.getFullYear(), prevDt.getMonth(), diaEquiv, 23, 59, 59, 999)
       : null;
-    const desdeMes = getMonthStart(0).toISOString();
+    const desdeMesDt = getMonthStart(0);
+    const desdeMes   = desdeMesDt.toISOString();
+    const ahora      = new Date();
+
+    // Mismo criterio que Historial Mensual, para que el email no diga otra cosa que la pantalla:
+    // los ítems se acotan por fecha y estado del PEDIDO padre, y todo se pagina (sbGet corta en
+    // 1000 filas por más limit que se le pida, y devuelve las más viejas).
+    const ITEMS_EMBED     = "pedidos!inner(created_at,estado)";
+    const itemsDelPeriodo = (start, end) =>
+      `pedidos.created_at=gte.${start.toISOString()}&pedidos.created_at=lte.${end.toISOString()}&pedidos.estado=neq.cancelado`;
 
     const [pedMes, sumsMes, faltMes, pedPrevPunto, sumsPrevPunto] = await Promise.all([
-      sbGet("pedidos", `created_at=gte.${desdeMes}&estado=neq.cancelado&select=created_at,estado,vendedor&limit=3000`),
-      sbSumAllMulti("items_pedido", ["cantidad","es_faltante"], `created_at=gte.${desdeMes}`),
-      sbGet("items_pedido", `es_faltante=eq.true&created_at=gte.${desdeMes}&select=descripcion&limit=2000`),
+      sbGetAll("pedidos", `created_at=gte.${desdeMes}&estado=neq.cancelado&select=created_at,estado,vendedor`),
+      sbSumAllMulti("items_pedido", ["cantidad","es_faltante"], itemsDelPeriodo(desdeMesDt, ahora), 1000, ITEMS_EMBED),
+      sbGetAll("items_pedido", `es_faltante=eq.true&${itemsDelPeriodo(desdeMesDt, ahora)}&select=descripcion,${ITEMS_EMBED}`),
       prevCorte
-        ? sbGet("pedidos", `created_at=gte.${prevInicio.toISOString()}&created_at=lte.${prevCorte.toISOString()}&estado=neq.cancelado&select=id&limit=3000`)
+        ? sbGetAll("pedidos", `created_at=gte.${prevInicio.toISOString()}&created_at=lte.${prevCorte.toISOString()}&estado=neq.cancelado&select=id`)
         : Promise.resolve([]),
       prevCorte
-        ? sbSumAllMulti("items_pedido", ["cantidad"], `created_at=gte.${prevInicio.toISOString()}&created_at=lte.${prevCorte.toISOString()}`)
+        ? sbSumAllMulti("items_pedido", ["cantidad"], itemsDelPeriodo(prevInicio, prevCorte), 1000, ITEMS_EMBED)
         : Promise.resolve({ cantidad: 0 })
     ]);
 
@@ -2206,7 +2238,7 @@ async function enviarReporteMensual() {
       fecha_envio: today.toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long",year:"numeric"}),
       dias_habiles: bizActual,
       pedidos_mes: totalPed,
-      articulos_mes: sumsMes.cantidad,
+      articulos_mes: Math.round(sumsMes.cantidad),
       facturados_mes: factPed,
       tasa_facturacion: tasaFact,
       lineas_mes: lineasMes,
