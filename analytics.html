@@ -877,16 +877,23 @@ async function sbSumAll(table, column, params, pageSize = 1000) {
 // para acotar los ítems por la fecha/estado del PEDIDO padre, en vez de la fecha de la línea).
 // `order=id` es obligatorio: sin ORDER BY, PostgREST no garantiza el mismo orden entre páginas,
 // así que limit/offset podía saltear o repetir filas y descuadrar el total.
-async function sbSumAllMulti(table, columns, params, pageSize = 1000, embed = "") {
+// `derived` son sumas condicionales calculadas sobre las filas que ya se están trayendo
+// (ej. "unidades que son faltante"). Van en la misma pasada de paginación: no agregan ni
+// un fetch más — abrir una segunda cadena por mes ya saturó Supabase una vez.
+async function sbSumAllMulti(table, columns, params, pageSize = 1000, embed = "", derived = null) {
   const totals = { _count: 0 };
   columns.forEach(c => { totals[c] = 0; });
+  if (derived) Object.keys(derived).forEach(k => { totals[k] = 0; });
   const select = embed ? `${columns.join(",")},${embed}` : columns.join(",");
   let offset = 0;
   while (true) {
     const rows = await sbGet(table, `${params}&select=${select}&order=id&limit=${pageSize}&offset=${offset}`);
     if (!Array.isArray(rows) || rows.length === 0) break;
     totals._count += rows.length;
-    rows.forEach(r => { columns.forEach(c => { totals[c] += Number(r[c]) || 0; }); });
+    rows.forEach(r => {
+      columns.forEach(c => { totals[c] += Number(r[c]) || 0; });
+      if (derived) for (const k in derived) totals[k] += Number(derived[k](r)) || 0;
+    });
     if (rows.length < pageSize) break;
     offset += pageSize;
   }
@@ -1911,6 +1918,9 @@ async function loadHistorialMensual() {
   const ITEMS_EMBED    = "pedidos!inner(created_at,estado)";
   const itemsDelPeriodo = (start, end) =>
     `pedidos.created_at=gte.${start.toISOString()}&pedidos.created_at=lte.${end.toISOString()}&pedidos.estado=neq.cancelado`;
+  // Unidades que quedaron faltantes: un renglón de 60 bolsas que no sale pesa muchísimo más
+  // que uno de 2 sartenes, y contando solo renglones esa diferencia no se ve.
+  const UDS_FALTANTE   = { uds_faltante: r => r.es_faltante ? r.cantidad : 0 };
 
   // sbSumAllMulti pagina automáticamente → suma exacta sin importar cuántas filas haya.
   // Una sola cadena de fetch por mes (trae cantidad Y es_faltante juntas) en vez de dos —
@@ -1926,7 +1936,7 @@ async function loadHistorialMensual() {
       ? sbSumAllMulti("items_pedido", ["cantidad","es_faltante"], itemsDelPeriodo(prevInicio, prevCorte), 1000, ITEMS_EMBED)
       : Promise.resolve({ cantidad: 0, es_faltante: 0 }),
     ...monthKeys.map(({start, end}) =>
-      sbSumAllMulti("items_pedido", ["cantidad","es_faltante"], itemsDelPeriodo(start, end), 1000, ITEMS_EMBED)
+      sbSumAllMulti("items_pedido", ["cantidad","es_faltante"], itemsDelPeriodo(start, end), 1000, ITEMS_EMBED, UDS_FALTANTE)
     )
   ];
 
@@ -1936,6 +1946,7 @@ async function loadHistorialMensual() {
   const monthSums       = _allResults.slice(2);         // { _count, cantidad, es_faltante } por mes, alineado con monthKeys
   const artMonthTotals  = monthSums.map(s => s.cantidad);
   const faltMonthTotals = monthSums.map(s => s.es_faltante);
+  const udsFaltMonthTotals = monthSums.map(s => s.uds_faltante || 0);
   const lineasMonthTotals = monthSums.map(s => s._count); // total de líneas de pedido del mes (denominador correcto para % faltantes)
   const artCurTotal     = artMonthTotals[0];
 
@@ -1944,16 +1955,17 @@ async function loadHistorialMensual() {
   pedidos.forEach(p => {
     const d   = new Date(p.created_at);
     const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-    if (!byMonth[key]) byMonth[key] = { pedidos:0, facturados:0, articulos:0, faltantes:0, lineas:0, year:d.getFullYear(), month:d.getMonth() };
+    if (!byMonth[key]) byMonth[key] = { pedidos:0, facturados:0, articulos:0, faltantes:0, udsFaltantes:0, lineas:0, year:d.getFullYear(), month:d.getMonth() };
     byMonth[key].pedidos++;
     if (p.estado === "facturado") byMonth[key].facturados++;
   });
   // Artículos, faltantes y total de líneas por mes desde totales server-side (sin límite de filas)
   monthKeys.forEach(({key, year, month}, idx) => {
-    if (!byMonth[key]) byMonth[key] = { pedidos:0, facturados:0, articulos:0, faltantes:0, lineas:0, year, month };
-    byMonth[key].articulos  = artMonthTotals[idx];
-    byMonth[key].faltantes  = faltMonthTotals[idx];
-    byMonth[key].lineas     = lineasMonthTotals[idx];
+    if (!byMonth[key]) byMonth[key] = { pedidos:0, facturados:0, articulos:0, faltantes:0, udsFaltantes:0, lineas:0, year, month };
+    byMonth[key].articulos    = artMonthTotals[idx];
+    byMonth[key].faltantes    = faltMonthTotals[idx];
+    byMonth[key].udsFaltantes = udsFaltMonthTotals[idx];
+    byMonth[key].lineas       = lineasMonthTotals[idx];
   });
 
   // Filtrar meses de arranque: excluir los que tienen menos del 20% del mes más activo
@@ -2082,10 +2094,10 @@ async function loadHistorialMensual() {
     return `<span class="mes-chip ${cls}">${arrow} ${Math.abs(pct)}% ${label}</span>`;
   };
   // Chip de faltantes: verde = bien abastecido, ámbar = atención, rojo = crítico
-  const chipFalt = (tasaFalt) => {
+  const chipFalt = (tasaFalt, label) => {
     const cls  = tasaFalt > 15 ? "mes-chip-bad" : tasaFalt <= 5 ? "mes-chip-good" : "mes-chip-warn";
     const icon = tasaFalt > 15 ? "⚠" : tasaFalt <= 5 ? "✓" : "•";
-    return `<span class="mes-chip ${cls}">${icon} ${tasaFalt}% faltantes</span>`;
+    return `<span class="mes-chip ${cls}">${icon} ${tasaFalt}% ${label}</span>`;
   };
 
   // — Tabla de todos los meses —
@@ -2093,18 +2105,21 @@ async function loadHistorialMensual() {
     const label    = `${MESES_F[v.month]} ${v.year}`;
     const esCur    = key === curKey;
     const delta    = esCur ? { ped: curDeltaPed, art: curDeltaArt } : (deltaByKey[key] || { ped: null, art: null });
-    const tasaFalt = v.lineas > 0 ? Math.round((v.faltantes / v.lineas) * 100) : 0;
+    // Dos lecturas del mismo problema: cuántos renglones fallaron y cuánto volumen se perdió.
+    const tasaFalt    = v.lineas    > 0 ? Math.round((v.faltantes    / v.lineas)    * 100) : 0;
+    const tasaFaltUds = v.articulos > 0 ? Math.round((v.udsFaltantes / v.articulos) * 100) : 0;
     const refNota  = esCur ? "vs. mismo punto del mes anterior" : "vs. mes anterior";
     return `
       <div class="mes-row${esCur ? " mes-row-active" : ""}">
         <div class="mes-row-top">
           <div class="mes-row-mes">${label}${esCur ? ` <span class="mes-badge-now">Hoy</span>` : ""}</div>
-          <div class="mes-row-counts">${v.pedidos} pedidos · ${fmtArt(v.articulos)} artículos vendidos</div>
+          <div class="mes-row-counts">${v.pedidos} pedidos · ${fmtArt(v.articulos)} artículos pedidos</div>
         </div>
         <div class="mes-row-chips">
           ${chipVar(delta.ped, "pedidos")}
           ${chipVar(delta.art, "artículos")}
-          ${chipFalt(tasaFalt)}
+          ${chipFalt(tasaFalt, "renglones falt.")}
+          ${chipFalt(tasaFaltUds, "unidades falt.")}
           ${(delta.ped != null || delta.art != null) ? `<span style="font-size:10px;color:rgba(255,255,255,0.3);align-self:center">${refNota}</span>` : ""}
         </div>
       </div>`;
@@ -2115,7 +2130,7 @@ async function loadHistorialMensual() {
       <div class="mes-header" style="display:flex;align-items:flex-start;justify-content:space-between">
         <div>
           <div class="mes-title">📅 Historial mensual</div>
-          <div class="mes-sub">Cuántos pedidos y artículos se vendieron cada mes, y cómo veníamos de faltantes</div>
+          <div class="mes-sub">Cuántos pedidos y artículos se pidieron cada mes, y cómo veníamos de faltantes</div>
         </div>
         <button id="btnReporteMensual" onclick="enviarReporteMensual()" style="background:rgba(130,177,255,0.20);border:1px solid rgba(130,177,255,0.30);color:#82B1FF;border-radius:10px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;margin-left:10px">📧 Email</button>
       </div>
@@ -2125,7 +2140,7 @@ async function loadHistorialMensual() {
         <canvas id="chartMesHistoria"></canvas>
       </div>
       <div class="mes-legend">
-        <b>↑↓</b> variación de pedidos/artículos vs. el mes anterior · <b>faltantes</b> = % de lo vendido que no se pudo entregar completo
+        <b>↑↓</b> variación de pedidos/artículos vs. el mes anterior · <b>renglones falt.</b> = % de líneas del pedido que no se entregaron completas · <b>unidades falt.</b> = % del volumen pedido que no salió
       </div>
       <div class="mes-table-wrap">${filas}</div>
     </div>`;
