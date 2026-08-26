@@ -919,6 +919,73 @@ async function sbGetAll(table, params, pageSize = 1000) {
 // de variación siguen usando el valor exacto.
 const fmtArt = n => Math.round(Number(n) || 0).toLocaleString("es-AR");
 
+// ── AGRUPADO DE FALTANTES ────────────────────────────────────────────────────
+// El mismo artículo se carga escrito de muchas formas ("80X110 MELLI",
+// "BULTO 80X110 MELLI", "BOLSAS RESIDUOS 60X90 BIOBAG"). Agrupando por texto exacto,
+// cada variante queda con 1-2 apariciones y ninguna llega al top ni dispara alerta:
+// las bolsas Melli sumaban 12 faltantes repartidas en 8 nombres, la mejor en el puesto
+// 28 de 311, y como la alerta exige 3 pedidos distintos POR NOMBRE, nunca saltó.
+const FALT_RUIDO     = new Set(["BOLSA","BOLSAS","BULTO","BULTOS","BULTS","DE","DEL","EL","LA","LAS","LOS","PARA","UN","UNA","UNIDAD","UNIDADES","U","X"]);
+const FALT_SINONIMOS = [[/BIO\s*BAGS?/g, "BIOBAG"], [/MELLIS\b/g, "MELLI"]];
+const FALT_ES_MEDIDA = /^\d{2,3}X\d{2,3}$/;
+
+// Tokens normalizados: sin acentos ni relleno, sin repetir y ordenados alfabéticamente,
+// para que el orden de las palabras y la puntuación dejen de importar
+// ("FIBRA EXTRA FUERTE PARRILLERA MAKE" == "FIBRA PARRILLERA EXTRA FUERTE MAKE").
+function faltTokens(desc) {
+  let t = (desc || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  FALT_SINONIMOS.forEach(([re, to]) => { t = t.replace(re, to); });
+  t = t.replace(/(\d+)\s*[X×]\s*(\d+)/g, "$1X$2"); // "60 X 90" y "60X 90" → "60X90"
+  t = t.replace(/\bX\s*(\d+)/g, "$1");              // "ACERO X 13 G" → "ACERO 13 G"
+  return [...new Set(t.split(/[^A-Z0-9]+/).filter(w => w && !FALT_RUIDO.has(w)))].sort();
+}
+
+// Clave de familia: ignora la medida, así las 5 medidas de una misma bolsa rankean
+// juntas — que es como se compran, se le pide al proveedor toda la línea. Las medidas
+// concretas se siguen mostrando en el detalle de la fila, no se pierden.
+function claveFaltante(desc) {
+  const t   = faltTokens(desc);
+  const sin = t.filter(w => !FALT_ES_MEDIDA.test(w));
+  return (sin.length ? sin : t).join(" ") || (desc || "").trim().toUpperCase();
+}
+
+function medidaFaltante(desc) {
+  return faltTokens(desc).find(w => FALT_ES_MEDIDA.test(w)) || null;
+}
+
+// Título de la fila: la variante más repetida. Si la familia junta varias medidas, se le
+// saca la medida al título para que represente al grupo y no a una sola de ellas.
+function etiquetaFaltante(variantes, medidas) {
+  const top = Object.entries(variantes).sort((a, b) => b[1] - a[1])[0][0];
+  if (Object.keys(medidas).length <= 1) return top;
+  const sinMedida = top.replace(/\d+\s*[X×]\s*\d+/i, "").replace(/\s+/g, " ").trim();
+  return sinMedida.length >= 3 ? sinMedida : top;
+}
+
+// Agrupa líneas de faltante por familia y las ordena por cantidad de apariciones.
+// Tolera filas que no traigan pedido_id o created_at (algunas queries piden solo descripcion).
+function agruparFaltantes(items) {
+  const g = {};
+  items.forEach(i => {
+    const desc = (i.descripcion || "").trim();
+    if (!desc) return;
+    const k = claveFaltante(desc);
+    if (!g[k]) g[k] = { veces: 0, pedidos: new Set(), variantes: {}, medidas: {}, fechas: [] };
+    const e = g[k];
+    e.veces++;
+    if (i.pedido_id)  e.pedidos.add(i.pedido_id);
+    if (i.created_at) e.fechas.push(new Date(i.created_at));
+    e.variantes[desc] = (e.variantes[desc] || 0) + 1;
+    const m = medidaFaltante(desc);
+    if (m) e.medidas[m] = (e.medidas[m] || 0) + 1;
+  });
+  return Object.values(g).map(e => Object.assign(e, {
+    desc:       etiquetaFaltante(e.variantes, e.medidas),
+    medidasTxt: Object.entries(e.medidas).sort((a, b) => b[1] - a[1]).map(([m]) => m).join(", "),
+    nVariantes: Object.keys(e.variantes).length
+  })).sort((a, b) => b.veces - a.veces);
+}
+
 // ════════════════════════════════════════════
 // TOAST
 // ════════════════════════════════════════════
@@ -1304,9 +1371,7 @@ async function enviarReporteEmail() {
     ]);
 
     // Top faltantes
-    const faltCounts = {};
-    faltData.forEach(i => { const k = (i.descripcion||"").trim(); faltCounts[k]=(faltCounts[k]||0)+1; });
-    const topFalt = Object.entries(faltCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    const topFalt = agruparFaltantes(faltData).slice(0,5).map(f => [f.desc, f.veces]);
 
     const payload = {
       periodo: globalPeriod,
@@ -1560,8 +1625,8 @@ async function loadFaltantes(fp) {
     _desdeEl.style.display = "none";
   }
 
-  const items = await sbGet("items_pedido",
-    `es_faltante=eq.true&created_at=gte.${desde.toISOString()}&select=descripcion,cantidad,pedido_id,created_at&limit=2000`);
+  const items = await sbGetAll("items_pedido",
+    `es_faltante=eq.true&created_at=gte.${desde.toISOString()}&select=descripcion,cantidad,pedido_id,created_at`);
 
   const filtered = items.filter(i => new Date(i.created_at) <= hasta);
 
@@ -1572,16 +1637,7 @@ async function loadFaltantes(fp) {
     return;
   }
 
-  const counts = {};
-  filtered.forEach(i => {
-    const k = (i.descripcion || "").trim().toLowerCase();
-    if (!k) return;
-    if (!counts[k]) counts[k] = { desc: (i.descripcion||"").trim(), veces: 0, pedidos: new Set() };
-    counts[k].veces++;
-    counts[k].pedidos.add(i.pedido_id);
-  });
-
-  const sorted   = Object.values(counts).sort((a,b) => b.veces - a.veces).slice(0, 10);
+  const sorted   = agruparFaltantes(filtered).slice(0, 10);
   const maxVeces = sorted[0]?.veces || 1;
 
   document.getElementById("faltantesBadge").textContent = `${sorted.length} items`;
@@ -1593,7 +1649,7 @@ async function loadFaltantes(fp) {
         <div class="list-rank ${rankCls}">${i+1}</div>
         <div class="list-main">
           <div class="list-name">${escHtml(f.desc)}</div>
-          <div class="list-meta">${f.pedidos.size} pedido${f.pedidos.size!==1?"s":""} distintos</div>
+          <div class="list-meta">${f.pedidos.size} pedido${f.pedidos.size!==1?"s":""} distintos${f.medidasTxt && f.nVariantes > 1 ? ` · medidas: ${escHtml(f.medidasTxt)}` : ""}</div>
           <div class="mini-bar-wrap"><div class="mini-bar" style="width:${pct}%;background:#FF3B30"></div></div>
         </div>
         <div class="list-value">${f.veces}<small>veces</small></div>
@@ -1651,8 +1707,8 @@ async function loadAlertas() {
   let desdeAlertas = new Date(makeISO(21)); // 3 semanas laborales
   const _resetTs = localStorage.getItem("ml_faltantes_reset");
   if (_resetTs && new Date(_resetTs) > desdeAlertas) desdeAlertas = new Date(_resetTs);
-  const items = await sbGet("items_pedido",
-    `es_faltante=eq.true&created_at=gte.${desdeAlertas.toISOString()}&select=descripcion,created_at,pedido_id&limit=2000`);
+  const items = await sbGetAll("items_pedido",
+    `es_faltante=eq.true&created_at=gte.${desdeAlertas.toISOString()}&select=descripcion,created_at,pedido_id`);
 
   const container = document.getElementById("alertasContainer");
 
@@ -1661,16 +1717,7 @@ async function loadAlertas() {
     return;
   }
 
-  const byDesc = {};
-  items.forEach(i => {
-    const k = (i.descripcion||"").trim().toLowerCase();
-    if (!k) return;
-    if (!byDesc[k]) byDesc[k] = { desc: (i.descripcion||"").trim(), pedidos: new Set(), fechas: [] };
-    byDesc[k].pedidos.add(i.pedido_id);
-    byDesc[k].fechas.push(new Date(i.created_at));
-  });
-
-  const alertas = Object.values(byDesc)
+  const alertas = agruparFaltantes(items)
     .filter(a => a.pedidos.size >= 3)
     .sort((a,b) => b.pedidos.size - a.pedidos.size)
     .slice(0, 5);
@@ -1756,9 +1803,7 @@ async function runAI() {
     pedidos90.forEach(p => { const v = p.vendedor||"Sin asignar"; vendedores[v]=(vendedores[v]||0)+1; });
     const topVend = Object.entries(vendedores).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([v,n])=>`${v}(${n})`).join(", ");
 
-    const faltantesCount = {};
-    faltantes90.forEach(i => { const k=(i.descripcion||"").trim(); faltantesCount[k]=(faltantesCount[k]||0)+1; });
-    const topFaltantes = Object.entries(faltantesCount).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([d,n])=>`${d}(${n}x)`).join(", ");
+    const topFaltantes = agruparFaltantes(faltantes90).slice(0,5).map(f=>`${f.desc}(${f.veces}x)`).join(", ");
 
     const prompt = `Sos un asesor comercial experto en distribución de limpieza y bazar en Argentina. Analizá estos datos de los últimos 90 días y generá un resumen ejecutivo conciso (4-5 oraciones), enfocado en: 1) rendimiento general, 2) faltantes críticos a reponer, 3) una recomendación de compra concreta. Sé directo y práctico.
 
@@ -2223,9 +2268,7 @@ async function enviarReporteMensual() {
     ]);
 
     // Top faltantes del mes
-    const faltCounts = {};
-    faltMes.forEach(i => { const k=(i.descripcion||"").trim(); faltCounts[k]=(faltCounts[k]||0)+1; });
-    const topFalt = Object.entries(faltCounts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    const topFalt = agruparFaltantes(faltMes).slice(0,8).map(f => [f.desc, f.veces]);
 
     // Top vendedores del mes
     const vendCounts = {};
