@@ -2439,6 +2439,7 @@ function pinKey(k) {
     if (pinBuffer === PIN_CORRECT) {
       pinSetAuth();
       document.getElementById("pinOverlay").classList.add("hidden");
+      _ultimaCarga = Date.now();
       loadAll();
     } else {
       pinUpdateDots(true);
@@ -2466,12 +2467,34 @@ document.addEventListener("keydown", (e) => {
 // ════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════
-if (pinIsAuth()) {
-  document.getElementById("pinOverlay").classList.add("hidden");
+// Auto-refresh cada 5 min SOLO mientras se está usando: pestaña visible y actividad en los
+// últimos 5 min. loadAll es la carga más pesada de todas las apps (14 meses de pedidos e
+// ítems) y el 29/9/2026 el polling de pestañas olvidadas abiertas agotó el Disk IO budget
+// de la instancia NANO de Supabase. Cerrada, minimizada o inactiva → cero consultas.
+const REFRESH_MS = 5 * 60 * 1000;
+let _ultimaActividad = Date.now(), _ultimaCarga = 0;
+["pointerdown","keydown","touchstart","wheel","scroll"].forEach(ev =>
+  addEventListener(ev, () => { _ultimaActividad = Date.now(); }, { passive:true }));
+function recargarSiCorresponde() {
+  if (!pinIsAuth() || document.hidden) return;
+  if (Date.now() - _ultimaActividad > REFRESH_MS) return;   // inactiva
+  if (Date.now() - _ultimaCarga < REFRESH_MS) return;       // datos todavía frescos
+  _ultimaCarga = Date.now();
   loadAll();
 }
-// Auto-refresh cada 5 minutos (solo si ya está autenticado)
-setInterval(() => { if (pinIsAuth()) loadAll(); }, 5 * 60 * 1000);
+// Al volver a la pestaña: si los datos tienen más de 5 min, refrescar en el momento
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  _ultimaActividad = Date.now();
+  recargarSiCorresponde();
+});
+
+if (pinIsAuth()) {
+  document.getElementById("pinOverlay").classList.add("hidden");
+  _ultimaCarga = Date.now();
+  loadAll();
+}
+setInterval(recargarSiCorresponde, 60 * 1000);
 // ════════════════════════════════════════════
 // MODAL FALTANTES POR VENDEDOR
 // ════════════════════════════════════════════
