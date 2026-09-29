@@ -1011,7 +1011,36 @@ async function sbInsert(table, data) {
   return r.ok;
 }
 
+// ── POLLING AHORRATIVO ──
+// Realtime ya avisa los cambios al instante; el polling es solo red de seguridad.
+// Se consulta únicamente si la pestaña está a la vista y alguien la usó en los últimos
+// 15 min: una PC que queda abierta toda la noche no le pega a Supabase (el 29/9/2026 el
+// polling nocturno agotó el Disk IO budget de la instancia NANO y se colgó todo).
+const INACTIVIDAD_MS = 15 * 60000;
+let _ultimaActividad = Date.now();
+["pointerdown","keydown","touchstart","wheel"].forEach(ev =>
+  addEventListener(ev, () => { _ultimaActividad = Date.now(); }, { passive:true }));
+// Horario de trabajo: lunes a viernes de 7 a 17 (hora Argentina, UTC-3 todo el año).
+// Fuera de horario la app igual carga al abrirla o al volver a la pestaña; solo se apaga el polling de fondo.
+function enHorarioLaboral() {
+  const ar = new Date(Date.now() - 3 * 3600000);
+  const dia = ar.getUTCDay(), hora = ar.getUTCHours();
+  return dia >= 1 && dia <= 5 && hora >= 7 && hora < 17;
+}
+function appEnUso() {
+  return enHorarioLaboral() && !document.hidden && Date.now() - _ultimaActividad < INACTIVIDAD_MS;
+}
+function cadaTantoSiEnUso(fn, ms) { setInterval(() => { if (appEnUso()) fn(); }, ms); }
+// Al volver a la app: refrescar ya, por si Realtime se perdió algo mientras no se miraba
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || !currentUser) return;
+  _ultimaActividad = Date.now();
+  cargarPedidos();
+  actualizarResumenDiario();
+});
+
 // ── REALTIME ──
+let _rtEspera = 3000, _rtYaConecto = false;
 function conectarRealtime() {
   const ws = new WebSocket(
     `${SUPABASE_URL.replace("https://","wss://")}/realtime/v1/websocket?apikey=${SUPABASE_ANON}&vsn=1.0.0`
@@ -1019,6 +1048,9 @@ function conectarRealtime() {
   let hb;
   ws.onopen = () => {
     setConn("online");
+    _rtEspera = 3000;
+    if (_rtYaConecto) cargarPedidos(); // reconexión: traer lo que cambió mientras estuvo caído
+    _rtYaConecto = true;
     ["pedidos","items_pedido"].forEach((t,i) => ws.send(JSON.stringify({
       topic:`realtime:public:${t}`, event:"phx_join",
       payload:{ config:{ postgres_changes:[{ event:"*", schema:"public", table:t }] } }, ref: String(i+1)
@@ -1050,7 +1082,12 @@ function conectarRealtime() {
       }
     } catch(_) {}
   };
-  ws.onclose = () => { setConn("offline"); clearInterval(hb); setTimeout(conectarRealtime, 3000); };
+  // Reintento con espera creciente (3s → 6s → … → 60s): si Supabase está caído, no martillarlo
+  ws.onclose = () => {
+    setConn("offline"); clearInterval(hb);
+    setTimeout(conectarRealtime, _rtEspera);
+    _rtEspera = Math.min(_rtEspera * 2, 60000);
+  };
   ws.onerror = () => setConn("offline");
 }
 function setConn(s) { const d=document.getElementById("connDot"); if(d) d.className="conn-dot "+s; }
@@ -2327,10 +2364,10 @@ function iniciarApp() {
   cargarPedidos(); // renderLista se llama dentro cuando llegan datos
   conectarRealtime();
   actualizarResumenDiario();
-  setInterval(cargarPedidos, 30000);
-  setInterval(actualizarResumenDiario, 60000);
+  cadaTantoSiEnUso(cargarPedidos, 120000);
+  cadaTantoSiEnUso(actualizarResumenDiario, 300000); // además se actualiza al facturar
   // Refresca "En proceso" cada 30s para mover armando→listo cuando pasan los 2min
-  setInterval(() => {
+  cadaTantoSiEnUso(() => {
     if (document.getElementById("armarView").style.display !== "none") cargarEnProceso();
   }, 30000);
 }
