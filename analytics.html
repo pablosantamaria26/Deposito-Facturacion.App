@@ -810,7 +810,7 @@ a { text-decoration: none; }
   </div>
 
   <!-- REFRESH INFO -->
-  <div class="refresh-row fade-up" id="refreshRow">
+  <div class="refresh-row fade-up" id="refreshRow" style="cursor:pointer" title="Actualizar datos">
     <div class="refresh-dot" id="refreshDot"></div>
     <span id="refreshLabel">Conectando...</span>
   </div>
@@ -2348,7 +2348,7 @@ async function loadAll() {
   ]);
 
   const now = new Date().toLocaleTimeString("es-AR", { hour:"2-digit", minute:"2-digit" });
-  document.getElementById("refreshLabel").textContent = `Actualizado ${now}`;
+  document.getElementById("refreshLabel").textContent = `Actualizado ${now} · tocá para actualizar`;
   document.getElementById("refreshDot").classList.remove("stale");
 }
 
@@ -2467,26 +2467,25 @@ document.addEventListener("keydown", (e) => {
 // ════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════
-// Auto-refresh cada 5 min SOLO mientras se está usando: pestaña visible y actividad en los
-// últimos 5 min. loadAll es la carga más pesada de todas las apps (14 meses de pedidos e
-// ítems) y el 29/9/2026 el polling de pestañas olvidadas abiertas agotó el Disk IO budget
-// de la instancia NANO de Supabase. Cerrada, minimizada o inactiva → cero consultas.
-const REFRESH_MS = 5 * 60 * 1000;
-let _ultimaActividad = Date.now(), _ultimaCarga = 0;
-["pointerdown","keydown","touchstart","wheel","scroll"].forEach(ev =>
-  addEventListener(ev, () => { _ultimaActividad = Date.now(); }, { passive:true }));
-function recargarSiCorresponde() {
+// Sin auto-refresh: los datos se traen SOLO cuando se abre la app para mirarla (igual que
+// stock). loadAll es la carga más pesada de todas las apps (~64 requests: 14 meses de
+// pedidos e ítems) y el 29/9/2026 el polling de pestañas olvidadas abiertas agotó el Disk IO
+// budget de la instancia NANO de Supabase. Se carga: al abrir, al volver a la app si los
+// datos tienen más de 5 min (en el celular volver a la PWA equivale a abrirla), o a mano
+// tocando "Actualizado hh:mm". Cerrada o en segundo plano → cero consultas.
+const DATOS_VIEJOS_MS = 5 * 60 * 1000;
+let _ultimaCarga = 0;
+function recargarSiViejo() {
   if (!pinIsAuth() || document.hidden) return;
-  if (Date.now() - _ultimaActividad > REFRESH_MS) return;   // inactiva
-  if (Date.now() - _ultimaCarga < REFRESH_MS) return;       // datos todavía frescos
+  if (Date.now() - _ultimaCarga < DATOS_VIEJOS_MS) return;
   _ultimaCarga = Date.now();
   loadAll();
 }
-// Al volver a la pestaña: si los datos tienen más de 5 min, refrescar en el momento
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) return;
-  _ultimaActividad = Date.now();
-  recargarSiCorresponde();
+document.addEventListener("visibilitychange", recargarSiViejo);
+document.getElementById("refreshRow").addEventListener("click", () => {
+  if (!pinIsAuth()) return;
+  _ultimaCarga = Date.now();
+  loadAll();
 });
 
 if (pinIsAuth()) {
@@ -2494,7 +2493,6 @@ if (pinIsAuth()) {
   _ultimaCarga = Date.now();
   loadAll();
 }
-setInterval(recargarSiCorresponde, 60 * 1000);
 // ════════════════════════════════════════════
 // MODAL FALTANTES POR VENDEDOR
 // ════════════════════════════════════════════
