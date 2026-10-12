@@ -230,6 +230,15 @@
   .item-info{min-width:0}
   .item-desc{font-size:18px;font-weight:700;color:var(--text);line-height:1.3}
   .item-desc.tachado{text-decoration:line-through;color:var(--muted)}
+  /* Quién armó el artículo, cuando fue otro armador (pedido armado entre dos en sectores distintos) */
+  .armado-por{
+    display:inline-block;margin-top:4px;margin-right:6px;
+    background:#dcfce7;border:1px solid #86efac;color:#166534;
+    padding:2px 8px;border-radius:6px;font-size:11px;font-weight:800
+  }
+  /* Destello cuando el cambio llega desde el otro dispositivo */
+  @keyframes remotoFlash { from { box-shadow:inset 0 0 0 3px #22c55e } to { box-shadow:inset 0 0 0 3px transparent } }
+  .item-row.remoto{animation:remotoFlash 1.6s ease-out}
   .mod-badge{
     display:inline-block;margin-top:4px;
     background:var(--mod-bg);border:1px solid #fcd34d;
@@ -677,22 +686,35 @@ function appEnUso() {
 function cadaTantoSiEnUso(fn, ms) { setInterval(() => { if (appEnUso()) fn(); }, ms); }
 // Al volver a la app: refrescar ya, por si Realtime se perdió algo mientras no se miraba
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) { _ultimaActividad = Date.now(); cargarPedidos(); }
+  if (document.hidden) return;
+  _ultimaActividad = Date.now();
+  cargarPedidos();
+  if (pedidoActivo) recargarItems(); // ponerse al día con lo que tildó el otro mientras no se miraba
 });
 
 // ── REALTIME ──
+// Dos canales: "pedidos" (llegan/cambian pedidos → lista) e "items" del pedido ABIERTO
+// (lo que tilda el otro armador desde su celular/PC aparece acá en 1-2 s, sin recargar).
 let _rtEspera = 3000, _rtYaConecto = false;
+let _ws = null, _itemsTopic = null, _rtRef = 10;
 function conectarRealtime() {
   const ws = new WebSocket(
     `${SB_URL.replace("https://","wss://")}/realtime/v1/websocket?apikey=${SB_ANON}&vsn=1.0.0`);
+  _ws = ws;
   let hb;
   ws.onopen = () => {
     setConn("online");
     _rtEspera = 3000;
-    if (_rtYaConecto) cargarPedidos(); // reconexión: traer lo que cambió mientras estuvo caído
+    const reconexion = _rtYaConecto;
+    if (reconexion) cargarPedidos(); // reconexión: traer lo que cambió mientras estuvo caído
     _rtYaConecto = true;
     ws.send(JSON.stringify({topic:"realtime:public:pedidos",event:"phx_join",
       payload:{config:{postgres_changes:[{event:"*",schema:"public",table:"pedidos"}]}},ref:"1"}));
+    _itemsTopic = null;
+    if (pedidoActivo) {
+      suscribirItems(pedidoActivo.id);
+      if (reconexion) recargarItems();
+    }
     hb = setInterval(() =>
       ws.readyState===1 && ws.send(JSON.stringify({topic:"phoenix",event:"heartbeat",payload:{},ref:"hb"})),20000);
     flushSyncQueue();
@@ -700,19 +722,92 @@ function conectarRealtime() {
   let _rtDebounce = null;
   ws.onmessage = e => {
     try {
-      if(JSON.parse(e.data).payload?.data?.table==="pedidos") {
+      const data = JSON.parse(e.data).payload?.data;
+      if (data?.table === "pedidos") {
+        pedidoCambioRemoto(data.record);
         clearTimeout(_rtDebounce);
         _rtDebounce = setTimeout(cargarPedidos, 500);
+      } else if (data?.table === "items_pedido") {
+        itemCambioRemoto(data.type, data.record || data.old_record);
       }
     } catch(_){}
   };
   // Reintento con espera creciente (3s → 6s → … → 60s): si Supabase está caído, no martillarlo
   ws.onclose = () => {
     setConn("offline"); clearInterval(hb);
+    if (_ws === ws) { _ws = null; _itemsTopic = null; }
     setTimeout(conectarRealtime, _rtEspera);
     _rtEspera = Math.min(_rtEspera * 2, 60000);
   };
   ws.onerror = () => setConn("offline");
+}
+
+// Escuchar solo los artículos del pedido abierto (filtro del lado de Supabase).
+function suscribirItems(pedidoId) {
+  desuscribirItems();
+  if (!_ws || _ws.readyState !== 1) return; // se suscribe solo al (re)conectar
+  _itemsTopic = `realtime:items:${pedidoId}`;
+  _ws.send(JSON.stringify({topic:_itemsTopic, event:"phx_join", ref:String(++_rtRef),
+    payload:{config:{postgres_changes:[{event:"*",schema:"public",table:"items_pedido",
+      filter:`pedido_id=eq.${pedidoId}`}]}}}));
+}
+function desuscribirItems() {
+  if (_itemsTopic && _ws && _ws.readyState === 1)
+    _ws.send(JSON.stringify({topic:_itemsTopic, event:"phx_leave", payload:{}, ref:String(++_rtRef)}));
+  _itemsTopic = null;
+}
+
+// Volver a traer los artículos del pedido abierto (al reconectar o al volver a la app)
+async function recargarItems() {
+  if (!pedidoActivo) return;
+  const id = pedidoActivo.id;
+  try {
+    const items = await sbGet("items_pedido", `pedido_id=eq.${id}&order=posicion.asc.nullslast,id.asc`);
+    if (!pedidoActivo || pedidoActivo.id !== id || !Array.isArray(items)) return;
+    itemsActivos = items;
+    if (!hayEdicionAbierta()) renderItems(); else actualizarProgreso();
+  } catch(_) {}
+}
+
+function hayEdicionAbierta() {
+  return [...document.querySelectorAll(".item-edit-bar")].some(b => b.style.display !== "none");
+}
+
+const CAMPOS_ITEM = ["armado","armado_por","armado_at","cantidad","descripcion","modificado","es_faltante","nombre_original"];
+
+// Llega un cambio de un artículo hecho en OTRO dispositivo (o el eco del propio, que se ignora)
+function itemCambioRemoto(tipo, rec) {
+  if (!pedidoActivo || !rec || rec.pedido_id !== pedidoActivo.id) return;
+  if (tipo !== "UPDATE") { recargarItems(); return; } // altas/bajas de renglones: recargar entero
+  const idx = itemsActivos.findIndex(i => i.id === rec.id);
+  if (idx < 0) { recargarItems(); return; }
+  const item = itemsActivos[idx];
+  // Eco de un cambio propio: no hay nada nuevo (armado_at se ignora: llega con otro formato de hora)
+  if (CAMPOS_ITEM.every(c => c === "armado_at" || item[c] === rec[c])) return;
+  CAMPOS_ITEM.forEach(c => { item[c] = rec[c]; });
+
+  const row = document.getElementById(`irow-${item.id}`);
+  const editando = row && row.querySelector(".item-edit-bar")?.style.display !== "none";
+  if (_modoFoco && item.armado) {
+    row?.remove();                                   // en modo foco el tildado desaparece
+  } else if (row && !editando) {
+    row.outerHTML = renderItemRow(item, idx);
+    const nueva = document.getElementById(`irow-${item.id}`);
+    nueva.querySelector(".item-edit-bar").style.display = "none";
+    nueva.classList.add("remoto");
+  } else if (!row && !hayEdicionAbierta()) {
+    renderItems();                                   // p.ej. destildado en modo foco: vuelve a aparecer
+  }
+  actualizarProgreso();
+}
+
+// El otro armador cerró (o facturación tomó) el pedido que tengo abierto
+function pedidoCambioRemoto(rec) {
+  if (!pedidoActivo || !rec || rec.id !== pedidoActivo.id || _enviando) return;
+  if (rec.estado === pedidoActivo.estado || rec.estado === "pendiente") return;
+  pedidoActivo.estado = rec.estado;
+  toast(`🔒 ${rec.armado_por || "Otro armador"} cerró este pedido`, "mod");
+  setTimeout(() => { if (pedidoActivo && pedidoActivo.id === rec.id) volverALista(); }, 2200);
 }
 function setConn(s) { const d=document.getElementById("connDot"); if(d) d.className="conn-dot "+s; }
 
@@ -884,6 +979,7 @@ async function abrirPedido(id) {
     document.getElementById("armadorNombre").textContent = armadorActual;
 
     renderItems();
+    suscribirItems(pedidoActivo.id); // tildes del otro armador en vivo
     cargarFaltantesPreviosDeposito(pedidoActivo.cliente_id, pedidoActivo.id);
     localStorage.setItem("depositoActivePedido", id);  // persistencia
     document.getElementById("vistaLista").style.display = "none";
@@ -897,6 +993,9 @@ async function abrirPedido(id) {
 function renderItemRow(item, idx) {
   const armado = item.armado;
   const mod    = item.modificado;
+  // Si lo armó el otro armador, se ve su nombre: así cada uno sabe qué sector ya cubrió el otro
+  const porOtro = armado && item.armado_por && item.armado_por !== armadorActual;
+  const nombreOtro = porOtro ? String(item.armado_por).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`) : "";
   return `
     <div class="item-row ${armado?"armado":""} ${mod?"modificado-row":""}" id="irow-${item.id}">
       <div class="item-main">
@@ -905,6 +1004,7 @@ function renderItemRow(item, idx) {
         </button>
         <div class="item-info">
           <div class="item-desc ${armado?"tachado":""}" id="idesc-${item.id}">${item.descripcion}</div>
+          ${porOtro ? `<div class="armado-por">✓ ${nombreOtro}</div>` : ""}
           ${mod ? `<div class="mod-badge">🔔 MODIFICADO</div>` : ""}
         </div>
         <div class="item-qty-badge" id="iqty-${item.id}">${item.cantidad}</div>
@@ -1057,6 +1157,7 @@ async function confirmarDestildar() {
 
 async function aplicarToggle(itemId, idx, nuevoEstado) {
   itemsActivos[idx].armado = nuevoEstado;
+  itemsActivos[idx].armado_por = nuevoEstado ? armadorActual : null;
   const row  = document.getElementById(`irow-${itemId}`);
   const btn  = row?.querySelector(".check-btn");
   const desc = document.getElementById(`idesc-${itemId}`);
@@ -1155,6 +1256,23 @@ async function _ejecutarArmar() {
   btn.disabled = true; btn.textContent = "Enviando...";
   showLoader();
   try {
+    // Cierre seguro: antes de marcar faltantes, traer el estado REAL de Supabase. Si el otro
+    // armador tildó artículos desde su dispositivo y esta pantalla no se enteró, no se los
+    // puede marcar como faltantes. Sin conexión no se cierra (mejor esperar que ensuciar datos).
+    const [psFrescos, itemsFrescos] = await Promise.all([
+      sbGet("pedidos", `id=eq.${pedidoActivo.id}&select=estado,armado_por`),
+      sbGet("items_pedido", `pedido_id=eq.${pedidoActivo.id}&order=posicion.asc.nullslast,id.asc`)
+    ]);
+    if (!Array.isArray(itemsFrescos) || !Array.isArray(psFrescos) || !psFrescos.length)
+      throw new Error("sin datos frescos");
+    if (psFrescos[0].estado !== "pendiente") {
+      toast(`🔒 ${psFrescos[0].armado_por || "Otro armador"} ya cerró este pedido`, "mod");
+      pedidoActivo.estado = psFrescos[0].estado;
+      setTimeout(volverALista, 1800);
+      return;
+    }
+    itemsActivos = itemsFrescos;
+    renderItems();
     const faltantes = itemsActivos.filter(i => !i.armado);
     if (faltantes.length) {
       await Promise.all(faltantes.map(i =>
@@ -1177,7 +1295,7 @@ async function _ejecutarArmar() {
       ? `✅ Armado con ${faltantes.length} faltante${faltantes.length>1?"s":""}!`
       : "✅ ¡Pedido armado completo!", "ok");
     setTimeout(volverALista, 1400);
-  } catch(e) { toast("Error","error"); }
+  } catch(e) { toast("Sin conexión: no se pudo cerrar el pedido, probá de nuevo","error"); }
   finally { hideLoader(); _enviando = false; actualizarProgreso(); }
 }
 
@@ -1274,6 +1392,7 @@ async function flushSyncQueue() {
 // ── NAV ──
 function volverALista() {
   if (pedidoActivo) pausarTimer(pedidoActivo.id);
+  desuscribirItems();
   pedidoActivo = null;
   localStorage.removeItem("depositoActivePedido");
   document.getElementById("vistaDetalle").style.display = "none";
