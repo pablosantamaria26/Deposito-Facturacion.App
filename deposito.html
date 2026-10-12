@@ -773,7 +773,7 @@ function hayEdicionAbierta() {
   return [...document.querySelectorAll(".item-edit-bar")].some(b => b.style.display !== "none");
 }
 
-const CAMPOS_ITEM = ["armado","armado_por","armado_at","cantidad","descripcion","modificado","es_faltante","nombre_original"];
+const CAMPOS_ITEM = ["armado","armado_por","armado_at","cantidad","descripcion","modificado","es_faltante","nombre_original","cantidad_original"];
 
 // Llega un cambio de un artículo hecho en OTRO dispositivo (o el eco del propio, que se ignora)
 function itemCambioRemoto(tipo, rec) {
@@ -1107,11 +1107,17 @@ async function guardarEdit(itemId, idx) {
   if (cambioDesc && !item.nombre_original) {
     patchData.nombre_original = item.descripcion;
   }
+  // Igual con la cantidad: se guarda la que pidió el vendedor la primera vez que se cambia,
+  // para que facturación muestre "Cantidad pedida: 12 → depósito: 6"
+  if (cambioQty && item.cantidad_original == null) {
+    patchData.cantidad_original = item.cantidad;
+  }
 
   try {
     await sbPatch("items_pedido", `id=eq.${itemId}`, patchData);
     // Actualizar local
     if (cambioDesc && !item.nombre_original) item.nombre_original = item.descripcion;
+    if (cambioQty && item.cantidad_original == null) item.cantidad_original = item.cantidad;
     item.descripcion = nuevoDesc;
     item.cantidad    = nuevaQty;
     item.modificado  = true;

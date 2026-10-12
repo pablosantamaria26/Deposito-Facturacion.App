@@ -342,6 +342,15 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
+  /* Artículo que el depósito cambió (nombre y/o cantidad): Laura tiene que verlo antes de facturar */
+  .mod-dep {
+    margin-top: 4px; padding: 4px 8px; border-radius: 6px;
+    background: #fef3c7; border: 1px solid #fcd34d; color: #92400e;
+    font-size: 12px; font-weight: 700; line-height: 1.35;
+  }
+  .mod-dep b { font-weight: 900; }
+  .mod-dep-det { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
   /* Badge + card estilo para pedidos de faltantes */
   .badge-faltante{
     display:inline-flex;align-items:center;gap:5px;
@@ -408,6 +417,7 @@
   }
   .toast.ok    { background: var(--success); }
   .toast.error { background: var(--hoy); }
+  .toast.warn  { background: #d97706; }
 
   .empty-right {
     flex:1; display:flex; flex-direction:column;
@@ -1321,18 +1331,40 @@ async function recargarItems() {
     return;
   }
   // Diff: solo actualizar filas que cambiaron y no están en proceso localmente
-  let algoCambio = false;
+  let algoCambio = false, cambioDeposito = false;
   nuevos.forEach((item, i) => {
     const viejo = itemsActivos[i];
     if (!viejo || _pendingItems.has(item.id)) return; // ignorar cambios locales en vuelo
-    if (viejo.facturado !== item.facturado || viejo.es_faltante !== item.es_faltante ||
+    // El depósito editó el artículo (nombre/cantidad) con el pedido abierto acá → re-render completo
+    if (viejo.modificado !== item.modificado || viejo.descripcion !== item.descripcion ||
+        viejo.cantidad !== item.cantidad || viejo.cantidad_original !== item.cantidad_original) {
+      itemsActivos[i] = item;
+      cambioDeposito = true;
+    } else if (viejo.facturado !== item.facturado || viejo.es_faltante !== item.es_faltante ||
         viejo.cantidad_real !== item.cantidad_real) {
       itemsActivos[i] = item;
       _updateRowDOM(item);
       algoCambio = true;
     }
   });
-  if (algoCambio) actualizarStats();
+  if (cambioDeposito) {
+    renderItemsF();
+    toast("⚠️ Depósito modificó un artículo de este pedido", "warn");
+  } else if (algoCambio) actualizarStats();
+}
+
+// Leyenda "Artículo modificado en depósito" con el detalle de qué cambió, si se sabe.
+// (nombre_original existe desde siempre; cantidad_original se guarda desde oct-2026: en los
+// artículos viejos con cantidad cambiada solo se ve la leyenda, sin el número anterior)
+function leyendaModDeposito(item) {
+  if (!item.modificado) return "";
+  const det = [];
+  if (item.nombre_original && item.nombre_original !== item.descripcion)
+    det.push(`Pedido: ${escHtml(item.nombre_original)}`);
+  if (item.cantidad_original != null && Number(item.cantidad_original) !== Number(item.cantidad))
+    det.push(`Cantidad pedida: <b>${item.cantidad_original}</b> → depósito: <b>${item.cantidad}</b>`);
+  return `<div class="mod-dep">⚠️ Artículo modificado en depósito` +
+    det.map(d => `<div class="mod-dep-det">${d}</div>`).join("") + `</div>`;
 }
 
 function renderItemsF() {
@@ -1391,6 +1423,7 @@ function renderItemsF() {
               onclick="event.stopPropagation();toggleFaltante('${item.id}',${i})"
               title="Marcar faltante">⚠️</button>
           </div>
+          ${leyendaModDeposito(item)}
           ${item.facturado_por ? `<div class="item-f-who">✓ ${item.facturado_por} · ${fmtTime(item.facturado_at)}</div>` : ""}
         </div>
         <button class="chk-f ${chkCls}"
