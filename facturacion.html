@@ -98,9 +98,10 @@
   .grupo-header.hoy   { background: var(--hoy-bg);  color: var(--hoy); border-left: 4px solid var(--hoy); }
   .grupo-header.man   { background: var(--man-bg);  color: var(--manana); border-left: 4px solid var(--manana); }
   .grupo-header.prox  { background: var(--prox-bg); color: var(--prox); border-left: 4px solid var(--prox); }
+  /* (antes: background currentColor + color blanco → el número quedaba blanco sobre blanco) */
   .grupo-count {
-    margin-left: auto; background: currentColor; color: #fff;
-    border-radius: 99px; font-size: 11px; padding: 1px 8px; opacity: 0.85;
+    margin-left: auto; background: transparent; color: inherit; border: 1.5px solid currentColor;
+    border-radius: 99px; font-size: 11px; font-weight: 900; padding: 0 8px;
   }
 
   #pedidosList { flex: 1; overflow-y: auto; }
@@ -694,6 +695,103 @@
   body.dark-forced .item-f.reemplazo { background:#1a2d4a; border-color:#2255aa; border-left-color:#74b9ff !important; }
   body.dark-forced .reemplazo-label  { color:#74b9ff; background:#1a2d4a; border-color:#2255aa; }
   body.dark-forced .btn-accion-fact  { background:var(--card); border-color:var(--border); color:var(--muted); }
+
+  /* Filas con leyenda "modificado en depósito": no recortar (las filas normales tienen alto fijo) */
+  .item-f:has(.mod-dep) { max-height: none; }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     MODO PANTALLA DIVIDIDA (body.dividida) — se activa solo con la ventana angosta
+     (Laura trabaja con Facturación ML a la izquierda y E-Pyme a la derecha).
+     Objetivo: ver 10-12 artículos sin scrollear en vez de 3-4.
+     El diseño clásico se recupera con el botón ◫ de la barra o con ?ui=clasico.
+     ══════════════════════════════════════════════════════════════════════════ */
+  #btnLayout, #btnListaPedidos, .nav-ped { display: none; }
+  #btnLayout {
+    display: inline-flex; padding: 4px 10px; border-radius: 99px; border: 2px solid var(--border);
+    background: var(--bg); color: var(--muted); font-size: 13px; font-weight: 800; cursor: pointer;
+  }
+  #listaBackdrop { display: none; }
+
+  body.dividida .topbar { height: 44px; padding: 0 10px; gap: 8px; }
+  body.dividida .topbar-title { font-size: 15px; }
+  body.dividida .logo-header { width: 30px; height: 30px; }
+  body.dividida .user-chip { padding: 4px 12px; font-size: 13px; }
+  body.dividida #diaChip { padding: 3px 9px !important; font-size: 12px !important; }
+  body.dividida #btnEnfoque, body.dividida #btnVolver { display: none !important; }
+
+  /* Lista de pedidos: a pantalla completa si no hay pedido abierto; si hay, se abre como panel */
+  body.dividida .body { position: relative; }
+  body.dividida.con-pedido .panel-left { display: none; }
+  body.dividida:not(.con-pedido) .panel-left { width: 100%; border-right: none; }
+  body.dividida:not(.con-pedido) .panel-right { display: none; }
+  body.dividida.con-pedido #btnListaPedidos, body.dividida.con-pedido .nav-ped {
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 99px;
+    border: 2px solid var(--prox); background: var(--prox-bg); color: var(--prox);
+    font-size: 13px; font-weight: 900; cursor: pointer; white-space: nowrap;
+  }
+  body.dividida.con-pedido .nav-ped { padding: 4px 9px; border-color: var(--border); background: var(--bg); color: var(--text); }
+  body.dividida.con-pedido.lista-abierta .panel-left {
+    display: flex; position: absolute; top: 0; left: 0; bottom: 0; width: min(380px, 92%);
+    z-index: 300; box-shadow: 6px 0 24px rgba(0,0,0,.25);
+  }
+  body.dividida.con-pedido.lista-abierta #listaBackdrop {
+    display: block; position: absolute; inset: 0; z-index: 299; background: rgba(15,23,42,.25);
+  }
+
+  /* Encabezado del pedido: 2 líneas apretadas */
+  body.dividida .ped-header { padding: 4px 10px; }
+  body.dividida .ph-row1 { gap: 8px; }
+  body.dividida .ped-num-grande { font-size: 20px; }
+  body.dividida .ped-cliente { font-size: 15px; }
+  body.dividida .ph-row2 { margin-top: 1px; gap: 6px; }
+  body.dividida .ped-entrega { font-size: 12px; }
+  body.dividida .ped-meta, body.dividida .chip { font-size: 11px; }
+  body.dividida #phNumDiario { margin-top: 1px !important; font-size: 11px; }
+  body.dividida .btn-notas-open { padding: 3px 10px; font-size: 12px; }
+
+  /* Botones de acciones: chicos, en una fila, sin la ayuda de teclado */
+  body.dividida .ia-bar { padding: 3px 10px; gap: 6px; }
+  body.dividida .btn-ia { padding: 3px 10px; font-size: 12px; border-width: 1.5px; }
+  body.dividida .kbd-hint { display: none; }
+
+  /* Faltantes de la semana pasada: plegado a un aviso de una línea */
+  body.dividida .faltantes-previos-sec { padding: 4px 10px; border-left-width: 4px; cursor: pointer; }
+  body.dividida .faltantes-previos-title { margin-bottom: 0; font-size: 12px; }
+  body.dividida .faltantes-previos-title::after { content: "  ▸ ver"; font-weight: 700; opacity: .7; }
+  body.dividida .faltantes-previos-sec.abierto .faltantes-previos-title::after { content: "  ▾ ocultar"; }
+  body.dividida .faltantes-previos-sec:not(.abierto) #faltantesPreviosList { display: none; }
+  body.dividida .faltantes-previos-sec.abierto #faltantesPreviosList { margin-top: 4px; }
+
+  /* Artículos compactos: más filas a la vista, tilde grande a la derecha */
+  body.dividida #itemsPanel { padding: 6px 8px; gap: 4px; }
+  body.dividida .item-f {
+    grid-template-columns: 54px 1fr 42px; gap: 8px; padding: 3px 8px;
+    min-height: 46px; max-height: none;
+  }
+  body.dividida .qty-in { height: 38px; font-size: 18px; font-weight: 700; padding: 2px; }
+  body.dividida .chk-f { width: 40px; height: 40px; font-size: 20px; border-radius: 10px; }
+  body.dividida .item-f-desc {
+    font-size: 15px; font-weight: 600; white-space: normal;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  body.dividida .item-f-who { margin-top: 0; }
+  body.dividida .mod-dep { margin-top: 2px; padding: 2px 6px; font-size: 11px; }
+  body.dividida .btn-falt, body.dividida .btn-sust { opacity: .35; transition: opacity .12s; }
+  body.dividida .item-f:hover .btn-falt, body.dividida .item-f:hover .btn-sust,
+  body.dividida .btn-falt.activo { opacity: 1; }
+  /* El próximo artículo que marca Enter queda resaltado (Laura vuelve de E-Pyme y sabe dónde estaba) */
+  body.dividida .item-f.siguiente { border-color: var(--prox); border-left-color: var(--prox); box-shadow: 0 0 0 2px var(--prox-bg); }
+
+  /* Pie en una sola franja: progreso arriba, contadores + botones en la misma línea */
+  body.dividida .ped-footer { padding: 5px 10px 7px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  body.dividida .ped-footer > div:first-child { flex-basis: 100%; margin-bottom: 2px !important; }
+  body.dividida #footerScrollHint, body.dividida #msgMot { display: none !important; }
+  body.dividida .acciones-facturado { flex-basis: 100%; }
+  body.dividida .footer-stats { margin: 0; gap: 10px; font-size: 13px; flex-shrink: 0; }
+  body.dividida .footer-stats .ok-count { font-size: 14px !important; }
+  body.dividida .footer-actions { flex: 1; gap: 8px; min-width: 220px; }
+  body.dividida .btn-facturar { padding: 10px; font-size: 15px; }
+  body.dividida .btn-wa { padding: 8px 14px; font-size: 16px; }
 </style>
 </head>
 <body>
@@ -707,6 +805,11 @@
     <div class="conn-dot" id="connDot"></div>
     <a href="./index.html"><img src="./logo.jpeg" alt="ML" class="logo-header" onerror="this.style.display='none'"/></a>
     <div class="topbar-title">🧾 Facturación ML</div>
+    <!-- Pantalla dividida: lista de pedidos plegada + anterior/siguiente -->
+    <button id="btnListaPedidos" onclick="toggleListaPedidos()" title="Ver la lista de pedidos">☰ Pedidos</button>
+    <button class="nav-ped" onclick="irAnteriorPedido()" title="Pedido anterior (←)">◀</button>
+    <button class="nav-ped" onclick="irSiguientePedido()" title="Pedido siguiente (→)">▶</button>
+    <button id="btnLayout" onclick="cambiarLayout()" title="Cambiar entre diseño para pantalla dividida y diseño clásico">◫</button>
     <button id="btnVolver" onclick="salirEnfoque()" title="Salir del modo enfoque" style="display:none;padding:8px 16px;border-radius:99px;border:2px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-weight:700;cursor:pointer;">← Pedidos</button>
     <button id="btnDark" onclick="toggleDark()" title="Modo oscuro/claro">🌙</button>
     <button id="diaChip" onclick="abrirVistaHoy()" style="display:none;background:var(--succ-bg);color:var(--success);border:2px solid #86efac;padding:5px 12px;border-radius:99px;font-size:13px;font-weight:800;white-space:nowrap;cursor:pointer;"></button>
@@ -714,6 +817,7 @@
   </div>
 
   <div class="body">
+    <div id="listaBackdrop" onclick="toggleListaPedidos(false)"></div>
 
     <!-- PANEL IZQUIERDO -->
     <div class="panel-left">
@@ -791,8 +895,9 @@
         </div>
 
         <!-- Faltantes de la semana pasada -->
-        <div class="faltantes-previos-sec" id="faltantesPreviosSec" style="display:none;">
-          <div class="faltantes-previos-title">⚠️ FALTANTES SEMANA PASADA</div>
+        <div class="faltantes-previos-sec" id="faltantesPreviosSec" style="display:none;"
+          onclick="if (document.body.classList.contains('dividida')) this.classList.toggle('abierto')">
+          <div class="faltantes-previos-title" id="faltantesPreviosTitle">⚠️ FALTANTES SEMANA PASADA</div>
           <div id="faltantesPreviosList"></div>
         </div>
 
@@ -1595,6 +1700,12 @@ function actualizarStats() {
   const accionesFact = document.getElementById("accionesFacturado");
   if (accionesFact) accionesFact.style.display = pedidoActivo?.estado === "facturado" ? "flex" : "none";
 
+  // Resaltar el próximo artículo que marcaría Enter (mismo criterio que marcarSiguientePendiente)
+  document.querySelectorAll(".item-f.siguiente").forEach(r => r.classList.remove("siguiente"));
+  const sig = itemsActivos.find(i => !i.facturado && !i.es_faltante && !i.es_reemplazo);
+  if (sig && pedidoActivo?.estado !== "facturado")
+    document.getElementById(`ifrow-${sig.id}`)?.classList.add("siguiente");
+
   // Mensaje motivacional según progreso
   const msgEl = document.getElementById("msgMot");
   const listos = ok + falt;
@@ -1956,6 +2067,9 @@ async function cargarFaltantesPrevios(clienteId, pedidoActualId) {
           <span class="faltante-prev-qty">${f.cantidad}</span>
           <span>${escHtml(f.descripcion)}</span>
         </div>`).join("");
+    document.getElementById("faltantesPreviosTitle").textContent =
+      `⚠️ FALTANTES SEMANA PASADA (${unicos.length})`;
+    sec.classList.remove("abierto"); // en pantalla dividida arranca plegado
     sec.style.display = "block";
   } catch(_) {}
 }
@@ -2391,6 +2505,55 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault(); irAnteriorPedido();
   }
 });
+
+// ── MODO PANTALLA DIVIDIDA ──
+// Con la ventana angosta (Laura usa Facturación ML a media pantalla al lado de E-Pyme) la
+// lista de pedidos se pliega y todo se compacta para ver más artículos. Automático por ancho;
+// el botón ◫ (o ?ui=clasico) fuerza el diseño clásico y se recuerda en este equipo.
+const ANCHO_DIVIDIDA = 1100;
+function layoutForzadoClasico() {
+  if (new URLSearchParams(location.search).get("ui") === "clasico") return true;
+  try { return localStorage.getItem("factLayout") === "clasico"; } catch(_) { return false; }
+}
+function aplicarLayout() {
+  const dividida = !layoutForzadoClasico() && window.innerWidth <= ANCHO_DIVIDIDA;
+  const antes = document.body.classList.contains("dividida");
+  document.body.classList.toggle("dividida", dividida);
+  if (dividida) salirEnfoque(); // el modo enfoque no hace falta: esto ya es más compacto
+  const btn = document.getElementById("btnLayout");
+  if (btn) {
+    const angosta = window.innerWidth <= ANCHO_DIVIDIDA;
+    btn.style.display = angosta ? "inline-flex" : "none";  // con pantalla ancha no tiene sentido
+    btn.textContent = dividida ? "◫" : "▭";
+    btn.title = dividida ? "Pasar al diseño clásico" : "Pasar al diseño para pantalla dividida";
+  }
+  if (antes !== dividida) setTimeout(_checkScrollLock, 80);
+}
+function cambiarLayout() {
+  try {
+    if (layoutForzadoClasico()) localStorage.removeItem("factLayout");
+    else localStorage.setItem("factLayout", "clasico");
+  } catch(_) {}
+  if (new URLSearchParams(location.search).get("ui") === "clasico") history.replaceState(null, "", location.pathname);
+  aplicarLayout();
+}
+function toggleListaPedidos(abrir) {
+  document.body.classList.toggle("lista-abierta", abrir);
+}
+// "con-pedido" sigue a si el panel del pedido está visible (lo prenden/apagan varias funciones)
+function sincronizarConPedido() {
+  const pp = document.getElementById("pedidoPanel");
+  const abierto = pp && pp.style.display !== "none" && pp.style.display !== "";
+  document.body.classList.toggle("con-pedido", !!abierto);
+  if (!abierto) document.body.classList.remove("lista-abierta");
+}
+new MutationObserver(sincronizarConPedido)
+  .observe(document.getElementById("pedidoPanel"), { attributes: true, attributeFilter: ["style"] });
+// Al elegir un pedido desde el panel desplegado, cerrarlo
+document.getElementById("pedidosList").addEventListener("click", () => toggleListaPedidos(false));
+window.addEventListener("resize", () => { clearTimeout(window._rzT); window._rzT = setTimeout(aplicarLayout, 120); });
+aplicarLayout();
+sincronizarConPedido();
 
 // ── INIT ──
 function iniciarApp() {
