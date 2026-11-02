@@ -450,6 +450,39 @@ function buildSystemPrompt(ctx, perfil, memorias) {
 // =========================================================
 // HANDLER PRINCIPAL
 // =========================================================
+// Pedido todavía no aceptado: ¿cambió la cartera con la que se armó? Solo lo dice;
+// no reasigna ni borra. Ante cualquier duda deja pasar: nunca frena una venta por un error acá.
+async function asignacionCambiada(env, p) {
+  try {
+    const vista = p.carteraVista && String(p.carteraVista.vendedor || "").trim().toUpperCase();
+    const cli = String(p.numeroCliente || p.cliente || "");
+    if (!vista || !cli || !p.sig) return null;
+    const ya = await supabaseQuery(env, "pedidos", `sig=eq.${encodeURIComponent(p.sig)}&select=id&limit=1`);
+    if (!ya || ya.length) return null;
+    const emisor = String(p.nombreVendedor || "").trim().toUpperCase();
+    const fila = p.vendedorId
+      ? await supabaseQuery(env, "vendedores", `id=eq.${encodeURIComponent(p.vendedorId)}&select=nombre,activo&limit=1`)
+      : await supabaseQuery(env, "vendedores", `nombre=eq.${encodeURIComponent(emisor)}&select=nombre,activo&limit=1`);
+    const yo = fila && fila[0];
+    if (yo && yo.activo === false) return { motivo: "baja", cliente: cli, vendedor_pedido: yo.nombre };
+    const yoNombre = yo ? String(yo.nombre).toUpperCase() : emisor;
+    if (yoNombre === "MERCADO LIMPIO") return null;
+    const c = await supabaseQuery(env, "clientes", `id=eq.${encodeURIComponent(cli)}&select=vendedor&limit=1`);
+    if (!c || !c[0]) return null;
+    const actual = String(c[0].vendedor || "").trim().toUpperCase();
+    if (actual === vista || actual === yoNombre) return null;
+    // Una corrección de nombre no es un cambio de cartera (identidad de la migración 022).
+    const clave = async n => {
+      const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/qr_vendedor_clave`, { method: "POST",
+        headers: { "Content-Type": "application/json", apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` },
+        body: JSON.stringify({ p: n }) });
+      return r.ok ? r.json() : null;
+    };
+    if (actual) { const [a, b] = await Promise.all([clave(actual), clave(vista)]); if (a && a === b) return null; }
+    return { motivo: "cartera", cliente: cli, vendedor_pedido: yoNombre, vendedor_visto: vista, vendedor_actual: actual || "sin vendedor" };
+  } catch (e) { return null; }
+}
+
 export default {
   async fetch(request, env, ctx) {
     try {
@@ -912,6 +945,9 @@ export default {
           if (accion === "crear_vendedor") {
             const { nombre, username, pin } = bodyJson;
             if (!nombre || !username || !pin) return jsonResponse({ exito: false, error: "Faltan nombre, username o pin" });
+            // Visitas y jornadas van por nombre: repetir el de otra persona, aunque esté de baja, le pasaría su historial.
+            const mismoNombre = await supabaseQuery(env, "vendedores", `nombre=eq.${encodeURIComponent(String(nombre).trim().toUpperCase())}&select=id,activo&limit=1`);
+            if (!mismoNombre || mismoNombre.length) return jsonResponse({ exito: false, error: `Ya existe o existió un vendedor llamado ${String(nombre).trim().toUpperCase()}. Usá nombre y apellido para distinguirlo.` });
             const res = await supabaseInsert(env, "vendedores", {
               nombre: String(nombre).trim().toUpperCase(),
               username: String(username).trim().toLowerCase(),
@@ -1301,6 +1337,8 @@ export default {
 
         // ── RUTA PEDIDO (app-pedidos — sin cambio) ──
         if (bodyJson && (bodyJson.fechaEntrega || bodyJson.fecha_entrega || bodyJson.numeroCliente || bodyJson.cliente)) {
+          const asignacion = await asignacionCambiada(env, bodyJson);
+          if (asignacion) return jsonResponse({ status: "cartera_cambio", sig: bodyJson.sig, asignacion }, 409);
           const pedidoRow = {
             sig:            bodyJson.sig || String(Date.now()),
             vendedor:       (bodyJson.nombreVendedor || bodyJson.vendedor || "").toUpperCase(),
