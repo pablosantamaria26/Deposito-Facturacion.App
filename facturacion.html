@@ -98,9 +98,10 @@
   .grupo-header.hoy   { background: var(--hoy-bg);  color: var(--hoy); border-left: 4px solid var(--hoy); }
   .grupo-header.man   { background: var(--man-bg);  color: var(--manana); border-left: 4px solid var(--manana); }
   .grupo-header.prox  { background: var(--prox-bg); color: var(--prox); border-left: 4px solid var(--prox); }
+  /* (antes: background currentColor + color blanco → el número quedaba blanco sobre blanco) */
   .grupo-count {
-    margin-left: auto; background: currentColor; color: #fff;
-    border-radius: 99px; font-size: 11px; padding: 1px 8px; opacity: 0.85;
+    margin-left: auto; background: transparent; color: inherit; border: 1.5px solid currentColor;
+    border-radius: 99px; font-size: 11px; font-weight: 900; padding: 0 8px;
   }
 
   #pedidosList { flex: 1; overflow-y: auto; }
@@ -342,6 +343,15 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
+  /* Artículo que el depósito cambió (nombre y/o cantidad): Laura tiene que verlo antes de facturar */
+  .mod-dep {
+    margin-top: 4px; padding: 4px 8px; border-radius: 6px;
+    background: #fef3c7; border: 1px solid #fcd34d; color: #92400e;
+    font-size: 12px; font-weight: 700; line-height: 1.35;
+  }
+  .mod-dep b { font-weight: 900; }
+  .mod-dep-det { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
   /* Badge + card estilo para pedidos de faltantes */
   .badge-faltante{
     display:inline-flex;align-items:center;gap:5px;
@@ -408,6 +418,7 @@
   }
   .toast.ok    { background: var(--success); }
   .toast.error { background: var(--hoy); }
+  .toast.warn  { background: #d97706; }
 
   .empty-right {
     flex:1; display:flex; flex-direction:column;
@@ -684,6 +695,124 @@
   body.dark-forced .item-f.reemplazo { background:#1a2d4a; border-color:#2255aa; border-left-color:#74b9ff !important; }
   body.dark-forced .reemplazo-label  { color:#74b9ff; background:#1a2d4a; border-color:#2255aa; }
   body.dark-forced .btn-accion-fact  { background:var(--card); border-color:var(--border); color:var(--muted); }
+
+  /* ── FILAS A PRUEBA DE SOLAPAMIENTO (ambos diseños) ──
+     #itemsPanel es una columna flex de alto fijo: como las filas tenían overflow:hidden, el
+     navegador podía ACHICARLAS por debajo de su contenido (flex-shrink) y los artículos con
+     "modificado en depósito" quedaban aplastados y encimados. Ahora cada fila mide lo que
+     necesita su contenido, el texto largo pasa a otro renglón y nada se recorta. */
+  #itemsPanel > * { flex-shrink: 0; }
+  .item-f { max-height: none !important; height: auto; }
+  .item-f, .item-f.reemplazo { grid-template-columns: 80px minmax(0, 1fr) 60px !important; }
+  .item-f.reemplazo { grid-template-columns: 32px minmax(0, 1fr) 44px !important; }
+  .item-f > div { min-width: 0; }
+  .item-f-name-row { align-items: flex-start; }
+  .item-f-name-row .btn-sust, .item-f-name-row .btn-falt { margin-top: 1px; }
+  .item-f-desc { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+  .mod-dep-det, .reemplazo-origin { white-space: normal; overflow-wrap: anywhere; }
+  .item-f-who { white-space: normal; }
+  @media(max-width:780px) { .item-f:not(.reemplazo) { grid-template-columns: 68px minmax(0, 1fr) 52px !important; } }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     MODO PANTALLA DIVIDIDA (body.compacta) — se activa solo con la ventana angosta
+     (Laura trabaja con Facturación ML a la izquierda y E-Pyme a la derecha).
+     Objetivo: ver 10-12 artículos sin scrollear en vez de 3-4.
+     El diseño clásico se recupera con el botón ◫ de la barra o con ?ui=clasico.
+     ══════════════════════════════════════════════════════════════════════════ */
+  #btnLayout, #btnListaPedidos, .nav-ped { display: none; }
+  #btnLayout {
+    display: inline-flex; padding: 4px 10px; border-radius: 99px; border: 2px solid var(--border);
+    background: var(--bg); color: var(--muted); font-size: 13px; font-weight: 800; cursor: pointer;
+  }
+  #listaBackdrop { display: none; }
+
+  body.compacta .topbar { height: 44px; padding: 0 10px; gap: 8px; }
+  body.compacta .topbar > * { flex-shrink: 0; }
+  /* Si falta lugar, ceden primero el título y el contador del día (nunca se salen los botones) */
+  body.compacta .topbar-title {
+    font-size: 15px; flex: 1 1 0; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  body.compacta #diaChip { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 720px) {
+    body.compacta .topbar { gap: 5px; padding: 0 6px; }
+    body.compacta .topbar-title, body.compacta .logo-header { display: none; }
+    body.compacta .topbar .user-chip { padding: 4px 9px; }
+    body.dividida.con-pedido #btnListaPedidos { padding: 4px 9px; }
+  }
+  body.compacta .logo-header { width: 30px; height: 30px; }
+  body.compacta .user-chip { padding: 4px 12px; font-size: 13px; }
+  body.compacta #diaChip { padding: 3px 9px !important; font-size: 12px !important; }
+  body.dividida #btnEnfoque, body.dividida #btnVolver { display: none !important; }
+
+  /* Lista de pedidos: a pantalla completa si no hay pedido abierto; si hay, se abre como panel */
+  body.dividida .body { position: relative; }
+  body.dividida.con-pedido .panel-left { display: none; }
+  body.dividida:not(.con-pedido) .panel-left { width: 100%; border-right: none; }
+  body.dividida:not(.con-pedido) .panel-right { display: none; }
+  body.dividida.con-pedido #btnListaPedidos, body.dividida.con-pedido .nav-ped {
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 99px;
+    border: 2px solid var(--prox); background: var(--prox-bg); color: var(--prox);
+    font-size: 13px; font-weight: 900; cursor: pointer; white-space: nowrap;
+  }
+  body.dividida.con-pedido .nav-ped { padding: 4px 9px; border-color: var(--border); background: var(--bg); color: var(--text); }
+  body.dividida.con-pedido.lista-abierta .panel-left {
+    display: flex; position: absolute; top: 0; left: 0; bottom: 0; width: min(380px, 92%);
+    z-index: 300; box-shadow: 6px 0 24px rgba(0,0,0,.25);
+  }
+  body.dividida.con-pedido.lista-abierta #listaBackdrop {
+    display: block; position: absolute; inset: 0; z-index: 299; background: rgba(15,23,42,.25);
+  }
+
+  /* Encabezado del pedido: 2 líneas apretadas */
+  body.compacta .ped-header { padding: 4px 10px; }
+  body.compacta .ph-row1 { gap: 8px; }
+  body.compacta .ped-num-grande { font-size: 20px; }
+  body.compacta .ped-cliente { font-size: 15px; }
+  body.compacta .ph-row2 { margin-top: 1px; gap: 6px; }
+  body.compacta .ped-entrega { font-size: 12px; }
+  body.compacta .ped-meta, body.compacta .chip { font-size: 11px; }
+  body.compacta #phNumDiario { margin-top: 1px !important; font-size: 11px; }
+  body.compacta .btn-notas-open { padding: 3px 10px; font-size: 12px; }
+
+  /* Botones de acciones: chicos, en una fila, sin la ayuda de teclado */
+  body.compacta .ia-bar { padding: 3px 10px; gap: 6px; }
+  body.compacta .btn-ia { padding: 3px 10px; font-size: 12px; border-width: 1.5px; }
+  body.compacta .kbd-hint { display: none; }
+
+  /* Faltantes de la semana pasada: plegado a un aviso de una línea */
+  body.compacta .faltantes-previos-sec { padding: 4px 10px; border-left-width: 4px; cursor: pointer; }
+  body.compacta .faltantes-previos-title { margin-bottom: 0; font-size: 12px; }
+  body.compacta .faltantes-previos-title::after { content: "  ▸ ver"; font-weight: 700; opacity: .7; }
+  body.compacta .faltantes-previos-sec.abierto .faltantes-previos-title::after { content: "  ▾ ocultar"; }
+  body.compacta .faltantes-previos-sec:not(.abierto) #faltantesPreviosList { display: none; }
+  body.compacta .faltantes-previos-sec.abierto #faltantesPreviosList { margin-top: 4px; }
+
+  /* Artículos compactos: más filas a la vista, tilde grande a la derecha */
+  body.compacta #itemsPanel { padding: 6px 8px; gap: 4px; }
+  body.compacta .item-f:not(.reemplazo) { grid-template-columns: 54px minmax(0, 1fr) 42px !important; }
+  body.compacta .item-f { gap: 8px; padding: 4px 8px; min-height: 46px; }
+  body.compacta .qty-in { height: 38px; font-size: 18px; font-weight: 700; padding: 2px; }
+  body.compacta .chk-f { width: 40px; height: 40px; font-size: 20px; border-radius: 10px; }
+  body.compacta .item-f-desc { font-size: 15px; font-weight: 600; line-height: 1.25; }
+  body.compacta .item-f-who { margin-top: 0; }
+  body.compacta .mod-dep { margin-top: 2px; padding: 2px 6px; font-size: 11px; }
+  body.compacta .btn-falt, body.compacta .btn-sust { opacity: .35; transition: opacity .12s; }
+  body.compacta .item-f:hover .btn-falt, body.compacta .item-f:hover .btn-sust,
+  body.compacta .btn-falt.activo { opacity: 1; }
+  /* El próximo artículo que marca Enter queda resaltado (Laura vuelve de E-Pyme y sabe dónde estaba) */
+  body.compacta .item-f.siguiente { border-color: var(--prox); border-left-color: var(--prox); box-shadow: 0 0 0 2px var(--prox-bg); }
+
+  /* Pie en una sola franja: progreso arriba, contadores + botones en la misma línea */
+  body.compacta .ped-footer { padding: 5px 10px 7px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  body.compacta .ped-footer > div:first-child { flex-basis: 100%; margin-bottom: 2px !important; }
+  body.compacta #footerScrollHint, body.compacta #msgMot { display: none !important; }
+  body.compacta .acciones-facturado { flex-basis: 100%; }
+  body.compacta .footer-stats { margin: 0; gap: 10px; font-size: 13px; flex-shrink: 0; }
+  body.compacta .footer-stats .ok-count { font-size: 14px !important; }
+  body.compacta .footer-actions { flex: 1; gap: 8px; min-width: 220px; }
+  body.compacta .btn-facturar { padding: 10px; font-size: 15px; }
+  body.compacta .btn-wa { padding: 8px 14px; font-size: 16px; }
 </style>
 </head>
 <body>
@@ -697,6 +826,11 @@
     <div class="conn-dot" id="connDot"></div>
     <a href="./index.html"><img src="./logo.jpeg" alt="ML" class="logo-header" onerror="this.style.display='none'"/></a>
     <div class="topbar-title">🧾 Facturación ML</div>
+    <!-- Pantalla dividida: lista de pedidos plegada + anterior/siguiente -->
+    <button id="btnListaPedidos" onclick="toggleListaPedidos()" title="Ver la lista de pedidos">☰ Pedidos</button>
+    <button class="nav-ped" onclick="irAnteriorPedido()" title="Pedido anterior (←)">◀</button>
+    <button class="nav-ped" onclick="irSiguientePedido()" title="Pedido siguiente (→)">▶</button>
+    <button id="btnLayout" onclick="cambiarLayout()" title="Cambiar entre diseño para pantalla dividida y diseño clásico">◫</button>
     <button id="btnVolver" onclick="salirEnfoque()" title="Salir del modo enfoque" style="display:none;padding:8px 16px;border-radius:99px;border:2px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-weight:700;cursor:pointer;">← Pedidos</button>
     <button id="btnDark" onclick="toggleDark()" title="Modo oscuro/claro">🌙</button>
     <button id="diaChip" onclick="abrirVistaHoy()" style="display:none;background:var(--succ-bg);color:var(--success);border:2px solid #86efac;padding:5px 12px;border-radius:99px;font-size:13px;font-weight:800;white-space:nowrap;cursor:pointer;"></button>
@@ -704,6 +838,7 @@
   </div>
 
   <div class="body">
+    <div id="listaBackdrop" onclick="toggleListaPedidos(false)"></div>
 
     <!-- PANEL IZQUIERDO -->
     <div class="panel-left">
@@ -781,8 +916,9 @@
         </div>
 
         <!-- Faltantes de la semana pasada -->
-        <div class="faltantes-previos-sec" id="faltantesPreviosSec" style="display:none;">
-          <div class="faltantes-previos-title">⚠️ FALTANTES SEMANA PASADA</div>
+        <div class="faltantes-previos-sec" id="faltantesPreviosSec" style="display:none;"
+          onclick="if (document.body.classList.contains('compacta')) this.classList.toggle('abierto')">
+          <div class="faltantes-previos-title" id="faltantesPreviosTitle">⚠️ FALTANTES SEMANA PASADA</div>
           <div id="faltantesPreviosList"></div>
         </div>
 
@@ -1011,7 +1147,36 @@ async function sbInsert(table, data) {
   return r.ok;
 }
 
+// ── POLLING AHORRATIVO ──
+// Realtime ya avisa los cambios al instante; el polling es solo red de seguridad.
+// Se consulta únicamente si la pestaña está a la vista y alguien la usó en los últimos
+// 15 min: una PC que queda abierta toda la noche no le pega a Supabase (el 29/9/2026 el
+// polling nocturno agotó el Disk IO budget de la instancia NANO y se colgó todo).
+const INACTIVIDAD_MS = 15 * 60000;
+let _ultimaActividad = Date.now();
+["pointerdown","keydown","touchstart","wheel"].forEach(ev =>
+  addEventListener(ev, () => { _ultimaActividad = Date.now(); }, { passive:true }));
+// Horario de trabajo: lunes a viernes de 7 a 17 (hora Argentina, UTC-3 todo el año).
+// Fuera de horario la app igual carga al abrirla o al volver a la pestaña; solo se apaga el polling de fondo.
+function enHorarioLaboral() {
+  const ar = new Date(Date.now() - 3 * 3600000);
+  const dia = ar.getUTCDay(), hora = ar.getUTCHours();
+  return dia >= 1 && dia <= 5 && hora >= 7 && hora < 17;
+}
+function appEnUso() {
+  return enHorarioLaboral() && !document.hidden && Date.now() - _ultimaActividad < INACTIVIDAD_MS;
+}
+function cadaTantoSiEnUso(fn, ms) { setInterval(() => { if (appEnUso()) fn(); }, ms); }
+// Al volver a la app: refrescar ya, por si Realtime se perdió algo mientras no se miraba
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || !currentUser) return;
+  _ultimaActividad = Date.now();
+  cargarPedidos();
+  actualizarResumenDiario();
+});
+
 // ── REALTIME ──
+let _rtEspera = 3000, _rtYaConecto = false;
 function conectarRealtime() {
   const ws = new WebSocket(
     `${SUPABASE_URL.replace("https://","wss://")}/realtime/v1/websocket?apikey=${SUPABASE_ANON}&vsn=1.0.0`
@@ -1019,6 +1184,9 @@ function conectarRealtime() {
   let hb;
   ws.onopen = () => {
     setConn("online");
+    _rtEspera = 3000;
+    if (_rtYaConecto) cargarPedidos(); // reconexión: traer lo que cambió mientras estuvo caído
+    _rtYaConecto = true;
     ["pedidos","items_pedido"].forEach((t,i) => ws.send(JSON.stringify({
       topic:`realtime:public:${t}`, event:"phx_join",
       payload:{ config:{ postgres_changes:[{ event:"*", schema:"public", table:t }] } }, ref: String(i+1)
@@ -1050,7 +1218,12 @@ function conectarRealtime() {
       }
     } catch(_) {}
   };
-  ws.onclose = () => { setConn("offline"); clearInterval(hb); setTimeout(conectarRealtime, 3000); };
+  // Reintento con espera creciente (3s → 6s → … → 60s): si Supabase está caído, no martillarlo
+  ws.onclose = () => {
+    setConn("offline"); clearInterval(hb);
+    setTimeout(conectarRealtime, _rtEspera);
+    _rtEspera = Math.min(_rtEspera * 2, 60000);
+  };
   ws.onerror = () => setConn("offline");
 }
 function setConn(s) { const d=document.getElementById("connDot"); if(d) d.className="conn-dot "+s; }
@@ -1284,18 +1457,40 @@ async function recargarItems() {
     return;
   }
   // Diff: solo actualizar filas que cambiaron y no están en proceso localmente
-  let algoCambio = false;
+  let algoCambio = false, cambioDeposito = false;
   nuevos.forEach((item, i) => {
     const viejo = itemsActivos[i];
     if (!viejo || _pendingItems.has(item.id)) return; // ignorar cambios locales en vuelo
-    if (viejo.facturado !== item.facturado || viejo.es_faltante !== item.es_faltante ||
+    // El depósito editó el artículo (nombre/cantidad) con el pedido abierto acá → re-render completo
+    if (viejo.modificado !== item.modificado || viejo.descripcion !== item.descripcion ||
+        viejo.cantidad !== item.cantidad || viejo.cantidad_original !== item.cantidad_original) {
+      itemsActivos[i] = item;
+      cambioDeposito = true;
+    } else if (viejo.facturado !== item.facturado || viejo.es_faltante !== item.es_faltante ||
         viejo.cantidad_real !== item.cantidad_real) {
       itemsActivos[i] = item;
       _updateRowDOM(item);
       algoCambio = true;
     }
   });
-  if (algoCambio) actualizarStats();
+  if (cambioDeposito) {
+    renderItemsF();
+    toast("⚠️ Depósito modificó un artículo de este pedido", "warn");
+  } else if (algoCambio) actualizarStats();
+}
+
+// Leyenda "Artículo modificado en depósito" con el detalle de qué cambió, si se sabe.
+// (nombre_original existe desde siempre; cantidad_original se guarda desde oct-2026: en los
+// artículos viejos con cantidad cambiada solo se ve la leyenda, sin el número anterior)
+function leyendaModDeposito(item) {
+  if (!item.modificado) return "";
+  const det = [];
+  if (item.nombre_original && item.nombre_original !== item.descripcion)
+    det.push(`Pedido: ${escHtml(item.nombre_original)}`);
+  if (item.cantidad_original != null && Number(item.cantidad_original) !== Number(item.cantidad))
+    det.push(`Cantidad pedida: <b>${item.cantidad_original}</b> → depósito: <b>${item.cantidad}</b>`);
+  return `<div class="mod-dep">⚠️ Artículo modificado en depósito` +
+    det.map(d => `<div class="mod-dep-det">${d}</div>`).join("") + `</div>`;
 }
 
 function renderItemsF() {
@@ -1354,6 +1549,7 @@ function renderItemsF() {
               onclick="event.stopPropagation();toggleFaltante('${item.id}',${i})"
               title="Marcar faltante">⚠️</button>
           </div>
+          ${leyendaModDeposito(item)}
           ${item.facturado_por ? `<div class="item-f-who">✓ ${item.facturado_por} · ${fmtTime(item.facturado_at)}</div>` : ""}
         </div>
         <button class="chk-f ${chkCls}"
@@ -1524,6 +1720,12 @@ function actualizarStats() {
 
   const accionesFact = document.getElementById("accionesFacturado");
   if (accionesFact) accionesFact.style.display = pedidoActivo?.estado === "facturado" ? "flex" : "none";
+
+  // Resaltar el próximo artículo que marcaría Enter (mismo criterio que marcarSiguientePendiente)
+  document.querySelectorAll(".item-f.siguiente").forEach(r => r.classList.remove("siguiente"));
+  const sig = itemsActivos.find(i => !i.facturado && !i.es_faltante && !i.es_reemplazo);
+  if (sig && pedidoActivo?.estado !== "facturado")
+    document.getElementById(`ifrow-${sig.id}`)?.classList.add("siguiente");
 
   // Mensaje motivacional según progreso
   const msgEl = document.getElementById("msgMot");
@@ -1886,6 +2088,9 @@ async function cargarFaltantesPrevios(clienteId, pedidoActualId) {
           <span class="faltante-prev-qty">${f.cantidad}</span>
           <span>${escHtml(f.descripcion)}</span>
         </div>`).join("");
+    document.getElementById("faltantesPreviosTitle").textContent =
+      `⚠️ FALTANTES SEMANA PASADA (${unicos.length})`;
+    sec.classList.remove("abierto"); // en pantalla dividida arranca plegado
     sec.style.display = "block";
   } catch(_) {}
 }
@@ -2322,15 +2527,71 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// ── MODO PANTALLA DIVIDIDA / COMPACTO ──
+// Dos ajustes automáticos según el tamaño de la ventana:
+//  · body.compacta (ventana angosta O baja): encabezado, filas y pie apretados para ver más artículos.
+//  · body.dividida (ventana angosta, p.ej. media pantalla al lado de E-Pyme): además la lista de
+//    pedidos se pliega a un botón "☰ Pedidos".
+// El botón ◫ (o ?ui=clasico) fuerza el diseño clásico y se recuerda en este equipo.
+const ANCHO_DIVIDIDA = 1100;   // menos que esto: la lista de pedidos no entra al costado
+const ALTO_COMPACTO  = 820;    // menos que esto (notebook 1366x768): no entran los artículos
+function layoutForzadoClasico() {
+  if (new URLSearchParams(location.search).get("ui") === "clasico") return true;
+  try { return localStorage.getItem("factLayout") === "clasico"; } catch(_) { return false; }
+}
+function aplicarLayout() {
+  const angosta = window.innerWidth <= ANCHO_DIVIDIDA;
+  const baja    = window.innerHeight <= ALTO_COMPACTO;
+  const clasico = layoutForzadoClasico();
+  const dividida = !clasico && angosta;
+  const compacta = !clasico && (angosta || baja);
+  const antes = document.body.className;
+  document.body.classList.toggle("dividida", dividida);
+  document.body.classList.toggle("compacta", compacta);
+  if (dividida) salirEnfoque(); // el modo enfoque no hace falta: la lista ya está plegada
+  const btn = document.getElementById("btnLayout");
+  if (btn) {
+    btn.style.display = (angosta || baja) ? "inline-flex" : "none";  // en pantallas grandes no hace falta
+    btn.textContent = compacta ? "◫" : "▭";
+    btn.title = compacta ? "Pasar al diseño clásico" : "Pasar al diseño compacto";
+  }
+  if (antes !== document.body.className) setTimeout(_checkScrollLock, 80);
+}
+function cambiarLayout() {
+  try {
+    if (layoutForzadoClasico()) localStorage.removeItem("factLayout");
+    else localStorage.setItem("factLayout", "clasico");
+  } catch(_) {}
+  if (new URLSearchParams(location.search).get("ui") === "clasico") history.replaceState(null, "", location.pathname);
+  aplicarLayout();
+}
+function toggleListaPedidos(abrir) {
+  document.body.classList.toggle("lista-abierta", abrir);
+}
+// "con-pedido" sigue a si el panel del pedido está visible (lo prenden/apagan varias funciones)
+function sincronizarConPedido() {
+  const pp = document.getElementById("pedidoPanel");
+  const abierto = pp && pp.style.display !== "none" && pp.style.display !== "";
+  document.body.classList.toggle("con-pedido", !!abierto);
+  if (!abierto) document.body.classList.remove("lista-abierta");
+}
+new MutationObserver(sincronizarConPedido)
+  .observe(document.getElementById("pedidoPanel"), { attributes: true, attributeFilter: ["style"] });
+// Al elegir un pedido desde el panel desplegado, cerrarlo
+document.getElementById("pedidosList").addEventListener("click", () => toggleListaPedidos(false));
+window.addEventListener("resize", () => { clearTimeout(window._rzT); window._rzT = setTimeout(aplicarLayout, 120); });
+aplicarLayout();
+sincronizarConPedido();
+
 // ── INIT ──
 function iniciarApp() {
   cargarPedidos(); // renderLista se llama dentro cuando llegan datos
   conectarRealtime();
   actualizarResumenDiario();
-  setInterval(cargarPedidos, 30000);
-  setInterval(actualizarResumenDiario, 60000);
+  cadaTantoSiEnUso(cargarPedidos, 120000);
+  cadaTantoSiEnUso(actualizarResumenDiario, 300000); // además se actualiza al facturar
   // Refresca "En proceso" cada 30s para mover armando→listo cuando pasan los 2min
-  setInterval(() => {
+  cadaTantoSiEnUso(() => {
     if (document.getElementById("armarView").style.display !== "none") cargarEnProceso();
   }, 30000);
 }

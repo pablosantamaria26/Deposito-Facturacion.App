@@ -810,7 +810,7 @@ a { text-decoration: none; }
   </div>
 
   <!-- REFRESH INFO -->
-  <div class="refresh-row fade-up" id="refreshRow">
+  <div class="refresh-row fade-up" id="refreshRow" style="cursor:pointer" title="Actualizar datos">
     <div class="refresh-dot" id="refreshDot"></div>
     <span id="refreshLabel">Conectando...</span>
   </div>
@@ -2348,7 +2348,7 @@ async function loadAll() {
   ]);
 
   const now = new Date().toLocaleTimeString("es-AR", { hour:"2-digit", minute:"2-digit" });
-  document.getElementById("refreshLabel").textContent = `Actualizado ${now}`;
+  document.getElementById("refreshLabel").textContent = `Actualizado ${now} · tocá para actualizar`;
   document.getElementById("refreshDot").classList.remove("stale");
 }
 
@@ -2439,6 +2439,7 @@ function pinKey(k) {
     if (pinBuffer === PIN_CORRECT) {
       pinSetAuth();
       document.getElementById("pinOverlay").classList.add("hidden");
+      _ultimaCarga = Date.now();
       loadAll();
     } else {
       pinUpdateDots(true);
@@ -2466,12 +2467,32 @@ document.addEventListener("keydown", (e) => {
 // ════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════
-if (pinIsAuth()) {
-  document.getElementById("pinOverlay").classList.add("hidden");
+// Sin auto-refresh: los datos se traen SOLO cuando se abre la app para mirarla (igual que
+// stock). loadAll es la carga más pesada de todas las apps (~64 requests: 14 meses de
+// pedidos e ítems) y el 29/9/2026 el polling de pestañas olvidadas abiertas agotó el Disk IO
+// budget de la instancia NANO de Supabase. Se carga: al abrir, al volver a la app si los
+// datos tienen más de 5 min (en el celular volver a la PWA equivale a abrirla), o a mano
+// tocando "Actualizado hh:mm". Cerrada o en segundo plano → cero consultas.
+const DATOS_VIEJOS_MS = 5 * 60 * 1000;
+let _ultimaCarga = 0;
+function recargarSiViejo() {
+  if (!pinIsAuth() || document.hidden) return;
+  if (Date.now() - _ultimaCarga < DATOS_VIEJOS_MS) return;
+  _ultimaCarga = Date.now();
   loadAll();
 }
-// Auto-refresh cada 5 minutos (solo si ya está autenticado)
-setInterval(() => { if (pinIsAuth()) loadAll(); }, 5 * 60 * 1000);
+document.addEventListener("visibilitychange", recargarSiViejo);
+document.getElementById("refreshRow").addEventListener("click", () => {
+  if (!pinIsAuth()) return;
+  _ultimaCarga = Date.now();
+  loadAll();
+});
+
+if (pinIsAuth()) {
+  document.getElementById("pinOverlay").classList.add("hidden");
+  _ultimaCarga = Date.now();
+  loadAll();
+}
 // ════════════════════════════════════════════
 // MODAL FALTANTES POR VENDEDOR
 // ════════════════════════════════════════════
