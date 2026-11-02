@@ -7,6 +7,7 @@
 //   SUPABASE_SERVICE_KEY → service_role key (NO la anon key) para bypass RLS
 // =========================================================
 
+const GESTOR_GAS_URL = "https://script.google.com/macros/s/AKfycbzFF0GDbnLuqCgM8K1QHS5ID5tw6J8RprfgVog3fpJ3dlTBsep_pOlR4TXTeGzMPxrwSg/exec";
 const GAS_URL = "https://script.google.com/macros/s/AKfycbx658Gk5bxbTeuItQEBZm0zHF0mNk4q6IcZJ_x7sfTSZPvcB41UFT-FFvzrTFLR013L/exec";
 
 const baseCorsHeaders = {
@@ -919,6 +920,82 @@ export default {
             });
             if (!res) return jsonResponse({ exito: false, error: "No se pudo crear (¿username duplicado?)" });
             return jsonResponse({ exito: true, vendedor: res[0] || null });
+          }
+
+          // Edita nombre/username/pin de un vendedor. Si cambia el nombre, primero
+          // actualiza planilla+clientes (si eso falla no se toca nada) y despues
+          // visitas/jornadas. Los pedidos conservan el nombre con que se tomaron.
+          if (accion === "editar_vendedor") {
+            const { id, nombre, username, pin } = bodyJson;
+            if (!id) return jsonResponse({ exito: false, error: "Falta id" });
+
+            const actuales = await supabaseQuery(env, "vendedores", `id=eq.${encodeURIComponent(id)}&select=nombre,username`);
+            if (!actuales || !actuales[0]) return jsonResponse({ exito: false, error: "Vendedor no encontrado" });
+            const nombreViejo = actuales[0].nombre;
+
+            const cambios = {};
+            if (nombre && String(nombre).trim()) cambios.nombre = String(nombre).trim().toUpperCase();
+            if (username && String(username).trim()) cambios.username = String(username).trim().toLowerCase();
+            if (pin && String(pin).trim()) cambios.pin = String(pin).trim();
+            const renombra = !!cambios.nombre && cambios.nombre !== nombreViejo;
+
+            const otroId = `id=neq.${encodeURIComponent(id)}&select=id&limit=1`;
+            if (renombra) {
+              const dup = await supabaseQuery(env, "vendedores", `nombre=eq.${encodeURIComponent(cambios.nombre)}&${otroId}`);
+              if (!dup || dup.length) return jsonResponse({ exito: false, error: `Ya existe un vendedor llamado ${cambios.nombre}. No se cambió nada.` });
+            }
+            if (cambios.username && cambios.username !== actuales[0].username) {
+              const dup = await supabaseQuery(env, "vendedores", `username=eq.${encodeURIComponent(cambios.username)}&${otroId}`);
+              if (!dup || dup.length) return jsonResponse({ exito: false, error: `El usuario ${cambios.username} ya está en uso. No se cambió nada.` });
+            }
+
+            let clientesRenombrados = 0;
+            if (renombra) {
+              let gasJson = null;
+              try {
+                const gasResp = await fetch(GESTOR_GAS_URL, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  redirect: "follow",
+                  body: JSON.stringify({ action: "renombrarVendedorBulk", nombreViejo, nombreNuevo: cambios.nombre }),
+                });
+                gasJson = await gasResp.json();
+              } catch (e) { gasJson = null; }
+              if (!gasJson || !gasJson.ok) {
+                return jsonResponse({ exito: false, error: "No se pudo actualizar la planilla de clientes. El vendedor no se renombró." });
+              }
+              clientesRenombrados = gasJson.renombrados || 0;
+            }
+
+            if (Object.keys(cambios).length) {
+              const res = await supabasePatch(env, "vendedores", `id=eq.${encodeURIComponent(id)}`, cambios);
+              if (!res) return jsonResponse({ exito: false, error: "La planilla se actualizó, pero no se pudo guardar el vendedor.", clientesRenombrados });
+            }
+
+            let historialOk = true;
+            let clientesPendientes = 0;
+            if (renombra) {
+              const filtro = `vendedor=eq.${encodeURIComponent(nombreViejo)}`;
+              const [visitas, jornadas, restantes] = await Promise.all([
+                supabasePatch(env, "visitas", filtro, { vendedor: cambios.nombre }),
+                supabasePatch(env, "jornadas", filtro, { vendedor: cambios.nombre }),
+                supabaseQuery(env, "clientes", `${filtro}&select=id`),
+              ]);
+              historialOk = visitas !== null && jornadas !== null;
+              clientesPendientes = restantes ? restantes.length : -1;
+            }
+
+            return jsonResponse({ exito: true, renombrado: renombra, clientesRenombrados, clientesPendientes, historialOk });
+          }
+
+          // Desactiva (no borra) un vendedor — mismo criterio que FEDE: su
+          // historial de ventas/visitas queda intacto, solo deja de poder
+          // loguearse y de aparecer en los selectores de la app.
+          if (accion === "eliminar_vendedor") {
+            const { id } = bodyJson;
+            if (!id) return jsonResponse({ exito: false, error: "Falta id" });
+            const res = await supabasePatch(env, "vendedores", `id=eq.${encodeURIComponent(id)}`, { activo: false });
+            return jsonResponse({ exito: res !== null });
           }
 
           if (accion === "listar_vendedores") {

@@ -2514,11 +2514,12 @@ async function loadVendedoresConFaltantes(period) {
   const fetchDesde = desdeAnterior.toISOString();
   const inR = (d, a, b) => d >= a && d <= b;
 
-  const [todosPed, todosItm] = await Promise.all([
+  const [todosPed, todosItm, vendActivos] = await Promise.all([
     sbGet("pedidos",
       `created_at=gte.${fetchDesde}&vendedor=neq.null&select=vendedor,created_at,id&limit=2000`),
     sbGet("items_pedido",
-      `es_faltante=eq.true&created_at=gte.${fetchDesde}&select=pedido_id,created_at,descripcion,cantidad,cantidad_real&limit=5000`)
+      `es_faltante=eq.true&created_at=gte.${fetchDesde}&select=pedido_id,created_at,descripcion,cantidad,cantidad_real&limit=5000`),
+    sbGet("vendedores", "activo=eq.true&select=nombre")
   ]);
 
   if (!todosPed.length) {
@@ -2537,6 +2538,12 @@ async function loadVendedoresConFaltantes(period) {
     const d = new Date(p.created_at);
     if (inR(d, desdeActual, hastaActual))   byVend[v].actual++;
     if (inR(d, desdeAnterior, hastaAnterior)) byVend[v].anterior++;
+  });
+
+  // Los vendedores activos aparecen aunque todavía no tengan pedidos en el período.
+  vendActivos.forEach(x => {
+    const v = (x.nombre || "").trim().toLowerCase();
+    if (v && v !== "todos" && !byVend[v]) byVend[v] = { actual: 0, anterior: 0, faltActual: 0 };
   });
 
   _vfaltData = {};
@@ -2567,7 +2574,7 @@ async function loadVendedoresConFaltantes(period) {
     else if (dif < 0)     { vcls = "mal";    vtexto = `↓ ${Math.abs(dif)} menos (${periodoLabel})`; }
     else                  { vcls = "neutro"; vtexto = `Igual (${periodoLabel})`; }
 
-    const nombreDisplay = escHtml(nombre.charAt(0).toUpperCase() + nombre.slice(1));
+    const nombreDisplay = escHtml(nombre.replace(/(^|\s)\S/g, c => c.toUpperCase()));
     return `
       <div class="vcard" onclick="abrirFaltantesVendedor('${nombre.replace(/'/g,"\\'")}','${nombreDisplay}')">
         <div class="vcard-rank">${medallas[i] ?? (i + 1) + "°"}</div>
