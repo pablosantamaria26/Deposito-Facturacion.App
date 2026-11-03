@@ -50,9 +50,67 @@
   /* Una clave por puesto: todas las apps comparten dominio, y una misma PC puede tener Caja y Facturación. */
   var CLAVE_TOKEN = window.QR_PUESTO === "admin" ? "qr_admin_token_v1" : "qr_token_" + window.QR_PUESTO + "_v1";
   var yaPregunto = false;
+  /* El token se pide y se corrige en un panel de la propia pantalla, que no la bloquea, y solo se guarda
+     después de comprobarlo. Una falla de conexión no se confunde con un token malo: ni pregunta ni borra nada.
+     Reemplaza al cuadro nativo del navegador (window.prompt): en algunos equipos no se veía, o quedaba
+     bloqueado tras cancelarlo una vez, sin ningún aviso (03/11/2026 — Depósito y Stock Queruclor, mismo
+     puesto "deposito"). */
+  var NOMBRE_PUESTO = { caja: "Caja", facturacion: "Facturación", deposito: "Depósito", reparto: "Reparto", admin: "Admin" };
+  var PANEL_TOKEN = PROD && window.QR_PUESTO !== "vendedor" && !!NOMBRE_PUESTO[window.QR_PUESTO];
+  var panelDejado = false;
+  function comprobarToken(t) {
+    return _fetch(ORIGEN + "/local/puesto", { cache: "no-store", headers: { "X-QR-Token": t } }).then(function (r) {
+      if (r.status === 401) return { estado: "incorrecto" };
+      if (!r.ok) return { estado: "sin_conexion" };
+      return r.json().then(function (j) { return j.puesto === window.QR_PUESTO ? { estado: "ok" } : { estado: "otro", puesto: j.puesto }; });
+    }).catch(function () { return { estado: "sin_conexion" }; });
+  }
+  function nombreMiPuesto() { return NOMBRE_PUESTO[window.QR_PUESTO] || window.QR_PUESTO; }
+  function textoToken(c, guardado) {
+    if (c.estado === "otro") return (guardado ? "El token guardado en este equipo es de " : "Ese token es de ") + (NOMBRE_PUESTO[c.puesto] || c.puesto) + ", no de " + nombreMiPuesto() + ".";
+    if (c.estado === "incorrecto") return guardado ? "El token guardado en este equipo no es correcto." : "Ese token no es correcto. Copialo de nuevo, completo y sin espacios.";
+    return "Falta el token de " + nombreMiPuesto() + " en este equipo.";
+  }
+  function panelToken(c) {
+    if (!document.body) { document.addEventListener("DOMContentLoaded", function () { panelToken(c); }); return; }
+    if (panelDejado || document.getElementById("qrPanelToken")) return;
+    var p = document.createElement("div");
+    p.id = "qrPanelToken"; p.setAttribute("role", "alert");
+    p.style.cssText = "position:fixed;left:50%;top:12px;transform:translateX(-50%);width:min(560px,calc(100vw - 24px));box-sizing:border-box;z-index:2147483647;background:#fff;color:#1f2937;border:2px solid #b45309;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.25);font:14px/1.4 system-ui,sans-serif;padding:12px 14px";
+    p.innerHTML = '<b id="qrPanelTxt" style="display:block;margin-bottom:2px"></b><div style="margin-bottom:8px">Lo de Queruclor no funciona hasta cargarlo. El resto de ' + nombreMiPuesto() + ' sigue andando.</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap"><input id="qrPanelIn" type="text" autocomplete="off" spellcheck="false" placeholder="Pegá el token de ' + nombreMiPuesto() + '" aria-label="Token de ' + nombreMiPuesto() + '" style="flex:1;min-width:180px;font:inherit;padding:7px 9px;border:1px solid #9ca3af;border-radius:8px">' +
+      '<button id="qrPanelOk" type="button" style="font:inherit;font-weight:700;padding:7px 12px;border:0;border-radius:8px;background:#b45309;color:#fff;cursor:pointer">Guardar</button>' +
+      '<button id="qrPanelNo" type="button" style="font:inherit;padding:7px 10px;border:1px solid #9ca3af;border-radius:8px;background:#fff;cursor:pointer">Ahora no</button></div>' +
+      '<div id="qrPanelMsg" style="margin-top:6px;color:#b91c1c;font-weight:600"></div>';
+    document.body.appendChild(p);
+    p.querySelector("#qrPanelTxt").textContent = textoToken(c, true);
+    var entrada = p.querySelector("#qrPanelIn"), msg = p.querySelector("#qrPanelMsg"), ok = p.querySelector("#qrPanelOk");
+    p.querySelector("#qrPanelNo").onclick = function () { panelDejado = true; p.remove(); };
+    var guardar = function () {
+      var t = entrada.value.trim();
+      if (!t) { msg.textContent = "Pegá el token de Caja."; return; }
+      ok.disabled = true; msg.textContent = "Comprobando…";
+      comprobarToken(t).then(function (r) {
+        ok.disabled = false;
+        if (r.estado === "sin_conexion") { msg.textContent = "No hay conexión para comprobarlo. No se cambió nada: probá de nuevo cuando vuelva."; return; }
+        if (r.estado !== "ok") { msg.textContent = textoToken(r, false); entrada.select(); return; }
+        try { localStorage.setItem(CLAVE_TOKEN, t); } catch (e) {}
+        cache = {};
+        p.remove();
+      });
+    };
+    ok.onclick = guardar;
+    entrada.addEventListener("keydown", function (e) { if (e.key === "Enter") guardar(); });
+  }
+  if (PANEL_TOKEN) document.addEventListener("DOMContentLoaded", function () {
+    var t = null; try { t = localStorage.getItem(CLAVE_TOKEN); } catch (e) {}
+    if (!t) return panelToken({ estado: "falta" });
+    comprobarToken(t).then(function (c) { if (c.estado === "otro" || c.estado === "incorrecto") panelToken(c); });
+  });
   function tokenPuesto() {
     if (!PROD || window.QR_PUESTO === "vendedor") return null;
     var t = null; try { t = localStorage.getItem(CLAVE_TOKEN); } catch (e) {}
+    if (PANEL_TOKEN && !t && !/[#&]puesto=/.test(location.hash)) { panelToken({ estado: "falta" }); return null; }
     /* El enlace de instalación del puesto lo trae en #puesto=…: no viaja al servidor y se saca de la barra. */
     var m = /[#&]puesto=([^&]+)/.exec(location.hash);
     if (m) {
@@ -69,7 +127,11 @@
   /* El enlace del puesto se guarda al abrir: hay pantallas que casi no consultan al arrancar. */
   if (PROD && window.QR_PUESTO !== "vendedor" && /[#&]puesto=/.test(location.hash)) tokenPuesto();
   function conToken(h) { var t = tokenPuesto(); if (t) h["X-QR-Token"] = t; return h; }
-  function vigilarToken(status) { if (PROD && status === 401) { yaPregunto = false; try { localStorage.removeItem(CLAVE_TOKEN); } catch (e) {} } }
+  function vigilarToken(status) {
+    if (!PROD || status !== 401) return;
+    if (PANEL_TOKEN) return panelToken({ estado: "incorrecto" });
+    yaPregunto = false; try { localStorage.removeItem(CLAVE_TOKEN); } catch (e) {}
+  }
   var _fetch = window.fetch.bind(window);
   var GEN = null;
 
