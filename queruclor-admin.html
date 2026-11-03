@@ -47,13 +47,14 @@
   }
   window.qrOculta = oculta;
   if (PROD) window.qrFotoUrl = function (e) { return window.QR_FOTOS_BASE + e + ".jpg"; };
-  var CLAVE_TOKEN = window.QR_PUESTO === "admin" ? "qr_admin_token_v1" : "qr_token_puesto_v1";
+  /* Una clave por puesto: todas las apps comparten dominio, y una misma PC puede tener Caja y Facturación. */
+  var CLAVE_TOKEN = window.QR_PUESTO === "admin" ? "qr_admin_token_v1" : "qr_token_" + window.QR_PUESTO + "_v1";
   var yaPregunto = false;
   function tokenPuesto() {
     if (!PROD || window.QR_PUESTO === "vendedor") return null;
     var t = null; try { t = localStorage.getItem(CLAVE_TOKEN); } catch (e) {}
     /* El enlace de instalación del puesto lo trae en #puesto=…: no viaja al servidor y se saca de la barra. */
-    var m = t ? null : /[#&]puesto=([^&]+)/.exec(location.hash);
+    var m = /[#&]puesto=([^&]+)/.exec(location.hash);
     if (m) {
       t = decodeURIComponent(m[1]);
       try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
