@@ -643,7 +643,7 @@ function bdRegistroDe(env) {
   // A diferencia de supabaseQuery, una falla no parece una lista vacía: acá decidiría un alta.
   const leer = async q => { const r = await fetch(rest + q, { headers: H }); if (!r.ok) throw new Error("base " + r.status); return r.json(); };
   const COL = "select=id,nombre,username,activo";
-  const gas = async b => { try { const r = await fetch(GESTOR_GAS_URL, { method: "POST", headers: { "Content-Type": "application/json" }, redirect: "follow", body: JSON.stringify(b) }); return await r.json(); } catch (e) { return null; } };
+  const gas = async b => { try { const r = await fetch(GESTOR_GAS_URL, { method: "POST", headers: { "Content-Type": "application/json" }, redirect: "follow", body: JSON.stringify(Object.assign({ gas_token: env.GESTOR_GAS_TOKEN }, b)) }); return await r.json(); } catch (e) { return null; } };
   const contar = async n => (await leer(`clientes?vendedor=eq.${encodeURIComponent(n)}&select=id`)).length;
   const bd = {
     todos: () => leer(`vendedores?${COL}`),
