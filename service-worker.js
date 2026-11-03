@@ -1,6 +1,6 @@
 // === Service Worker v95 — Pedidos ML (App-Pedidos-ML) ===
 
-const CACHE_NAME = "pedidos-ml-v95";
+const CACHE_NAME = "pedidos-ml-v96";
 const OFFLINE_URLS = [
   "./",
   "./index.html",
@@ -16,7 +16,7 @@ const OFFLINE_URLS = [
 self.addEventListener("install", (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME)
-      .then(c => c.addAll(OFFLINE_URLS))
+      .then(c => Promise.allSettled(OFFLINE_URLS.map(u => c.add(u))))
       .then(() => self.skipWaiting())
   );
   console.log("✅ Service Worker instalado correctamente");
@@ -26,10 +26,8 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.map(k => (k !== CACHE_NAME ? caches.delete(k) : null))))
+      .then(keys => Promise.all(keys.map(k => (k !== CACHE_NAME && /^pedidos-ml-v(7[5-9]|[89][0-9]|[1-9][0-9]{2,})$/.test(k) ? caches.delete(k) : null))))
       .then(() => self.clients.claim())
-      .then(() => self.clients.matchAll({ type: "window" }))
-      .then(clients => clients.forEach(c => c.postMessage({ type: "SW_UPDATED", version: CACHE_NAME })))
   );
   console.log("✅ Service Worker activado y limpio —", CACHE_NAME);
 });
