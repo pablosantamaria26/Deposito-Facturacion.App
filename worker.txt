@@ -483,6 +483,194 @@ async function asignacionCambiada(env, p) {
   } catch (e) { return null; }
 }
 
+// ▼ registro-vendedores.js
+/* ═══════════════════════════════════════════════════════════════════
+   REGISTRO DE VENDEDORES — las reglas, una sola vez
+
+   Lo usan el gestor BaseClientes y Admin Queruclor por el mismo Worker
+   (pedidos-ml/worker.txt lleva copia exacta de este archivo; la copia la pone
+   build-worker-registro.js) y el servidor de prueba. Cambia el acceso a los
+   datos, nunca las reglas.
+
+   Corregir nombre = la misma persona: la clave no cambia y su historial va con ella.
+   Reemplazar = otra persona: identidad nueva, cartera transferida. Ventas,
+   comisiones y autoría de visitas se quedan con quien las hizo.
+
+   bd: { todos(), buscar(id), insertar(f), actualizar(id, cambios), nuevoId(),
+         opLeer(op), opCrear(op, tipo, datos), opCerrar(op, resultado),
+         reemplazoAbierto(anteriorId), moverCartera(origen, destino),
+         renombrarCartera(viejo, nuevo), contarCartera(nombre),
+         renombrarHistorial(viejo, nuevo), cerrarReemplazo(op, resultado) }
+   ═══════════════════════════════════════════════════════════════════ */
+(function (raiz) {
+  const nom = s => String(s == null ? "" : s).trim().toUpperCase();
+  const usu = s => String(s == null ? "" : s).trim().toLowerCase();
+  const CASA = "MERCADO LIMPIO", ADMIN = "admin";
+  const publico = f => ({ id: f.id, nombre: f.nombre, username: f.username, activo: f.activo !== false });
+  const mal = error => ({ exito: false, error });
+
+  function crear(bd) {
+    async function libres(nombre, username, salvoId) {
+      const filas = await bd.todos();
+      if (nombre && filas.some(f => String(f.id) !== String(salvoId) && nom(f.nombre) === nombre))
+        return `Ya existe o existió un vendedor llamado ${nombre}. Usá nombre y apellido para distinguirlo.`;
+      if (username && filas.some(f => String(f.id) !== String(salvoId) && usu(f.username) === username))
+        return `El usuario ${username} ya está en uso.`;
+      return null;
+    }
+
+    async function alta(p) {
+      const nombre = nom(p.nombre), username = usu(p.username), pin = String(p.pin || "").trim();
+      if (!nombre || !username || !pin) return mal("Faltan nombre, usuario o PIN.");
+      if (p.op) {
+        const o = await bd.opLeer(p.op);
+        if (o && o.estado === "hecho") return Object.assign({}, o.resultado, { exito: true, repetida: true });
+      }
+      const ocupado = await libres(nombre, username);
+      if (ocupado) return mal(ocupado);
+      const f = await bd.insertar({ id: await bd.nuevoId(), nombre, username, pin, activo: true });
+      if (!f) return mal("No se pudo crear el vendedor.");
+      const r = { vendedor: publico(f) };
+      if (p.op) { await bd.opCrear(p.op, "alta", { id: f.id }); await bd.opCerrar(p.op, r); }
+      return Object.assign({ exito: true }, r);
+    }
+
+    async function corregir(p) {
+      if (!p.id) return mal("Falta el vendedor.");
+      const f = await bd.buscar(p.id);
+      if (!f) return mal("Vendedor no encontrado.");
+      const actual = nom(f.nombre), nombre = p.nombre ? nom(p.nombre) : actual;
+      /* Una pantalla abierta hace rato no pisa lo que otro equipo ya cambió. */
+      if (p.esperado && nom(p.esperado) !== actual) {
+        if (actual === nombre) return { exito: true, repetida: true, renombrado: false, clientesRenombrados: 0, clientesPendientes: 0, historialOk: true, vendedor: publico(f) };
+        return mal(`Otro equipo ya cambió este vendedor: ahora figura como ${actual}. Recargá antes de seguir.`);
+      }
+      const renombra = nombre !== actual;
+      if (renombra && p.misma_persona !== true) return mal("Corregir el nombre es solo para la misma persona. Si entra otra persona, usá Reemplazar vendedor.");
+      const username = p.username ? usu(p.username) : usu(f.username), pin = p.pin ? String(p.pin).trim() : "";
+      const ocupado = await libres(renombra ? nombre : "", username !== usu(f.username) ? username : "", p.id);
+      if (ocupado) return mal(ocupado + " No se cambió nada.");
+      let clientesRenombrados = 0;
+      if (renombra) {
+        const g = await bd.renombrarCartera(actual, nombre);
+        if (!g || !g.ok) return mal("No se pudo actualizar la planilla de clientes. El vendedor no se renombró.");
+        clientesRenombrados = g.renombrados || 0;
+      }
+      const cambios = {};
+      if (renombra) cambios.nombre = nombre;
+      if (username !== usu(f.username)) cambios.username = username;
+      if (pin) cambios.pin = pin;
+      if (Object.keys(cambios).length && !(await bd.actualizar(p.id, cambios)))
+        return Object.assign(mal("La planilla se actualizó, pero no se pudo guardar el vendedor."), { clientesRenombrados });
+      let historialOk = true, clientesPendientes = 0;
+      if (renombra) {
+        historialOk = await bd.renombrarHistorial(actual, nombre);
+        clientesPendientes = await bd.contarCartera(actual);
+      }
+      return { exito: true, renombrado: renombra, clientesRenombrados, clientesPendientes, historialOk, vendedor: publico(Object.assign({}, f, cambios)) };
+    }
+
+    /* Se puede reintentar en cualquier paso con la misma operación: lo hecho no se repite,
+       y hasta el último paso el nuevo no puede entrar ni el anterior deja de poder. */
+    async function reemplazar(p) {
+      if (!p.op) return mal("Falta la operación.");
+      let o = await bd.opLeer(p.op);
+      if (o && o.estado === "hecho") return Object.assign({}, o.resultado, { exito: true, repetida: true });
+      if (!o) {
+        const ant = p.anterior_id ? await bd.buscar(p.anterior_id) : null;
+        if (!ant) return mal("Vendedor anterior no encontrado.");
+        if (ant.activo === false) return mal(`${ant.nombre} ya está dado de baja.`);
+        if (nom(ant.nombre) === CASA || usu(ant.username) === ADMIN) return mal(`${ant.nombre} no se puede reemplazar.`);
+        const nombre = nom(p.nombre), username = usu(p.username);
+        if (!nombre || !username || !String(p.pin || "").trim()) return mal("Faltan nombre, usuario o PIN del vendedor nuevo.");
+        const abierto = await bd.reemplazoAbierto(p.anterior_id);
+        if (abierto) return Object.assign(mal(`Ya hay un reemplazo de ${ant.nombre} sin terminar: hay que continuarlo.`), { op_abierta: abierto.op, datos: abierto.datos });
+        const ocupado = await libres(nombre, username);
+        if (ocupado) return mal(ocupado);
+        o = await bd.opCrear(p.op, "reemplazo", { anterior_id: ant.id, anterior_nombre: nom(ant.nombre), nuevo_id: await bd.nuevoId(), nombre, username, quien: p.quien || "" });
+        if (!o) {
+          const ab = await bd.reemplazoAbierto(p.anterior_id);
+          return Object.assign(mal("Otro equipo está reemplazando a este vendedor."), ab ? { op_abierta: ab.op, datos: ab.datos } : {});
+        }
+      }
+      const d = o.datos;
+      if (!(await bd.buscar(d.nuevo_id))) {
+        const pin = String(p.pin || "").trim();
+        if (!pin) return Object.assign(mal("Para continuar hace falta volver a indicar el PIN del vendedor nuevo."), { parcial: true, op: p.op, etapa: "alta" });
+        if (!(await bd.insertar({ id: d.nuevo_id, nombre: d.nombre, username: d.username, pin, activo: false })))
+          return Object.assign(mal("No se pudo crear al vendedor nuevo. No se movió nada."), { parcial: true, op: p.op, etapa: "alta" });
+      }
+      const mov = await bd.moverCartera(d.anterior_nombre, d.nombre);
+      if (!mov || !mov.ok) return Object.assign(mal("No se pudo transferir la cartera. Se puede continuar sin repetir lo ya hecho."), { parcial: true, op: p.op, etapa: "cartera" });
+      const faltan = await bd.contarCartera(d.anterior_nombre);
+      if (faltan !== 0) return Object.assign(mal(`Quedan clientes a nombre de ${d.anterior_nombre}. Se puede continuar sin repetir lo ya hecho.`), { parcial: true, op: p.op, etapa: "cartera", faltan });
+      const resultado = {
+        anterior: { id: d.anterior_id, nombre: d.anterior_nombre, activo: false },
+        nuevo: { id: d.nuevo_id, nombre: d.nombre, username: d.username, activo: true },
+        clientes: await bd.contarCartera(d.nombre),
+      };
+      if (!(await bd.cerrarReemplazo(p.op, resultado))) return Object.assign(mal("No se pudo terminar. Se puede continuar sin repetir lo ya hecho."), { parcial: true, op: p.op, etapa: "cierre" });
+      return Object.assign({ exito: true }, resultado);
+    }
+
+    async function baja(p) {
+      const f = p.id ? await bd.buscar(p.id) : null;
+      if (!f) return mal("Vendedor no encontrado.");
+      if (nom(f.nombre) === CASA || usu(f.username) === ADMIN) return mal(`${f.nombre} no se puede dar de baja.`);
+      if (f.activo === false) return { exito: true, repetida: true };
+      return { exito: !!(await bd.actualizar(p.id, { activo: false })) };
+    }
+
+    async function reactivar(p) {
+      const f = p.id ? await bd.buscar(p.id) : null;
+      if (!f) return mal("Vendedor no encontrado.");
+      if (f.activo !== false) return { exito: true, repetida: true };
+      return { exito: !!(await bd.actualizar(p.id, { activo: true })) };
+    }
+
+    return { alta, corregir, reemplazar, baja, reactivar };
+  }
+
+  const api = { crear };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  else raiz.RegistroVendedores = api;
+})(typeof window !== "undefined" ? window : globalThis);
+// ▲ registro-vendedores.js
+
+function bdRegistroDe(env) {
+  const H = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" };
+  const rest = `${env.SUPABASE_URL}/rest/v1/`;
+  // A diferencia de supabaseQuery, una falla no parece una lista vacía: acá decidiría un alta.
+  const leer = async q => { const r = await fetch(rest + q, { headers: H }); if (!r.ok) throw new Error("base " + r.status); return r.json(); };
+  const COL = "select=id,nombre,username,activo";
+  const gas = async b => { try { const r = await fetch(GESTOR_GAS_URL, { method: "POST", headers: { "Content-Type": "application/json" }, redirect: "follow", body: JSON.stringify(b) }); return await r.json(); } catch (e) { return null; } };
+  const contar = async n => (await leer(`clientes?vendedor=eq.${encodeURIComponent(n)}&select=id`)).length;
+  const bd = {
+    todos: () => leer(`vendedores?${COL}`),
+    buscar: async id => (await leer(`vendedores?id=eq.${encodeURIComponent(id)}&${COL}&limit=1`))[0] || null,
+    nuevoId: () => crypto.randomUUID(),
+    insertar: async f => { const r = await fetch(rest + "vendedores", { method: "POST", headers: { ...H, Prefer: "return=representation" }, body: JSON.stringify(f) }); return r.ok ? (await r.json())[0] : null; },
+    actualizar: async (id, c) => (await fetch(rest + `vendedores?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", headers: H, body: JSON.stringify(c) })).ok,
+    opLeer: async op => (await leer(`qr_vendedor_ops?op=eq.${encodeURIComponent(op)}&limit=1`))[0] || null,
+    opCrear: async (op, tipo, datos) => {
+      const r = await fetch(rest + "qr_vendedor_ops?on_conflict=op", { method: "POST", headers: { ...H, Prefer: "return=representation,resolution=ignore-duplicates" }, body: JSON.stringify({ op, tipo, datos }) });
+      return r.ok ? ((await r.json())[0] || bd.opLeer(op)) : null;
+    },
+    opCerrar: (op, resultado) => fetch(rest + `qr_vendedor_ops?op=eq.${encodeURIComponent(op)}`, { method: "PATCH", headers: H, body: JSON.stringify({ estado: "hecho", resultado }) }),
+    reemplazoAbierto: async id => (await leer(`qr_vendedor_ops?tipo=eq.reemplazo&estado=eq.iniciado&datos->>anterior_id=eq.${encodeURIComponent(id)}&limit=1`))[0] || null,
+    moverCartera: (origen, destino) => gas({ action: "migrarCarteraBulk", origenes: [origen], destino, incluirLock: true }),
+    renombrarCartera: (nombreViejo, nombreNuevo) => gas({ action: "renombrarVendedorBulk", nombreViejo, nombreNuevo }),
+    contarCartera: contar,
+    renombrarHistorial: async (viejo, nuevo) => {
+      const filtro = `vendedor=eq.${encodeURIComponent(viejo)}`, cambio = { vendedor: nuevo };
+      const hechos = await Promise.all(["visitas", "jornadas", "perfil_vendedor", "conversation_summaries"].map(t => supabasePatch(env, t, filtro, cambio)));
+      return hechos.every(h => h !== null);
+    },
+    cerrarReemplazo: async (op, resultado) => (await supabaseRPC(env, "qr_vendedor_reemplazo_cerrar", { p_op: op, p_resultado: resultado })) === true,
+  };
+  return bd;
+}
+
 export default {
   async fetch(request, env, ctx) {
     try {
@@ -629,8 +817,14 @@ export default {
 
           // ── GET_APP_DATA: clientes + zonas + jornada_activa desde Supabase ──
           if (accion === "get_app_data") {
-            const { vendedor } = bodyJson;
+            let { vendedor } = bodyJson;
             if (!vendedor) return jsonResponse({ exito: false, error: "Falta vendedor" });
+            // Sesión abierta: la clave manda. Corrigieron el nombre, sigue; lo dieron de baja, se cierra.
+            if (bodyJson.vendedor_id) {
+              const [v] = await supabaseQuery(env, "vendedores", `id=eq.${encodeURIComponent(bodyJson.vendedor_id)}&select=nombre,activo&limit=1`);
+              if (v && v.activo === false) return jsonResponse({ exito: false, sesion_cerrada: true, error: "Este usuario ya no está activo." });
+              if (v) vendedor = v.nombre;
+            }
 
             const today = getDateAR_();
             const [data, jornadaRows] = await Promise.all([
@@ -651,6 +845,7 @@ export default {
               exito: true,
               clientes: data.clientes || [],
               zonas:    data.zonas    || [],
+              vendedor_actual: vendedor,
               jornada_activa,
               sugerencia_ia: null,          // fase futura: IA con historial Supabase
               fecha_servidor: new Date().toISOString(),
@@ -942,101 +1137,31 @@ export default {
 
           // ── GESTOR DE CARTERA — vendedores, migración masiva y descuentos ──
           // (usado por la consola de administración App-actualizacion-BaseClientes)
-          if (accion === "crear_vendedor") {
-            const { nombre, username, pin } = bodyJson;
-            if (!nombre || !username || !pin) return jsonResponse({ exito: false, error: "Faltan nombre, username o pin" });
-            // Visitas y jornadas van por nombre: repetir el de otra persona, aunque esté de baja, le pasaría su historial.
-            const mismoNombre = await supabaseQuery(env, "vendedores", `nombre=eq.${encodeURIComponent(String(nombre).trim().toUpperCase())}&select=id,activo&limit=1`);
-            if (!mismoNombre || mismoNombre.length) return jsonResponse({ exito: false, error: `Ya existe o existió un vendedor llamado ${String(nombre).trim().toUpperCase()}. Usá nombre y apellido para distinguirlo.` });
-            const res = await supabaseInsert(env, "vendedores", {
-              nombre: String(nombre).trim().toUpperCase(),
-              username: String(username).trim().toLowerCase(),
-              pin: String(pin).trim(),
-              activo: true,
-            });
-            if (!res) return jsonResponse({ exito: false, error: "No se pudo crear (¿username duplicado?)" });
-            return jsonResponse({ exito: true, vendedor: res[0] || null });
+          // Registro de vendedores: mismas reglas para el gestor y Admin Queruclor (registro-vendedores.js).
+          const ACCIONES_REGISTRO = { crear_vendedor: "alta", editar_vendedor: "corregir", reemplazar_vendedor: "reemplazar", eliminar_vendedor: "baja", reactivar_vendedor: "reactivar" };
+          if (ACCIONES_REGISTRO[accion]) {
+            if (env.REGISTRO_TOKEN && bodyJson.admin_token !== env.REGISTRO_TOKEN) return jsonResponse({ exito: false, error: "Falta o es incorrecto el token de Administración de este equipo." }, 403);
+            try { return jsonResponse(await RegistroVendedores.crear(bdRegistroDe(env))[ACCIONES_REGISTRO[accion]](bodyJson)); }
+            catch (e) { return jsonResponse({ exito: false, error: "No se pudo completar: " + e.message + ". Reintentá: no se repite lo ya hecho." }); }
           }
 
-          // Edita nombre/username/pin de un vendedor. Si cambia el nombre, primero
-          // actualiza planilla+clientes (si eso falla no se toca nada) y despues
-          // visitas/jornadas. Los pedidos conservan el nombre con que se tomaron.
-          if (accion === "editar_vendedor") {
-            const { id, nombre, username, pin } = bodyJson;
-            if (!id) return jsonResponse({ exito: false, error: "Falta id" });
-
-            const actuales = await supabaseQuery(env, "vendedores", `id=eq.${encodeURIComponent(id)}&select=nombre,username`);
-            if (!actuales || !actuales[0]) return jsonResponse({ exito: false, error: "Vendedor no encontrado" });
-            const nombreViejo = actuales[0].nombre;
-
-            const cambios = {};
-            if (nombre && String(nombre).trim()) cambios.nombre = String(nombre).trim().toUpperCase();
-            if (username && String(username).trim()) cambios.username = String(username).trim().toLowerCase();
-            if (pin && String(pin).trim()) cambios.pin = String(pin).trim();
-            const renombra = !!cambios.nombre && cambios.nombre !== nombreViejo;
-
-            const otroId = `id=neq.${encodeURIComponent(id)}&select=id&limit=1`;
-            if (renombra) {
-              const dup = await supabaseQuery(env, "vendedores", `nombre=eq.${encodeURIComponent(cambios.nombre)}&${otroId}`);
-              if (!dup || dup.length) return jsonResponse({ exito: false, error: `Ya existe un vendedor llamado ${cambios.nombre}. No se cambió nada.` });
-            }
-            if (cambios.username && cambios.username !== actuales[0].username) {
-              const dup = await supabaseQuery(env, "vendedores", `username=eq.${encodeURIComponent(cambios.username)}&${otroId}`);
-              if (!dup || dup.length) return jsonResponse({ exito: false, error: `El usuario ${cambios.username} ya está en uso. No se cambió nada.` });
-            }
-
-            let clientesRenombrados = 0;
-            if (renombra) {
-              let gasJson = null;
-              try {
-                const gasResp = await fetch(GESTOR_GAS_URL, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  redirect: "follow",
-                  body: JSON.stringify({ action: "renombrarVendedorBulk", nombreViejo, nombreNuevo: cambios.nombre }),
-                });
-                gasJson = await gasResp.json();
-              } catch (e) { gasJson = null; }
-              if (!gasJson || !gasJson.ok) {
-                return jsonResponse({ exito: false, error: "No se pudo actualizar la planilla de clientes. El vendedor no se renombró." });
-              }
-              clientesRenombrados = gasJson.renombrados || 0;
-            }
-
-            if (Object.keys(cambios).length) {
-              const res = await supabasePatch(env, "vendedores", `id=eq.${encodeURIComponent(id)}`, cambios);
-              if (!res) return jsonResponse({ exito: false, error: "La planilla se actualizó, pero no se pudo guardar el vendedor.", clientesRenombrados });
-            }
-
-            let historialOk = true;
-            let clientesPendientes = 0;
-            if (renombra) {
-              const filtro = `vendedor=eq.${encodeURIComponent(nombreViejo)}`;
-              const [visitas, jornadas, restantes] = await Promise.all([
-                supabasePatch(env, "visitas", filtro, { vendedor: cambios.nombre }),
-                supabasePatch(env, "jornadas", filtro, { vendedor: cambios.nombre }),
-                supabaseQuery(env, "clientes", `${filtro}&select=id`),
-              ]);
-              historialOk = visitas !== null && jornadas !== null;
-              clientesPendientes = restantes ? restantes.length : -1;
-            }
-
-            return jsonResponse({ exito: true, renombrado: renombra, clientesRenombrados, clientesPendientes, historialOk });
-          }
-
-          // Desactiva (no borra) un vendedor — mismo criterio que FEDE: su
-          // historial de ventas/visitas queda intacto, solo deja de poder
-          // loguearse y de aparecer en los selectores de la app.
-          if (accion === "eliminar_vendedor") {
-            const { id } = bodyJson;
-            if (!id) return jsonResponse({ exito: false, error: "Falta id" });
-            const res = await supabasePatch(env, "vendedores", `id=eq.${encodeURIComponent(id)}`, { activo: false });
-            return jsonResponse({ exito: res !== null });
+          // El historial acompaña al cliente; cada fila conserva su autor.
+          if (accion === "historial_cliente") {
+            const id = encodeURIComponent(String(bodyJson.cliente_id || ""));
+            if (!id) return jsonResponse({ exito: false, error: "Falta cliente" });
+            const [visitas, pedidos] = await Promise.all([
+              supabaseQuery(env, "visitas", `cliente_id=eq.${id}&select=tipo,nota,vendedor,created_at&order=created_at.desc&limit=30`),
+              supabaseQuery(env, "pedidos", `cliente_id=eq.${id}&select=fecha_pedido,vendedor,estado&order=fecha_pedido.desc&limit=10`),
+            ]);
+            return jsonResponse({ exito: true, visitas: visitas || [], pedidos: pedidos || [] });
           }
 
           if (accion === "listar_vendedores") {
-            const rows = await supabaseQuery(env, "vendedores", "select=id,nombre,username,activo&order=nombre.asc");
-            return jsonResponse({ exito: true, vendedores: rows || [] });
+            const [rows, abiertos] = await Promise.all([
+              supabaseQuery(env, "vendedores", "select=id,nombre,username,activo&order=nombre.asc"),
+              supabaseQuery(env, "qr_vendedor_ops", "tipo=eq.reemplazo&estado=eq.iniciado&select=op,datos"),
+            ]);
+            return jsonResponse({ exito: true, vendedores: rows || [], reemplazos_abiertos: abiertos || [] });
           }
 
           // Cartera de uno o varios vendedores (preview para migrar o editar descuentos)
