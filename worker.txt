@@ -1060,7 +1060,8 @@ export default {
             if (!idsParam) return jsonResponse({ exito: true, visitas: [] });
             const desdeParam = desde ? `&created_at=gte.${encodeURIComponent(desde)}` : "";
             const rows = await supabaseQuery(env, "visitas",
-              `cliente_id=in.(${idsParam})&vendedor=eq.${encodeURIComponent(String(vendedor).toUpperCase())}${desdeParam}&select=cliente_id,tipo,created_at&order=created_at.desc`
+              // Por cliente, no por quién lo cargó: quien hereda una cartera ve lo que quedó pendiente.
+              `cliente_id=in.(${idsParam})${desdeParam}&select=cliente_id,tipo,vendedor,created_at&order=created_at.desc`
             );
             return jsonResponse({ exito: true, visitas: rows || [] });
           }
