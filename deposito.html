@@ -66,6 +66,8 @@
     if (t) try { localStorage.setItem(CLAVE_TOKEN, t); } catch (e) {}
     return t || null;
   }
+  /* El enlace del puesto se guarda al abrir: hay pantallas que casi no consultan al arrancar. */
+  if (PROD && window.QR_PUESTO !== "vendedor" && /[#&]puesto=/.test(location.hash)) tokenPuesto();
   function conToken(h) { var t = tokenPuesto(); if (t) h["X-QR-Token"] = t; return h; }
   function vigilarToken(status) { if (PROD && status === 401) { yaPregunto = false; try { localStorage.removeItem(CLAVE_TOKEN); } catch (e) {} } }
   var _fetch = window.fetch.bind(window);
@@ -81,7 +83,7 @@
       aviso.setAttribute("role", "alert");
       aviso.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:2147483647;background:#b91c1c;color:#fff;" +
         "font:700 14px/1.35 system-ui,sans-serif;padding:10px 14px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.3)";
-      aviso.textContent = "⚠️ Sin conexión con el servidor. Lo que hagas ahora NO se guarda (los pedidos del vendedor quedan en su cola y salen solos al volver). Revisá que la ventana del servidor siga abierta.";
+      aviso.textContent = "⚠️ Sin conexión con el servidor. Lo que hagas ahora NO se guarda (los pedidos del vendedor quedan en su cola y salen solos al volver). Revisá tu conexión a Internet.";
       document.body.appendChild(aviso);
     } else if (!caido && aviso) { aviso.remove(); aviso = null; }
   }
@@ -278,7 +280,7 @@
     avisoGen = document.createElement("div");
     avisoGen.id = "qrAvisoGeneracion"; avisoGen.setAttribute("role", "alert");
     avisoGen.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:2147483647;background:#7c2d12;color:#fff;font:700 14px/1.35 system-ui,sans-serif;padding:10px 14px;text-align:center";
-    avisoGen.innerHTML = "⚠️ Esta pantalla es de antes de que se renovara el entorno de prueba: lo que hagas no se guarda. " +
+    avisoGen.innerHTML = "⚠️ Esta pantalla quedó desactualizada: lo que hagas no se guarda. " +
       "<button type=\"button\" style=\"margin-left:8px;font:inherit;padding:4px 10px;border-radius:8px;border:0;cursor:pointer\" onclick=\"location.reload()\">Recargar</button>";
     document.body.appendChild(avisoGen);
   }
@@ -301,7 +303,7 @@
         avisoApartadas = document.createElement("div");
         avisoApartadas.id = "qrAvisoApartadas"; avisoApartadas.setAttribute("role", "status");
         avisoApartadas.style.cssText = "position:fixed;left:12px;right:12px;bottom:12px;z-index:2147483646;background:#fef3c7;color:#78350f;border:2px solid #f59e0b;border-radius:12px;font:600 13.5px/1.4 system-ui,sans-serif;padding:10px 14px";
-        avisoApartadas.innerHTML = "Este equipo tenía operaciones guardadas sin enviar de antes de renovar el entorno (" + apartadas.length + "). <b>No se enviaron</b>: quedaron apartadas en el equipo. " +
+        avisoApartadas.innerHTML = "Este equipo tenía operaciones guardadas sin enviar de una versión anterior (" + apartadas.length + "). <b>No se enviaron</b>: quedaron apartadas en el equipo. " +
           "<button type=\"button\" style=\"margin-left:6px;font:inherit;padding:3px 10px;border-radius:8px;border:1px solid #b45309;background:#fff;cursor:pointer\" onclick=\"this.parentNode.remove()\">Entendido</button>";
         document.body.appendChild(avisoApartadas);
       };
@@ -309,7 +311,7 @@
     }
   }
 
-  /* ── Sin service workers en el sistema de prueba ──────────────────
+  /* ── Sin service workers en el sistema ──────────────────
      Guardarían copias de las páginas y, al rearmarlas, se seguiría viendo
      la versión vieja. Se contesta un registro de mentira para que las
      pantallas que lo esperan no fallen. */
@@ -2279,7 +2281,7 @@ window.onload = async () => {
 <script>
 /* ═══════════════════════════════════════════════════════════════════
    STOCK — versión CONECTADA al servidor compartido (misma interfaz que
-   stock-store.js). La usan las pantallas del sistema de prueba compartido.
+   stock-store.js). La usan las pantallas del sistema compartido.
 
    Las reglas no viven acá: viven en la base (supabase-prueba/migraciones/
    001_queruclor_stock.sql), probadas operación por operación contra
@@ -7312,12 +7314,12 @@ var qrcode = function() {
   barra.id = "barraProto";
   if (arriba) barra.classList.add("bp-arriba");
   barra.innerHTML =
-    '<span class="bp-k">🧪 PROTOTIPO</span>' +
+    '<span class="bp-k"></span>' +
     PANTALLAS.map(p => p.id === actual
       ? '<span class="bp-l on">' + p.txt + '</span>'
       : '<a class="bp-l" href="' + p.url + '">' + p.txt + '</a>'
     ).join('<span class="bp-sep">·</span>') +
-    '<span class="bp-n">datos locales · producción no se toca</span>';
+    '<span class="bp-n"></span>';
 
   const st = document.createElement("style");
   st.textContent = `

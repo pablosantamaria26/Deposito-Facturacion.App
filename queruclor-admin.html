@@ -66,6 +66,8 @@
     if (t) try { localStorage.setItem(CLAVE_TOKEN, t); } catch (e) {}
     return t || null;
   }
+  /* El enlace del puesto se guarda al abrir: hay pantallas que casi no consultan al arrancar. */
+  if (PROD && window.QR_PUESTO !== "vendedor" && /[#&]puesto=/.test(location.hash)) tokenPuesto();
   function conToken(h) { var t = tokenPuesto(); if (t) h["X-QR-Token"] = t; return h; }
   function vigilarToken(status) { if (PROD && status === 401) { yaPregunto = false; try { localStorage.removeItem(CLAVE_TOKEN); } catch (e) {} } }
   var _fetch = window.fetch.bind(window);
@@ -81,7 +83,7 @@
       aviso.setAttribute("role", "alert");
       aviso.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:2147483647;background:#b91c1c;color:#fff;" +
         "font:700 14px/1.35 system-ui,sans-serif;padding:10px 14px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.3)";
-      aviso.textContent = "⚠️ Sin conexión con el servidor. Lo que hagas ahora NO se guarda (los pedidos del vendedor quedan en su cola y salen solos al volver). Revisá que la ventana del servidor siga abierta.";
+      aviso.textContent = "⚠️ Sin conexión con el servidor. Lo que hagas ahora NO se guarda (los pedidos del vendedor quedan en su cola y salen solos al volver). Revisá tu conexión a Internet.";
       document.body.appendChild(aviso);
     } else if (!caido && aviso) { aviso.remove(); aviso = null; }
   }
@@ -278,7 +280,7 @@
     avisoGen = document.createElement("div");
     avisoGen.id = "qrAvisoGeneracion"; avisoGen.setAttribute("role", "alert");
     avisoGen.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:2147483647;background:#7c2d12;color:#fff;font:700 14px/1.35 system-ui,sans-serif;padding:10px 14px;text-align:center";
-    avisoGen.innerHTML = "⚠️ Esta pantalla es de antes de que se renovara el entorno de prueba: lo que hagas no se guarda. " +
+    avisoGen.innerHTML = "⚠️ Esta pantalla quedó desactualizada: lo que hagas no se guarda. " +
       "<button type=\"button\" style=\"margin-left:8px;font:inherit;padding:4px 10px;border-radius:8px;border:0;cursor:pointer\" onclick=\"location.reload()\">Recargar</button>";
     document.body.appendChild(avisoGen);
   }
@@ -301,7 +303,7 @@
         avisoApartadas = document.createElement("div");
         avisoApartadas.id = "qrAvisoApartadas"; avisoApartadas.setAttribute("role", "status");
         avisoApartadas.style.cssText = "position:fixed;left:12px;right:12px;bottom:12px;z-index:2147483646;background:#fef3c7;color:#78350f;border:2px solid #f59e0b;border-radius:12px;font:600 13.5px/1.4 system-ui,sans-serif;padding:10px 14px";
-        avisoApartadas.innerHTML = "Este equipo tenía operaciones guardadas sin enviar de antes de renovar el entorno (" + apartadas.length + "). <b>No se enviaron</b>: quedaron apartadas en el equipo. " +
+        avisoApartadas.innerHTML = "Este equipo tenía operaciones guardadas sin enviar de una versión anterior (" + apartadas.length + "). <b>No se enviaron</b>: quedaron apartadas en el equipo. " +
           "<button type=\"button\" style=\"margin-left:6px;font:inherit;padding:3px 10px;border-radius:8px;border:1px solid #b45309;background:#fff;cursor:pointer\" onclick=\"this.parentNode.remove()\">Entendido</button>";
         document.body.appendChild(avisoApartadas);
       };
@@ -309,7 +311,7 @@
     }
   }
 
-  /* ── Sin service workers en el sistema de prueba ──────────────────
+  /* ── Sin service workers en el sistema ──────────────────
      Guardarían copias de las páginas y, al rearmarlas, se seguiría viendo
      la versión vieja. Se contesta un registro de mentira para que las
      pantallas que lo esperan no fallen. */
@@ -793,7 +795,7 @@ td[align=right]{text-align:right; font-variant-numeric:tabular-nums}
     <div class="sbnav-item" onclick="goTab('analytics')"><span class="sbnav-icon">📊</span> Tablero</div>
     <div class="sbnav-item" onclick="goTab('vendedores')"><span class="sbnav-icon">👥</span> Vendedores</div>
   </nav>
-  <div class="sb-footer"><p>Mercado Limpio v1.0<br>Prototipo local · localStorage</p></div>
+  <div class="sb-footer"><p>Mercado Limpio</p></div>
 </div>
 
 <!-- ══════════════════════════ MAIN ══════════════════════════ -->
@@ -4354,7 +4356,7 @@ renderCatKPIs();
       caja.style.cssText = base + "background:#fef2f2;border:1px solid #fca5a5;color:#991b1b";
       caja.innerHTML = `⚠️ <b>${n} productos cargados acá, pero SIN publicar.</b><br>` +
         `<span style="font-size:11.5px">Los vendedores y facturación siguen con los precios anteriores. ` +
-        `Revisá que el servidor esté corriendo (<code>node prototipo/servidor.js</code>) y volvé a aplicar la lista.</span>` +
+        `Revisá la conexión a Internet y volvé a aplicar la lista.</span>` +
         `<br><span style="font-size:11px;opacity:.75">Detalle: ${esc(errorPublicar)}</span>`;
       return;
     }
@@ -4715,7 +4717,7 @@ renderCatKPIs();
       caja.style.cssText = base + "background:#fef2f2;border:1px solid #fca5a5;color:#991b1b";
       caja.innerHTML = "⚠️ <b>Las ofertas NO se publicaron.</b><br>" +
         "<span style='font-size:11.5px'>Los vendedores y facturación siguen con las anteriores. " +
-        "Revisá que el servidor esté corriendo (<code>node prototipo/servidor.js</code>).</span>" +
+        "Revisá la conexión a Internet.</span>" +
         "<br><span style='font-size:11px;opacity:.75'>Detalle: " + esc(ultimoError) + "</span>";
       return;
     }
@@ -7474,7 +7476,7 @@ renderCatKPIs();
         <div class="af-foto">
           <img src="${esc(fotoDe(p))}?v=${version}" alt="" onerror="this.style.visibility='hidden'">
           ${local ? `<label class="af-btn af-subir">Cambiar foto<input type="file" accept="image/*" onchange="afFoto(this)" hidden></label>`
-                  : `<span class="af-nota">La foto se cambia en el sistema de prueba.</span>`}
+                  : `<span class="af-nota">La foto necesita conexión con el servidor.</span>`}
         </div>
         <div class="af-tit">
           <h2 id="afTitulo">${esc(p.nombre)}</h2>
@@ -7808,7 +7810,7 @@ renderCatKPIs();
 
   /* ── Datos ─────────────────────────────────────────────────────── */
   function cargar() {
-    if (!conBase()) { error = "El tablero usa la base compartida: abrilo desde el sistema de prueba."; return; }
+    if (!conBase()) { error = "El tablero necesita conexión con el servidor."; return; }
     try {
       QRSrv.olvidar();
       filas = QRSrv.get("qr_tablero_stock", "select=*", 0) || [];
@@ -7936,7 +7938,7 @@ renderCatKPIs();
   };
   let op = null;
   window.asOperar = function (ean, tipo) {
-    if (!conBase()) return alert("Las operaciones de stock se hacen desde el sistema de prueba.");
+    if (!conBase()) return alert("Las operaciones de stock necesitan conexión con el servidor.");
     cargar();
     const r = filas.find(x => x.ean === String(ean)) || { ean: String(ean), fisico_cajas: 0, fisico_sueltas: 0, uc: (ficha(ean) || {}).uc || 1 };
     op = { ean: String(ean), tipo, r, id: "adm-" + tipo + "|" + ean + "|" + Date.now() + "|" + Math.random().toString(36).slice(2, 7), hecho: null };
@@ -8233,7 +8235,7 @@ renderCatKPIs();
 
   function pintar() {
     const p = $("tab-control"); if (!p) return;
-    if (!conBase()) { p.innerHTML = `<div class="card"><div class="card-body">El control usa la base compartida: abrilo desde el sistema de prueba.</div></div>`; return; }
+    if (!conBase()) { p.innerHTML = `<div class="card"><div class="card-body">El control necesita conexión con el servidor.</div></div>`; return; }
     const d = leer();
     if (d.error) { p.innerHTML = `<div class="card"><div class="card-body ac-mal">Sin conexión: ${esc(d.error)}. Los datos pueden estar desactualizados.</div></div>`; return; }
     const cuenta = (l, k) => l.reduce((a, x) => (a[x[k]] = (a[x[k]] || 0) + 1, a), {});
@@ -9100,7 +9102,7 @@ renderCatKPIs();
 <script>
 /* ═══════════════════════════════════════════════════════════════════
    STOCK — versión CONECTADA al servidor compartido (misma interfaz que
-   stock-store.js). La usan las pantallas del sistema de prueba compartido.
+   stock-store.js). La usan las pantallas del sistema compartido.
 
    Las reglas no viven acá: viven en la base (supabase-prueba/migraciones/
    001_queruclor_stock.sql), probadas operación por operación contra
@@ -13664,12 +13666,12 @@ renderCatKPIs();
   barra.id = "barraProto";
   if (arriba) barra.classList.add("bp-arriba");
   barra.innerHTML =
-    '<span class="bp-k">🧪 PROTOTIPO</span>' +
+    '<span class="bp-k"></span>' +
     PANTALLAS.map(p => p.id === actual
       ? '<span class="bp-l on">' + p.txt + '</span>'
       : '<a class="bp-l" href="' + p.url + '">' + p.txt + '</a>'
     ).join('<span class="bp-sep">·</span>') +
-    '<span class="bp-n">datos locales · producción no se toca</span>';
+    '<span class="bp-n"></span>';
 
   const st = document.createElement("style");
   st.textContent = `
