@@ -1139,10 +1139,11 @@ td[align=right]{text-align:right; font-variant-numeric:tabular-nums}
       </div>
       <div id="cli-resultados" style="margin-top:8px"></div>
       <div id="cli-elegido" style="display:none;margin-top:14px;padding:12px 14px;background:var(--vx);border-radius:8px">
-        <div id="cli-elegido-txt" style="font-weight:700;margin-bottom:8px"></div>
+        <div id="cli-elegido-txt" style="margin-bottom:8px;line-height:1.5"></div>
+        <div id="cli-elegido-aviso" style="display:none;margin-bottom:10px;padding:8px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b;font-size:12.5px;font-weight:600"></div>
         <input type="text" class="form-inp" id="cli-motivo" placeholder="Motivo (opcional)" style="margin-bottom:10px">
         <div style="display:flex;gap:10px">
-          <button class="btn-green" onclick="confirmarHabilitar()">Habilitar a Perfumerías</button>
+          <button class="btn-green" id="cli-btn-habilitar" onclick="confirmarHabilitar()">Habilitar a Perfumerías</button>
           <button class="btn-outline" onclick="cancelarEleccionCliente()">Cancelar</button>
         </div>
       </div>
@@ -4176,11 +4177,24 @@ renderCatKPIs();
 
   async function cargarClientes() {
     if (todosClientes) return todosClientes;
-    try { todosClientes = await QRSrv.get("clientes", "select=id,nombre,domicilio,localidad,vendedor", 0) || []; }
+    try { todosClientes = await QRSrv.get("clientes", "select=id,nombre,apellido,domicilio,localidad,vendedor", 0) || []; }
     catch (e) { todosClientes = []; }
     return todosClientes;
   }
   const norm = s => String(s || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+  /* La base de clientes no usa "nombre" y "apellido" de una sola manera: a veces el
+     nombre del comercio está en nombre, a veces en apellido, y a veces "nombre" es en
+     realidad la localidad, cargada ahí por error (ej.: cliente 10001, nombre="Guernica",
+     apellido="Perfumeria Rocco", localidad="Guernica" — el comercio real es el apellido).
+     Se muestran los dos campos tal cual están, sin adivinar cuál es el verdadero: lo
+     decide quien mira la pantalla, nunca la localidad sola. */
+  function nombreCompleto(c) {
+    const n = String(c.nombre || "").trim(), a = String((c && c.apellido) || "").trim();
+    if (n && a) return n + " · " + a;
+    return n || a || "";
+  }
+  function sinNombre(c) { return !String(c.nombre || "").trim() && !String((c && c.apellido) || "").trim(); }
 
   window.buscarClienteLista = async function (q) {
     const cont = $("cli-resultados");
@@ -4189,11 +4203,13 @@ renderCatKPIs();
     const clientes = await cargarClientes();
     const nTexto = norm(texto);
     const porNumero = clientes.filter(c => String(c.id) === texto);
-    const porNombre = porNumero.length ? [] : clientes.filter(c => norm(c.nombre).includes(nTexto)).slice(0, 12);
+    const porNombre = porNumero.length ? [] : clientes.filter(c => norm(c.nombre).includes(nTexto) || norm(c.apellido).includes(nTexto)).slice(0, 12);
     const r = porNumero.length ? porNumero : porNombre;
     if (!r.length) { cont.innerHTML = '<div style="padding:10px;color:var(--gl);font-size:12.5px">No se encontró ningún cliente con ese número o nombre.</div>'; return; }
     cont.innerHTML = '<div class="tbl-wrap"><table><tbody>' + r.map(c => `<tr style="cursor:pointer" onclick="elegirClienteLista('${esc(c.id)}')">
-        <td style="font-weight:700;font-family:monospace">${esc(c.id)}</td><td>${esc(c.nombre)}</td><td style="font-size:11.5px;color:var(--gl)">${esc(c.localidad || "")} · vend. ${esc(c.vendedor || "—")}</td></tr>`).join("") + "</tbody></table></div>";
+        <td style="font-weight:700;font-family:monospace">${esc(c.id)}</td>
+        <td>${sinNombre(c) ? '<span style="color:#b91c1c;font-weight:700">(sin nombre cargado)</span>' : esc(nombreCompleto(c))}</td>
+        <td style="font-size:11.5px;color:var(--gl)">${esc(c.domicilio || "")}${c.domicilio && c.localidad ? " · " : ""}${esc(c.localidad || "")} · vend. ${esc(c.vendedor || "—")}</td></tr>`).join("") + "</tbody></table></div>";
   };
 
   window.elegirClienteLista = async function (id) {
@@ -4204,13 +4220,33 @@ renderCatKPIs();
     $("cli-resultados").innerHTML = "";
     $("cli-busq").value = "";
     $("cli-elegido").style.display = "block";
-    $("cli-elegido-txt").textContent = "Cliente " + c.id + " — " + c.nombre;
+    const n = String(c.nombre || "").trim(), a = String(c.apellido || "").trim();
+    $("cli-elegido-txt").innerHTML =
+      `<div style="font-size:16px;margin-bottom:4px">Cliente ${esc(c.id)}</div>` +
+      `<div>Nombre: <b>${n ? esc(n) : '<span style="color:#b91c1c">(sin cargar)</span>'}</b></div>` +
+      (a ? `<div>Apellido / otro nombre: <b>${esc(a)}</b></div>` : "") +
+      `<div>Domicilio: ${esc(c.domicilio || "—")}</div>` +
+      `<div>Localidad: ${esc(c.localidad || "—")}</div>` +
+      `<div>Vendedor: ${esc(c.vendedor || "—")}</div>`;
+    const aviso = $("cli-elegido-aviso"), btn = $("cli-btn-habilitar");
+    if (sinNombre(c)) {
+      if (aviso) { aviso.style.display = "block"; aviso.textContent = "⚠️ Este cliente no tiene nombre ni apellido cargados en la base: no se puede verificar quién es. No lo habilites por la localidad sola — corregí primero sus datos en la base de clientes."; }
+      if (btn) btn.disabled = true;
+    } else {
+      if (aviso) aviso.style.display = "none";
+      if (btn) btn.disabled = false;
+    }
     $("cli-motivo").value = "";
   };
-  window.cancelarEleccionCliente = function () { clienteElegido = null; $("cli-elegido").style.display = "none"; };
+  window.cancelarEleccionCliente = function () {
+    clienteElegido = null; $("cli-elegido").style.display = "none";
+    const aviso = $("cli-elegido-aviso"); if (aviso) aviso.style.display = "none";
+    const btn = $("cli-btn-habilitar"); if (btn) btn.disabled = false;
+  };
 
   window.confirmarHabilitar = async function () {
     if (!clienteElegido) return;
+    if (sinNombre(clienteElegido)) { toast("⚠️ No se puede habilitar: este cliente no tiene nombre ni apellido verificable en la base."); return; }
     let r;
     try {
       r = QRSrv.rpc("qr_cliente_lista_set", { admin_token: window.AdminToken && AdminToken.obtener(), p: { cliente_id: String(clienteElegido.id), lista: "perfumeria",
@@ -4255,7 +4291,7 @@ renderCatKPIs();
     if (!habilitados.length) { if (tbody) tbody.innerHTML = ""; if (empty) empty.style.display = "block"; return; }
     if (empty) empty.style.display = "none";
     const clientes = await cargarClientes();
-    const nombreDe = id => { const c = clientes.find(x => String(x.id) === String(id)); return c ? c.nombre : "(cliente " + id + " no encontrado)"; };
+    const nombreDe = id => { const c = clientes.find(x => String(x.id) === String(id)); if (!c) return "(cliente " + id + " no encontrado)"; return sinNombre(c) ? "(sin nombre cargado)" : nombreCompleto(c); };
     if (tbody) tbody.innerHTML = habilitados.map(h => `<tr>
         <td style="font-weight:700;font-family:monospace">${esc(h.cliente_id)}</td><td>${esc(nombreDe(h.cliente_id))}</td>
         <td><span style="background:var(--v);color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:99px">PERFUMERÍA</span></td>
