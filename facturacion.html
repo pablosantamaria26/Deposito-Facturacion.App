@@ -7446,11 +7446,25 @@ var qrcode = function() {
      etiqueta: en la de caja dice para qué sirve el código. */
   /* 26/10/2026: `qrCaja` (solo etiqueta de caja) = el MISMO código de la caja en un QR chico con
      corrección de errores alta (nivel H: se lee aunque falte cerca de un 30 %). El lector SAT AI402
-     lee 1D y 2D: si las barras se rayan, se escanea el QR y entra igual que el código de barras. */
-  function codigos(bc, codigoTexto, qrWa, capIzq, qrCaja) {
+     lee 1D y 2D: si las barras se rayan, se escanea el QR y entra igual que el código de barras.
+     08/11/2026: con el código de la caja numerado («ML-<corto>-<nnn>», migración 026) la cuenta ya
+     no cierra siempre al módulo de 1,4173 px (0,375 mm, "el bueno") — una caja surtida con número de
+     3 cifras pasa el ancho de la columna (medido, ver bitácora: 66,7 mm de 51,55 mm disponibles). El
+     módulo se calcula según lo que haga falta: nunca más grueso que el bueno, nunca más fino que 1
+     punto (203 dpi), y SIEMPRE un múltiplo entero de punto (si no, el borde queda borroso al
+     imprimir) — así nunca se recorta, aunque algún caso límite salga con el módulo más fino. */
+  function codigos(bc, codigoTexto, qrWa, capIzq, qrCaja, ancho) {
+    const MM_POR_PX = 25.4 / 96, PX_POR_PUNTO = 0.125 / MM_POR_PX, PUNTOS_BUENO = 3 /* 0,375 mm */;
+    /* Ancho de .cod-izq: el ancho de la etiqueta menos el padding (3,6mm por lado), menos .cod-der
+       (36mm, fijo), menos .cod-div (0,25mm) y los dos huecos de .codigos (2,5mm cada uno). */
+    const disponibleMm = (ancho || 100) - 2 * 3.6 - 36 - 0.25 - 2 * 2.5;
+    const disponiblePx = disponibleMm / MM_POR_PX;
+    const modulos = bc ? bc.anchos(codigoTexto).split("").reduce((a, d) => a + Number(d), 0) : 0;
+    const puntosPorModulo = modulos ? Math.max(1, Math.min(PUNTOS_BUENO, Math.floor(disponiblePx / modulos / PX_POR_PUNTO))) : PUNTOS_BUENO;
+    const moduloPx = puntosPorModulo * PX_POR_PUNTO;
     return `<div class="codigos">
       <div class="cod-izq">
-        <div class="cod-bc">${bc ? bc.html(codigoTexto, { modulo: 1.4173, alto: 60, sinTexto: true }) : ""}</div>
+        <div class="cod-bc">${bc ? bc.html(codigoTexto, { modulo: moduloPx, alto: 60, sinTexto: true }) : ""}</div>
         <div class="cod-txt">${/^ML-.+-\d{3,}$/.test(codigoTexto)
           /* 29/10/2026: el número de caja se lee de un vistazo — es el que dice la app al leer la caja («Pegá la etiqueta N° 005»). */
           ? esc(codigoTexto.replace(/\d{3,}$/, "")) + `<b class="cod-n">${esc(codigoTexto.match(/\d{3,}$/)[0])}</b>` : esc(codigoTexto)}</div>
@@ -8182,6 +8196,11 @@ var qrcode = function() {
     const comp = {
       numero: formatearNumero(n), secuencia: n,
       pedido_id: p.id, sig: p.sig || null,
+      /* 08/11/2026: se guarda junto al remito, de una vez — así la
+         devolución por escaneo (que lee esta foto) puede reconocer tanto
+         una etiqueta de caja VIEJA (lleva el uuid) como una NUEVA (lleva
+         el código corto), sin tener que resolver uno contra el otro. */
+      codigo_corto: p.codigo_corto || null,
       cliente_id: p.cliente_id,
       cliente_nombre: p.cliente_nombre || nombreDeFicha(p.cliente_id) || ("Cliente " + p.cliente_id),
       cliente_domicilio: domicilioDe(p.cliente_id),
@@ -10553,7 +10572,7 @@ var qrcode = function() {
         });
       });
       return {
-        pedido_id: c.pedido_id, numero: c.numero, cliente_nombre: c.cliente_nombre,
+        pedido_id: c.pedido_id, codigo_corto: c.codigo_corto || null, numero: c.numero, cliente_nombre: c.cliente_nombre,
         renglones: (c.renglones || []).map(r => ({
           ean: r.ean, nombre: r.nombre, cajas: r.cajas, uc: r.uc, unidades: r.unidades,
           variante: r.variante || null,
@@ -10798,8 +10817,18 @@ var qrcode = function() {
      escribe nada — cero riesgo mientras tanto. Se puede vaciar (cfg.repartoUrl
      = "") para desactivar el aviso sin tocar código. */
   const REPARTO_URL_DEFAULT = "https://script.google.com/macros/s/AKfycbx4yKCWXEtYXrhZBakUyOo8x6dZo9nozNnXYSELy6wAdKpsoEQbg7plRVRHj3rOy6KL/exec";
+  /* 08/11/2026 — codigoBarrasCorto: apagado (false) de entrada, a propósito.
+     El código de barras de siempre («ML|<id>|<cliente>|<$queruclor>|<hasML>»)
+     con un id largo no entra legible en ningún ancho (medido) y el lector
+     Argox solo lee barras, no QR. La salida es que el código lleve SOLO el
+     código corto del pedido («ML|<codigoCorto>») y Carga de Reparto busque
+     el resto contra lo que Facturación ya registró — pero esto necesita
+     que el GAS de GestionRepartoML tenga la acción nueva (buscarFacturadoAdmin)
+     publicada Y que el .exe de Carga ya instalado la reconozca. Activar
+     recién después de confirmar las dos cosas: cfg.codigoBarrasCorto = true
+     en localStorage (mismo mecanismo que repartoUrl), sin tocar código. */
   const cfg = Object.assign(
-    { ancho: 100, alto: 150, whatsappOficina: "5491133395487", repartoUrl: REPARTO_URL_DEFAULT },
+    { ancho: 100, alto: 150, whatsappOficina: "5491133395487", repartoUrl: REPARTO_URL_DEFAULT, codigoBarrasCorto: false },
     (() => { try { return JSON.parse(localStorage.getItem(CFG_KEY) || "{}"); } catch (e) { return {}; } })()
   );
   const guardarCfg = () => localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
@@ -10892,6 +10921,11 @@ var qrcode = function() {
 
     return {
       pedidoId: p.id,
+      /* 08/11/2026: `codigo_corto` (migración 025) — 6 cifras, único, para el
+         código de barras y para avisar a GestionRepartoML. Si un pedido
+         viejísimo no lo tuviera por algún motivo, cae al id interno (como
+         era antes): nunca rompe la impresión. */
+      codigoCorto: p.codigo_corto || p.id,
       cliente: p.cliente_nombre || ("Cliente " + (p.cliente_id || "—")),
       nro: p.cliente_id || "—",
       vendedor: p.vendedor || "—",
@@ -10915,6 +10949,15 @@ var qrcode = function() {
      llegue ese día: es NORMAL, no un olvido). Fire-and-forget: si no hay
      red, si el GAS está caído o si esas acciones todavía no se deployaron,
      no pasa nada — la impresión de la etiqueta NUNCA depende de esto. */
+  /* 08/11/2026: manda la MISMA referencia que lleva el código de barras de
+     esta impresión (`cfg.codigoBarrasCorto` decide cuál: el id interno de
+     siempre, o el código corto) — el GAS de GestionRepartoML trata este
+     campo como un string opaco en sus dos hojas (PedidosFacturados y
+     RepartoDelDia/respuestas: lo guarda y lo compara tal cual, nunca mira
+     su forma ni su longitud), así que no importa el formato con tal de que
+     sea SIEMPRE el mismo valor en el aviso y en lo que después se escanea
+     — y por eso tiene que calcularse igual que en armarHTML, no de nuevo
+     acá con otro criterio. */
   function registrarFacturado_(d) {
     if (!cfg.repartoUrl || !window.fetch) return;
     try {
@@ -10923,7 +10966,7 @@ var qrcode = function() {
         headers: { "Content-Type": "text/plain" },
         body: JSON.stringify({
           action: "registrarFacturadoAdmin",
-          pedidoId: d.pedidoId, clienteNro: d.nro, clienteNombre: d.cliente,
+          pedidoId: cfg.codigoBarrasCorto ? d.codigoCorto : d.pedidoId, clienteNro: d.nro, clienteNombre: d.cliente,
           vendedor: d.vendedor, queruclorTotal: d.queruclorTotal, hasML: d.itemsHabituales > 0,
         }),
       }).catch(() => {});
@@ -10960,7 +11003,7 @@ var qrcode = function() {
      El número grande es lo que se lee de lejos al cargar el camión.
      Debajo, la cuenta separada por tipo de bulto: al repartidor le sirve
      saber que son 3 CAJAS y 5 BOLSAS, no solo «8». */
-  function etiquetaTotal(d, logo, qrWa, codigoTexto, bc) {
+  function etiquetaTotal(d, logo, qrWa, codigoTexto, bc, referenciaPedido) {
     const C = window.EtiquetaComun;
     const total = totalDe(d);
     const q = d.cajasQueruclor, ml = d.bultosHabituales, cab = d.bultosCabos || 0;
@@ -10990,8 +11033,8 @@ var qrcode = function() {
         </div>
         <div class="hr"></div>
 
-        ${C.codigos(bc, codigoTexto, qrWa, ["CÓDIGO DEL PEDIDO", "Para gestión interna"])}
-        ${C.pie(d.pedidoId)}
+        ${C.codigos(bc, codigoTexto, qrWa, ["CÓDIGO DEL PEDIDO", "Para gestión interna"], null, cfg.ancho)}
+        ${C.pie(referenciaPedido)}
       </div>`;
   }
 
@@ -11005,15 +11048,36 @@ var qrcode = function() {
        Laura no lo tipea). El parser de devoluciones (deposito/celular) NO
        se confunde: exige que el código sea EXACTAMENTE "ML-<id>" y nada
        más, así que un código con más campos simplemente no le matchea.
-         ML|<pedidoId>|<clienteNro>|<queruclorTotal o "-">|<lleva ML: 1|0> */
-    const codigoTexto = "ML|" + d.pedidoId + "|" + d.nro + "|" +
-      (d.queruclorTotal != null ? d.queruclorTotal : "-") + "|" + (d.itemsHabituales > 0 ? "1" : "0");
+         de siempre (cfg.codigoBarrasCorto = false):
+           ML|<pedidoId>|<clienteNro>|<queruclorTotal o "-">|<lleva ML: 1|0>
+         08/11/2026, nuevo (cfg.codigoBarrasCorto = true):
+           ML|<codigoCorto>
+       Con el id largo (uuid), el código de arriba no entra legible a ningún
+       ancho de etiqueta (medido) y el lector de Laura (Argox) solo lee
+       barras, no QR. Pero ACORTAR SOLO el id tampoco alcanzaba: el cliente +
+       el $ de Queruclor + el flag de ML ya suman de sobra para no entrar,
+       con id corto o largo. La salida real: el código lleva ÚNICAMENTE el
+       código corto del pedido (`d.codigoCorto`) y Carga de Reparto busca el
+       resto (cliente, $ de Queruclor, si tiene Mercado Limpio) contra lo
+       que esta misma función ya registró al facturar (`registrarFacturado_`,
+       más arriba) — en vez de leerlo del código. El id interno (`d.pedidoId`,
+       uuid) sigue siendo la clave real de la base; no se toca ni se
+       reemplaza. Activación en dos pasos, EN ORDEN: 1) publicar el GAS con
+       `buscarFacturadoAdmin` y el .exe de Carga que sabe pedirlo; 2) recién
+       con las dos cosas confirmadas en la PC real, poner
+       cfg.codigoBarrasCorto = true (localStorage, sin tocar código). Apagado
+       (como está hoy) es EXACTAMENTE el comportamiento de siempre: cero
+       riesgo mientras tanto. */
+    const referenciaPedido = cfg.codigoBarrasCorto ? d.codigoCorto : d.pedidoId;
+    const codigoTexto = cfg.codigoBarrasCorto
+      ? "ML|" + referenciaPedido
+      : "ML|" + referenciaPedido + "|" + d.nro + "|" + (d.queruclorTotal != null ? d.queruclorTotal : "-") + "|" + (d.itemsHabituales > 0 ? "1" : "0");
     const bc = window.Code128;
-    const waTexto = encodeURIComponent("Hola, consulta sobre el pedido " + d.pedidoId);
+    const waTexto = encodeURIComponent("Hola, consulta sobre el pedido " + referenciaPedido);
     const waUrl = "https://wa.me/" + cfg.whatsappOficina + "?text=" + waTexto;
     const qrWa = window.QR ? QR.svg(waUrl, { mm: 0.5 }) : "";
 
-    const cuerpo = totalDe(d) > 0 ? etiquetaTotal(d, logo, qrWa, codigoTexto, bc) : "";
+    const cuerpo = totalDe(d) > 0 ? etiquetaTotal(d, logo, qrWa, codigoTexto, bc, referenciaPedido) : "";
 
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>ETIQUETA ${ancho}×${alto}mm · ${esc(d.cliente)}</title><style>
       ${window.EtiquetaComun.css(ancho, alto, bc)}

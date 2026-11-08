@@ -5359,10 +5359,18 @@ var qrcode = function() {
   /* 26/10/2026: `qrCaja` (solo etiqueta de caja) = el MISMO código de la caja en un QR chico con
      corrección de errores alta (nivel H: se lee aunque falte cerca de un 30 %). El lector SAT AI402
      lee 1D y 2D: si las barras se rayan, se escanea el QR y entra igual que el código de barras. */
-  function codigos(bc, codigoTexto, qrWa, capIzq, qrCaja) {
+  function codigos(bc, codigoTexto, qrWa, capIzq, qrCaja, ancho) {
+    const MM_POR_PX = 25.4 / 96, PX_POR_PUNTO = 0.125 / MM_POR_PX, PUNTOS_BUENO = 3 /* 0,375 mm */;
+    /* Ancho de .cod-izq: el ancho de la etiqueta menos el padding (3,6mm por lado), menos .cod-der
+       (36mm, fijo), menos .cod-div (0,25mm) y los dos huecos de .codigos (2,5mm cada uno). */
+    const disponibleMm = (ancho || 100) - 2 * 3.6 - 36 - 0.25 - 2 * 2.5;
+    const disponiblePx = disponibleMm / MM_POR_PX;
+    const modulos = bc ? bc.anchos(codigoTexto).split("").reduce((a, d) => a + Number(d), 0) : 0;
+    const puntosPorModulo = modulos ? Math.max(1, Math.min(PUNTOS_BUENO, Math.floor(disponiblePx / modulos / PX_POR_PUNTO))) : PUNTOS_BUENO;
+    const moduloPx = puntosPorModulo * PX_POR_PUNTO;
     return `<div class="codigos">
       <div class="cod-izq">
-        <div class="cod-bc">${bc ? bc.html(codigoTexto, { modulo: 1.4173, alto: 60, sinTexto: true }) : ""}</div>
+        <div class="cod-bc">${bc ? bc.html(codigoTexto, { modulo: moduloPx, alto: 60, sinTexto: true }) : ""}</div>
         <div class="cod-txt">${/^ML-.+-\d{3,}$/.test(codigoTexto)
           /* 29/10/2026: el número de caja se lee de un vistazo — es el que dice la app al leer la caja («Pegá la etiqueta N° 005»). */
           ? esc(codigoTexto.replace(/\d{3,}$/, "")) + `<b class="cod-n">${esc(codigoTexto.match(/\d{3,}$/)[0])}</b>` : esc(codigoTexto)}</div>
@@ -5644,8 +5652,8 @@ var qrcode = function() {
         </div>
         <div class="hr"></div>
 
-        ${C.codigos(bc, codigoTexto, qrWa, ["DEVOLUCIÓN DE CAJAS", "Código para gestión interna"], /^ML-.+-\d{3,}$/.test(codigoTexto) && global.QR ? QR.svg(codigoTexto, { mm: 0.5, nivel: "H" }) : "")}
-        ${C.pie(pedido.id)}
+        ${C.codigos(bc, codigoTexto, qrWa, ["DEVOLUCIÓN DE CAJAS", "Código para gestión interna"], /^ML-.+-\d{3,}$/.test(codigoTexto) && global.QR ? QR.svg(codigoTexto, { mm: 0.5, nivel: "H" }) : "", cfg.ancho)}
+        ${C.pie(pedido.codigo_corto || pedido.id)}
       </div>`;
   }
 
@@ -5664,7 +5672,18 @@ var qrcode = function() {
      mismos códigos. Así una devolución sabe qué caja es y no la cuenta
      dos veces aunque se escanee dos veces o desde dos equipos.
      Sin base compartida se sigue imprimiendo «ML-<pedido>» como antes.
-     El QR de contacto con Administración NO cambia. */
+     El QR de contacto con Administración NO cambia.
+
+     08/11/2026: con el id interno (uuid) el código no entraba legible a
+     ningún ancho (medido, igual que pasaba en la etiqueta de TOTAL — ver
+     bitácora) y el lector solo lee barras, no QR. Se manda además
+     `p_codigo_corto` (6 cifras, `pedidos.codigo_corto` — migración 025):
+     la migración 026 lo usa SOLO para armar el texto visible del código
+     («ML-<codigoCorto>-<nnn>»); `p_pedido` (el uuid) sigue siendo la
+     clave real con la que la base identifica, bloquea y liga cada caja
+     — eso no cambia. Si el pedido todavía no tiene código corto (viejo,
+     sin la migración aplicada), cae al uuid de siempre: ni se rompe ni
+     cambia nada. */
   function prepararBultos(pedido, arts, quien, imprimiendo) {
     if (!(global.QR_LOCAL && global.QRSrv)) return null;
     const lista = global.QRSrv.rpc("qr_bultos_preparar", {
@@ -5672,7 +5691,7 @@ var qrcode = function() {
         ? { clave: a.clave, tipo: a.tipo, ean: a.ean, nombre: a.articulo, cajas: a.cajas, uc: a.uc, variantes: a.variantes, composicion: a.composicion }
         : { ean: a.ean, nombre: a.articulo, cajas: a.cajas }),
       p_cliente_id: String(pedido.cliente_id || ""), p_cliente_nombre: pedido.cliente_nombre || "",
-      p_quien: quien || "", p_imprimir: !!imprimiendo });
+      p_quien: quien || "", p_imprimir: !!imprimiendo, p_codigo_corto: pedido.codigo_corto || null });
     /* Códigos por artículo (cerradas) o por renglón (surtidas), y lo que la
        base registró que lleva cada caja: la etiqueta dice exactamente eso. */
     const porClave = {};
@@ -5687,7 +5706,11 @@ var qrcode = function() {
 
   function htmlTira(porArticulo, pedido, totalPedido, bultos) {
     const w = cfg.ancho, h = cfg.alto;
-    const codigoPedido = "ML-" + pedido.id;
+    /* Sin base compartida (QR_LOCAL apagado) no hay `qr_bultos_preparar` que
+       asigne un código por caja: se sigue imprimiendo un solo código para
+       todo el artículo, como siempre — pero con el código corto en vez del
+       uuid, para que entre legible (mismo motivo que arriba). */
+    const codigoPedido = "ML-" + (pedido.codigo_corto || pedido.id);
     const bc = global.Code128;
     const logo = global.LogoSVG ? LogoSVG.lockup("15mm") : "";
 
@@ -5695,7 +5718,7 @@ var qrcode = function() {
       ? totalPedido
       : porArticulo.reduce((s, a) => s + a.cajas, 0);
 
-    const waTexto = encodeURIComponent("Hola, consulta sobre el pedido " + pedido.id);
+    const waTexto = encodeURIComponent("Hola, consulta sobre el pedido " + (pedido.codigo_corto || pedido.id));
     const waUrl = "https://wa.me/" + cfg.whatsappOficina + "?text=" + waTexto;
     const qrWa = global.QR ? QR.svg(waUrl, { mm: 0.5 }) : "";
 
