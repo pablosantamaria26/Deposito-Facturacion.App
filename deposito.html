@@ -5686,12 +5686,20 @@ var qrcode = function() {
      cambia nada. */
   function prepararBultos(pedido, arts, quien, imprimiendo) {
     if (!(global.QR_LOCAL && global.QRSrv)) return null;
-    const lista = global.QRSrv.rpc("qr_bultos_preparar", {
+    const paramsBultos = {
       p_pedido: String(pedido.id), p_arts: arts.map(a => a.tipo
         ? { clave: a.clave, tipo: a.tipo, ean: a.ean, nombre: a.articulo, cajas: a.cajas, uc: a.uc, variantes: a.variantes, composicion: a.composicion }
         : { ean: a.ean, nombre: a.articulo, cajas: a.cajas }),
       p_cliente_id: String(pedido.cliente_id || ""), p_cliente_nombre: pedido.cliente_nombre || "",
-      p_quien: quien || "", p_imprimir: !!imprimiendo, p_codigo_corto: pedido.codigo_corto || null });
+      p_quien: quien || "", p_imprimir: !!imprimiendo,
+    };
+    /* Mientras las migraciones 025–026 no estén aplicadas en el servidor real,
+       la función todavía tiene 6 parámetros: mandarle un 7mo aunque sea null
+       hace que PostgREST no la encuentre (probado: error PGRST202) y deja de
+       poder preparar cajas. Por eso esta clave SOLO se manda si el pedido ya
+       trae codigo_corto — que no va a pasar hasta que la migración esté. */
+    if (pedido.codigo_corto) paramsBultos.p_codigo_corto = pedido.codigo_corto;
+    const lista = global.QRSrv.rpc("qr_bultos_preparar", paramsBultos);
     /* Códigos por artículo (cerradas) o por renglón (surtidas), y lo que la
        base registró que lleva cada caja: la etiqueta dice exactamente eso. */
     const porClave = {};
