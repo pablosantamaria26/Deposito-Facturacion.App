@@ -191,18 +191,22 @@
     return datos;
   }
   var cache = {};
+  var T0_PAGINA = Date.now();
+  var enArranque = function () { return Date.now() - T0_PAGINA < 12000; };
+  var SOLO_LECTURA = /^qr_(pendientes|comisiones_abierto|comision_abierta_de|liquidaciones|bloques_sin_tomar|cliente_lista_de|cliente_lista_todos|cliente_lista_historial|lotes_de|lotes_resumen|recepcion_previa|conteo_estado)$/;
   window.QRSrv = {
-    rpc: function (fn, args) { var r = xhr("POST", "/rest/v1/rpc/" + fn, args || {}); cache = {}; return r; },
+    rpc: function (fn, args) { var r = xhr("POST", "/rest/v1/rpc/" + fn, args || {}); if (!SOLO_LECTURA.test(fn)) cache = {}; return r; },
     /* Lecturas con memoria corta: una pantalla pregunta el stock de cada
        tarjeta varias veces por dibujo; con esto es una sola consulta. */
     get: function (tabla, qs, ttl) {
       var k = tabla + "?" + (qs || ""), ahora = Date.now();
-      if (cache[k] && ahora - cache[k].t < (ttl == null ? 1500 : ttl)) return cache[k].v;
+      if (cache[k] && ahora - cache[k].t < (ttl == null ? (enArranque() ? 12000 : 1500) : ttl)) return cache[k].v;
       var v = xhr("GET", "/rest/v1/" + tabla + (qs ? "?" + qs : ""));
-      cache[k] = { t: ahora, v: v };
+      cache[k] = { t: Date.now(), v: v };
       return v;
     },
     olvidar: function () { cache = {}; },
+    subir: function (ruta, archivo) { return _fetch(ORIGEN + ruta, { method: "PUT", headers: conToken({}), body: archivo }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ("error " + r.status)); return j; }); }); },
     generacion: function () { return GEN; },
     caido: function () { return caido; },
     /* Aviso de cambios para las pantallas que no usan el cliente de
@@ -239,7 +243,7 @@
   S.getItem = function (k) {
     if (this !== window.localStorage || !COMPARTIDAS.test(k)) return g0.call(this, k);
     var c = kvCache[k];
-    if (c && Date.now() - c.t < 800) return c.v;
+    if (c && Date.now() - c.t < (enArranque() ? 12000 : 800)) return c.v;
     try { var v = xhr("GET", "/local/kv/" + k).valor; kvCache[k] = { t: Date.now(), v: v }; return v; }
     catch (e) { return c ? c.v : null; }
   };
@@ -838,6 +842,521 @@ td[align=right]{text-align:right; font-variant-numeric:tabular-nums}
 }
 
 </style>
+<!-- VENCIMIENTOS:INICIO -->
+<script>
+/* Vencimientos de mercadería: fechas, recepción, consulta e importación. Lo usan Stock y Admin. */
+(function (g) {
+  "use strict";
+  const dig = s => String(s == null ? "" : s).replace(/\D/g, "");
+  const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const p2 = n => String(n).padStart(2, "0");
+  const entero = v => { const t = String(v == null ? "" : v).trim(); return t === "" ? 0 : /^\d+$/.test(t) ? +t : NaN; };
+
+  // Un mes nunca empieza con 2: tercer dígito 2 significa MM/AAAA.
+  function escribir(txt) {
+    const d = dig(txt);
+    if (d.length <= 2) return d;
+    if (d[2] === "2") return d.slice(0, 2) + "/" + d.slice(2, 6);
+    const r = d.slice(0, 2) + "/" + d.slice(2, 4);
+    return d.length > 4 ? r + "/" + d.slice(4, 8) : r;
+  }
+  function leer(txt) {
+    const t = String(txt == null ? "" : txt).trim();
+    let m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(t);
+    let a, mes, dia = null;
+    if (m) { a = +m[1]; mes = +m[2]; dia = m[3] ? +m[3] : null; }
+    else {
+      const d = dig(t);
+      if (d.length === 8 && d[2] !== "2") { dia = +d.slice(0, 2); mes = +d.slice(2, 4); a = +d.slice(4); }
+      else if (d.length === 6 && d[2] === "2") { mes = +d.slice(0, 2); a = +d.slice(2); }
+      else return { ok: false, motivo: "Escribí la fecha completa: DD/MM/AAAA, o MM/AAAA si el envase solo trae mes y año." };
+    }
+    if (a < 2000 || a > 2100 || mes < 1 || mes > 12) return { ok: false, motivo: "Esa fecha no existe. Revisá mes y año." };
+    if (dia !== null && (dia < 1 || dia > new Date(a, mes, 0).getDate())) return { ok: false, motivo: "Ese día no existe en ese mes." };
+    const iso = a + "-" + p2(mes) + (dia !== null ? "-" + p2(dia) : "");
+    return { ok: true, iso, precision: dia !== null ? "dia" : "mes", texto: mostrar(iso) };
+  }
+  function mostrar(iso) {
+    const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(String(iso || ""));
+    return m ? (m[3] ? m[3] + "/" : "") + m[2] + "/" + m[1] : "";
+  }
+  function finDe(iso) {
+    const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(String(iso || ""));
+    return m ? new Date(+m[1], m[3] ? +m[2] - 1 : +m[2], m[3] ? +m[3] : 0) : null;
+  }
+  function diasHasta(iso, hoy) {
+    const f = finDe(iso); if (!f) return null;
+    const h = hoy || new Date();
+    return Math.round((f - new Date(h.getFullYear(), h.getMonth(), h.getDate())) / 86400000);
+  }
+  const unidades = (c, s, uc) => (+c || 0) * Math.max(+uc || 1, 1) + (+s || 0);
+  function cant(u, uc) {
+    uc = Math.max(+uc || 1, 1);
+    if (uc === 1) return u + (u === 1 ? " unidad" : " unidades");
+    const c = Math.floor(u / uc), s = u % uc;
+    return [c ? c + (c === 1 ? " caja" : " cajas") : "", s ? s + (s === 1 ? " suelta" : " sueltas") : ""].filter(Boolean).join(" + ") || "0";
+  }
+  const cuenta = (c, s, uc) => {
+    c = +c || 0; s = +s || 0; uc = Math.max(+uc || 1, 1);
+    const u = unidades(c, s, uc), n = u.toLocaleString("es-AR") + (u === 1 ? " unidad" : " unidades");
+    if (uc === 1) return n;
+    return c + (c === 1 ? " caja" : " cajas") + " × " + uc + (s ? " + " + s + (s === 1 ? " suelta" : " sueltas") : "") + " = " + n;
+  };
+
+  const normCol = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z]/g, "");
+  const COLS = { codigo: /^(codigo|codigodelarticulo|ean|dun|codigodebarras|articulo)$/, cajas: /^cajas$/, sueltas: /^(sueltas|unidadessueltas|unidadessueltasadicionales|unidadesadicionales)$/, vence: /^(vence|vencimiento|fechadevencimiento)$/ };
+
+  // filas: [[celdas]] con {texto, numero, vence}; articulos: [{ean,dun,nombre,uc}].
+  function validarFilas(filas, articulos) {
+    const errores = [], avisos = [], grupos = new Map();
+    const cab = (filas[0] || []).map(c => normCol(c && c.texto));
+    const col = {}; Object.keys(COLS).forEach(k => { col[k] = cab.findIndex(x => COLS[k].test(x)); });
+    const faltan = ["codigo", "cajas", "vence"].filter(k => col[k] < 0);
+    if (faltan.length) return { items: [], errores: [{ fila: 1, motivo: "Faltan columnas: " + faltan.join(", ") + ". Usá la plantilla." }], avisos };
+    filas.slice(1).forEach((f, i) => {
+      const nf = i + 2, celda = k => (col[k] >= 0 && f[col[k]]) || {};
+      const cod = String(celda("codigo").texto || "").trim();
+      const c = entero(celda("cajas").texto), s = entero(celda("sueltas").texto), vt = celda("vence");
+      if (!cod && !c && !s && !vt.texto) return;
+      const error = m => errores.push({ fila: nf, codigo: cod, motivo: m });
+      if (!cod) return error("Falta el código.");
+      if (!/^\d+$/.test(cod)) return error("El código tiene caracteres que no son números (¿Excel lo pasó a notación científica?).");
+      const halla = articulos.filter(a => String(a.ean) === cod || String(a.dun || "") === cod);
+      const unicos = [...new Map(halla.map(a => [String(a.ean), a])).values()];
+      if (!unicos.length) return error(celda("codigo").numero ? "Código desconocido. La celda es numérica: pudo perder ceros, formateá la columna como Texto." : "Código desconocido: no está en el catálogo.");
+      if (unicos.length > 1) return error("Código ambiguo: corresponde a " + unicos.map(a => a.nombre).join(" / ") + ".");
+      const a = unicos[0];
+      if (!Number.isInteger(c) || !Number.isInteger(s)) return error("Las cantidades tienen que ser números enteros.");
+      if (c + s === 0) return error("Sin cantidad.");
+      let v = null;
+      if (vt.iso) v = vt.iso;
+      else if (String(vt.texto || "").trim()) { const l = leer(vt.texto); if (!l.ok) return error(l.motivo); v = l.iso; }
+      const uc = Math.max(+a.uc || 1, 1);
+      if (!grupos.has(String(a.ean))) grupos.set(String(a.ean), { ean: String(a.ean), nombre: a.nombre, uc, grupos: [] });
+      const it = grupos.get(String(a.ean));
+      const igual = it.grupos.find(x => x.vence === v);
+      if (igual) { igual.cajas += c; igual.sueltas += s; } else it.grupos.push({ vence: v, cajas: c, sueltas: s });
+      if (uc > 1 && s >= uc) avisos.push({ fila: nf, codigo: cod, motivo: s + " sueltas alcanzan para " + Math.floor(s / uc) + " caja(s) de " + uc + ". Las sueltas son adicionales a las cajas: revisá que no estén sumadas dos veces." });
+      if (!v) avisos.push({ fila: nf, codigo: cod, motivo: "Sin vencimiento: queda como «Sin vencimiento registrado»." });
+    });
+    return { items: [...grupos.values()], errores, avisos };
+  }
+  function celdasDe(XLSX, ws) {
+    const rng = XLSX.utils.decode_range(ws["!ref"] || "A1"), filas = [];
+    for (let R = rng.s.r; R <= rng.e.r; R++) {
+      const f = [];
+      for (let C = rng.s.c; C <= rng.e.c; C++) {
+        const c = ws[XLSX.utils.encode_cell({ r: R, c: C })];
+        if (!c || c.v == null || c.v === "") { f.push({ texto: "" }); continue; }
+        const x = { texto: c.t === "n" ? String(c.v) : String(c.v).trim(), numero: c.t === "n" };
+        if (c.t === "n" && c.z && /[yY]/.test(c.z) && XLSX.SSF) {
+          const d = XLSX.SSF.parse_date_code(c.v);
+          if (d) { x.iso = d.y + "-" + p2(d.m) + (/[dD]/.test(c.z) ? "-" + p2(d.d) : ""); x.texto = mostrar(x.iso); }
+        }
+        f.push(x);
+      }
+      filas.push(f);
+    }
+    return filas;
+  }
+  function plantilla(XLSX) {
+    const ws = XLSX.utils.aoa_to_sheet([["Código del artículo", "Cajas", "Unidades sueltas adicionales", "Vencimiento"], ["7790000000000", 2, 3, "15/03/2027"], ["7790000000000", 1, 0, "09/2027"]]);
+    ["A2", "A3", "D2", "D3"].forEach(k => { ws[k].t = "s"; ws[k].z = "@"; });
+    ws["!cols"] = [{ wch: 22 }, { wch: 8 }, { wch: 28 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Recepción");
+    XLSX.writeFile(wb, "plantilla-recepcion.xlsx");
+  }
+
+  const ESTADO = { vencido: ["VENCIDO", "mal"], proximo: ["PRÓXIMO A VENCER", "ojo"], vigente: ["VIGENTE", "bien"] };
+  const CSS = `
+  .vn-form{display:flex;flex-direction:column;gap:12px}
+  .vn-cab{display:flex;gap:10px;align-items:flex-start}.vn-cab img{width:46px;height:46px;object-fit:contain;flex:none}
+  .vn-cab>div{flex:1;min-width:0}.vn-cab b{display:block;font-size:15px;line-height:1.25}.vn-cab small{color:#475569;font-size:12.5px}
+  .vn-q{flex:none;width:40px;height:40px;border-radius:50%;border:2px solid #cbd5e1;background:#fff;font-weight:800;font-size:17px;color:#334155}
+  .vn-ayuda{background:#eef4fb;border-radius:10px;padding:10px 12px;font-size:13.5px;line-height:1.4;color:#1e3a5f}
+  .vn-hoy{font-size:13.5px;color:#475569}.vn-hoy b{color:#0f172a}
+  .vn-g{border:1.5px solid #dbe3df;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:9px;background:#fff}
+  .vn-g-t{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:800;color:#334155}
+  .vn-g-x{border:0;background:none;color:#9f1239;font-size:13.5px;font-weight:700;padding:6px}
+  .vn-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.vn-2.uno{grid-template-columns:1fr}
+  .vn-c{display:flex;flex-direction:column;justify-content:flex-end;gap:4px;font-size:12.5px;font-weight:700;color:#475569;min-width:0}
+  .vn-i{width:100%;box-sizing:border-box;height:52px;font-size:22px;font-weight:700;border:2px solid #cbd5e1;border-radius:10px;padding:0 10px;text-align:center;background:#fff;color:#0f172a;font-variant-numeric:tabular-nums}
+  .vn-i:focus{outline:0;border-color:#0c4c91;box-shadow:0 0 0 3px rgba(12,76,145,.18)}.vn-i.mal{border-color:#9f1239}
+  .vn-i::placeholder{color:#94a3b8;font-weight:500;font-size:18px}
+  .vn-ops{display:flex;flex-wrap:wrap;gap:6px}.vn-op{min-height:40px;padding:6px 11px;border:1.5px solid #cbd5e1;border-radius:9px;background:#fff;font-size:13.5px;font-weight:700;color:#334155}
+  .vn-op.on{background:#334155;color:#fff;border-color:#334155}
+  .vn-n{font-size:13px;color:#475569;min-height:1em}.vn-n.mal{color:#9f1239;font-weight:700}
+  .vn-otra{min-height:46px;border:2px dashed #94a3b8;border-radius:11px;background:none;font-size:15px;font-weight:800;color:#0c4c91}
+  .vn-total{font-size:14px;font-weight:700;color:#0f172a}
+  .vn-barra{position:sticky;bottom:var(--vn-tec,0px);z-index:30;display:grid;grid-template-columns:1fr 1.5fr;gap:8px;background:#fff;padding:9px 0 calc(9px + env(safe-area-inset-bottom));margin-bottom:-6px;border-top:1px solid #e2e8f0}
+  .vn-barra.solo{grid-template-columns:1fr}
+  .vn-b{min-height:54px;border-radius:11px;font-size:16px;font-weight:800;border:2px solid #cbd5e1;background:#fff;color:#0f172a}
+  .vn-b.pri{background:#0c4c91;border-color:#0c4c91;color:#fff}.vn-b:disabled{opacity:.55}
+  .vn-aviso{border-radius:10px;padding:10px 12px;font-size:13.5px;line-height:1.4;background:#fef3c7;color:#713f12}.vn-aviso.mal{background:#fde8ec;color:#881337}
+  .vn-aviso b{display:block;margin-bottom:2px}
+  .vn-acc{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .vn-lista{display:flex;flex-direction:column;gap:6px}
+  .vn-f{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:9px;font-size:14px;background:#fff}
+  .vn-f b{font-variant-numeric:tabular-nums}.vn-f small{color:#64748b;flex-basis:100%;font-size:12px}.vn-f .vn-mas{margin-left:auto;font-weight:700}
+  .vn-chip{font-size:11px;font-weight:800;letter-spacing:.03em;padding:2px 7px;border-radius:6px;white-space:nowrap}
+  .vn-chip.mal{background:#fde8ec;color:#9f1239;border:1px solid #9f1239}.vn-chip.ojo{background:#fef3c7;color:#92400e;border:1px dashed #92400e}
+  .vn-chip.bien{background:#e8f4ed;color:#0e6b3e;border:1px solid transparent}.vn-chip.nada{background:#eef1f4;color:#475569;border:1px solid transparent}
+  .vn-link{border:0;background:none;color:#0c4c91;font-size:13px;font-weight:700;padding:4px 0;text-decoration:underline}
+  .vn-tabla{width:100%;border-collapse:collapse;font-size:13px}.vn-tabla th,.vn-tabla td{padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top}
+  .vn-tabla .n{text-align:right;font-variant-numeric:tabular-nums}
+  .vn-err{color:#9f1239;font-size:13px}
+  .hd-r{flex-wrap:wrap;row-gap:6px}
+  @media (max-height:560px){.hd{position:static!important}}`;
+  function ponerCss() {
+    if (!g.document || document.getElementById("vnCss")) return;
+    const s = document.createElement("style"); s.id = "vnCss"; s.textContent = CSS; document.head.appendChild(s);
+  }
+  function seguirTeclado() {
+    const vv = g.visualViewport; if (!vv || seguirTeclado.ya) return; seguirTeclado.ya = true;
+    const f = () => document.documentElement.style.setProperty("--vn-tec", Math.max(0, Math.round(g.innerHeight - vv.height - vv.offsetTop)) + "px");
+    vv.addEventListener("resize", f); vv.addEventListener("scroll", f); f();
+  }
+  const idOp = t => t + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  const hoyTxt = () => { const d = new Date(); return p2(d.getDate()) + "/" + p2(d.getMonth() + 1) + "/" + d.getFullYear(); };
+  const sesionGet = k => { try { return sessionStorage.getItem(k) || ""; } catch (e) { return ""; } };
+  const sesionSet = (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) {} };
+  const borK = o => "qr_venc_borrador_v1:" + o;
+  const bor = {
+    leer(o) { try { return JSON.parse(localStorage.getItem(borK(o)) || "null"); } catch (e) { return null; } },
+    poner(o, d) { try { localStorage.setItem(borK(o), JSON.stringify(d)); } catch (e) {} },
+    borrar(o) { try { localStorage.removeItem(borK(o)); } catch (e) {} },
+  };
+  const conDatos = d => !!(d && d.grupos && d.grupos.some(x => x.c || x.s || x.v));
+  const grupoVacio = () => ({ c: "", s: "", v: "", sf: false });
+
+  /* cfg: {ficha:{ean,nombre,marca,uc,imagen,leido,tipo}, modo:'recibir'|'completar', origen, rpc, quien(), remito(), aviso(t,c),
+           fisicoTxt, lugar, alTerminar(res), alVolver(), textoGuardar, adjunto()} */
+  function formulario(raiz, cfg) {
+    ponerCss(); seguirTeclado();
+    const f = cfg.ficha, uc = Math.max(+f.uc || 1, 1), rec = cfg.modo === "recibir";
+    const previo = rec ? bor.leer(cfg.origen) : null;
+    const d = previo && previo.ean === f.ean ? previo : { ean: f.ean, ficha: f, op: idOp(rec ? "rec" : "cmp"), grupos: [grupoVacio()] };
+    let ocupado = false, confirmar = false, repetida = null;
+    const guardarBor = () => { if (rec) { if (conDatos(d)) bor.poner(cfg.origen, Object.assign(d, { remito: cfg.remito ? cfg.remito() : d.remito, ts: Date.now() })); else bor.borrar(cfg.origen); } };
+    const AYUDA = uc > 1
+      ? "Las <b>unidades sueltas</b> son adicionales a las cajas: 2 cajas × " + uc + " + 3 sueltas = " + (2 * uc + 3) + " unidades. Si el envase solo trae mes y año, escribí MM/AAAA. Usá <b>Otra fecha</b> solo si la entrega trae más de un vencimiento."
+      : "Si el envase solo trae mes y año, escribí MM/AAAA. Usá <b>Otra fecha</b> solo si la entrega trae más de un vencimiento.";
+    raiz.innerHTML = `<div class="card vn-form">
+      <div class="vn-cab">${f.imagen ? `<img src="${esc(f.imagen)}" alt="" onerror="this.style.visibility='hidden'">` : ""}
+        <div><b>${esc(f.nombre)}</b><small>${esc(f.marca || "")}${f.marca ? " · " : ""}${uc > 1 ? "caja x " + uc : "unidad"}</small></div>
+        <button type="button" class="vn-q" data-a="ayuda" aria-label="Ayuda" aria-expanded="false">?</button></div>
+      <div class="vn-ayuda" data-ayuda hidden>${AYUDA}</div>
+      ${cfg.fisicoTxt ? `<div class="vn-hoy">${cfg.fisicoTxt}</div>` : ""}
+      <div class="vn-lista" data-grupos></div>
+      <button type="button" class="vn-otra" data-a="otra">+ Otra fecha</button>
+      <div class="vn-total" data-total aria-live="polite"></div>
+      <div data-msg></div>
+      <div class="vn-barra"><button type="button" class="vn-b" data-a="sig">Siguiente</button>
+        <button type="button" class="vn-b pri" data-a="guardar">${esc(cfg.textoGuardar || (rec ? "Guardar y seguir" : "Guardar"))}</button></div>
+      ${cfg.alVolver ? `<button type="button" class="vn-link" data-a="volver">Volver sin guardar</button>` : ""}
+    </div>`;
+    const q = s => raiz.querySelector(s), qq = s => [...raiz.querySelectorAll(s)];
+    const anterior = () => sesionGet("qr_venc_ultima");
+    function pintarGrupos() {
+      const ant = anterior();
+      q("[data-grupos]").innerHTML = d.grupos.map((g2, i) => `<div class="vn-g" data-i="${i}">
+        ${d.grupos.length > 1 ? `<div class="vn-g-t"><span>Fecha ${i + 1}</span><button type="button" class="vn-g-x" data-quitar="${i}">Quitar</button></div>` : ""}
+        <div class="vn-2 ${uc === 1 ? "uno" : ""}">
+          <label class="vn-c">${uc === 1 ? "Unidades" : "Cajas"}<input class="vn-i" data-c inputmode="numeric" pattern="[0-9]*" enterkeyhint="next" autocomplete="off" value="${esc(g2.c)}"></label>
+          ${uc === 1 ? "" : `<label class="vn-c">Unidades sueltas adicionales<input class="vn-i" data-s inputmode="numeric" pattern="[0-9]*" enterkeyhint="next" autocomplete="off" value="${esc(g2.s)}"></label>`}
+        </div>
+        <label class="vn-c">Vencimiento (DD/MM/AAAA)<input class="vn-i" data-v inputmode="numeric" placeholder="DD/MM/AAAA" maxlength="10" enterkeyhint="next" autocomplete="off" value="${esc(g2.v)}" ${g2.sf ? "disabled" : ""}></label>
+        <div class="vn-ops">
+          ${ant ? `<button type="button" class="vn-op" data-ant>Usar ${esc(ant)}</button>` : ""}
+          <button type="button" class="vn-op" data-cal>Calendario</button>
+          ${rec ? `<button type="button" class="vn-op ${g2.sf ? "on" : ""}" data-sf aria-pressed="${g2.sf}">No tiene fecha</button>` : ""}
+        </div>
+        <div class="vn-n" data-n></div></div>`).join("");
+      qq(".vn-g").forEach(el => nota(+el.dataset.i));
+      total();
+    }
+    function nota(i) {
+      const el = q(`.vn-g[data-i="${i}"]`); if (!el) return;
+      const g2 = d.grupos[i], n = el.querySelector("[data-n]"), iv = el.querySelector("[data-v]");
+      const c = +g2.c || 0, s = +g2.s || 0, partes = [];
+      if (c || s) partes.push(cuenta(c, s, uc));
+      let mal = false;
+      if (g2.v && dig(g2.v).length >= 6) {
+        const l = leer(g2.v);
+        if (!l.ok && (dig(g2.v).length === 8 || dig(g2.v)[2] === "2")) { partes.push(l.motivo); mal = true; }
+        else if (l.ok && l.precision === "mes") partes.push("Mes y año: se guarda sin día.");
+      }
+      n.textContent = partes.join(" · "); n.className = "vn-n" + (mal ? " mal" : ""); iv.classList.toggle("mal", mal);
+    }
+    function total() {
+      const c = d.grupos.reduce((a, x) => a + (+x.c || 0), 0), s = d.grupos.reduce((a, x) => a + (+x.s || 0), 0);
+      q("[data-total]").textContent = d.grupos.length > 1 && (c || s) ? "Total: " + cuenta(c, s, uc) : "";
+      if (cfg.lugar != null) { const u = unidades(c, s, uc); q("[data-total]").textContent = "Quedan sin fecha: " + cant(cfg.lugar, uc) + (u ? " · cargando: " + cant(u, uc) : ""); }
+    }
+    const msg = (html, cls) => { q("[data-msg]").innerHTML = html ? `<div class="vn-aviso ${cls || ""}">${html}</div>` : ""; };
+    function campos() { return qq(".vn-g input:not(:disabled)"); }
+    function siguiente(desde) {
+      const lista = campos(), i = desde ? lista.indexOf(desde) : -1;
+      for (let k = i + 1; k < lista.length; k++) {
+        const el = lista[k];
+        if (el.matches("[data-s]")) continue;
+        if (!el.value) { enfocar(el); return; }
+      }
+      const b = q('[data-a="guardar"]'); b.focus(); b.scrollIntoView({ block: "nearest" });
+    }
+    function enfocar(el) { el.focus(); if (el.select) el.select(); setTimeout(() => el.scrollIntoView({ block: "center" }), 60); }
+    function validar() {
+      const grupos = [];
+      for (let i = 0; i < d.grupos.length; i++) {
+        const x = d.grupos[i], c = entero(x.c), s = entero(x.s), el = q(`.vn-g[data-i="${i}"]`);
+        if (!Number.isInteger(c) || !Number.isInteger(s) || c + s === 0) { enfocar(el.querySelector("[data-c]")); return { error: "Falta la cantidad" + (d.grupos.length > 1 ? " de la fecha " + (i + 1) : "") + "." }; }
+        if (x.sf) { grupos.push({ vence: null, cajas: c, sueltas: s }); continue; }
+        const l = leer(x.v);
+        if (!l.ok) { enfocar(el.querySelector("[data-v]")); return { error: x.v ? l.motivo : (rec ? "Falta el vencimiento. Si el envase no lo trae, tocá «No tiene fecha»." : "Falta el vencimiento.") }; }
+        grupos.push({ vence: l.iso, cajas: c, sueltas: s, texto: l.texto });
+      }
+      return { grupos };
+    }
+    function enviar(forzar, motivo) {
+      if (ocupado) return;
+      const v = validar();
+      if (v.error) { msg(esc(v.error), "mal"); return; }
+      const raros = v.grupos.filter(x => x.vence && (diasHasta(x.vence) < 0 || diasHasta(x.vence) > 3650));
+      if (raros.length && !confirmar) {
+        confirmar = true;
+        msg(`<b>Revisá la fecha</b>${raros.map(x => esc(x.texto) + (diasHasta(x.vence) < 0 ? " ya venció." : " es dentro de más de 10 años.")).join(" ")} Si está bien, tocá guardar otra vez.`, "");
+        return;
+      }
+      if (cfg.modo === "completar" && cfg.lugar != null && v.grupos.reduce((a, x) => a + unidades(x.cajas, x.sueltas, uc), 0) > cfg.lugar) { msg("Estás cargando más de lo que queda sin fecha (" + esc(cant(cfg.lugar, uc)) + ").", "mal"); return; }
+      const quien = cfg.quien();
+      if (!quien) { msg("Falta elegir quién está cargando.", "mal"); return; }
+      let remito = "";
+      if (rec) { remito = String(cfg.remito() || "").trim(); if (!remito) { msg("Falta el número de remito.", "mal"); if (cfg.enfocarRemito) cfg.enfocarRemito(); return; } }
+      const grupos = v.grupos.map(x => ({ vence: x.vence, cajas: x.cajas, sueltas: x.sueltas }));
+      const p = rec ? { op: d.op, remito, quien, origen: cfg.origen, items: [{ ean: f.ean, grupos }], forzar: !!forzar, motivo: motivo || null, adjunto: cfg.adjunto ? cfg.adjunto() : null }
+        : { op: d.op, ean: f.ean, quien, grupos };
+      ocupado = true; const bt = q('[data-a="guardar"]'); bt.disabled = true;
+      let r;
+      try { r = cfg.rpc(rec ? "qr_recepcion_registrar" : "qr_lote_completar", { p }); }
+      catch (e) {
+        ocupado = false; bt.disabled = false; guardarBor();
+        msg("<b>No se guardó.</b> " + esc(e.message || "Sin conexión.") + " El borrador queda acá: tocá guardar de nuevo, no se duplica.", "mal");
+        return;
+      }
+      ocupado = false; bt.disabled = false;
+      if (r && r.razon === "repetida") return mostrarRepetida(r);
+      if (!r || !r.ok) { msg(esc((r && r.motivo) || "No se pudo guardar."), "mal"); return; }
+      const ult = [...v.grupos].reverse().find(x => x.texto);
+      if (ult) sesionSet("qr_venc_ultima", ult.texto);
+      if (rec) bor.borrar(cfg.origen);
+      if (cfg.aviso) cfg.aviso("Guardado: " + cant(v.grupos.reduce((a, x) => a + unidades(x.cajas, x.sueltas, uc), 0), uc), "ok");
+      if (cfg.alTerminar) cfg.alTerminar(r, { grupos: v.grupos, cajas: v.grupos.reduce((a, x) => a + x.cajas, 0), sueltas: v.grupos.reduce((a, x) => a + x.sueltas, 0) });
+    }
+    function mostrarRepetida(r) {
+      repetida = r;
+      const u = (r.repetidos || [])[0] || {};
+      msg(`<b>Este artículo ya está cargado con ese remito</b>${esc(u.cajas || 0)} cajas por ${esc(u.quien || "—")}${u.fecha ? " el " + esc(new Date(u.fecha).toLocaleDateString("es-AR")) : ""}. No se sumó nada.
+        <div class="vn-acc"><button type="button" class="vn-op" data-rep="ok">Está bien así</button><button type="button" class="vn-op" data-rep="otra">Es otro renglón del remito</button></div>
+        <div data-rep-m hidden style="margin-top:8px"><input class="vn-i" style="font-size:16px;text-align:left" data-motivo placeholder="Motivo"><div class="vn-acc"><button type="button" class="vn-op on" data-rep="si">Sumar igual</button></div></div>`, "mal");
+    }
+    raiz.oninput = e => {
+      const el = e.target, gr = el.closest && el.closest(".vn-g"); if (!gr) return;
+      const i = +gr.dataset.i, x = d.grupos[i];
+      if (el.matches("[data-c]")) x.c = el.value = dig(el.value);
+      else if (el.matches("[data-s]")) x.s = el.value = dig(el.value);
+      else if (el.matches("[data-v]")) {
+        const borrando = e.inputType && e.inputType.startsWith("delete");
+        x.v = el.value = borrando ? el.value : escribir(el.value);
+        confirmar = false;
+        const dg = dig(x.v);
+        if (!borrando && (dg.length === 8 || (dg.length === 6 && dg[2] === "2")) && leer(x.v).ok) { nota(i); total(); guardarBor(); return siguiente(el); }
+      }
+      nota(i); total(); guardarBor();
+    };
+    raiz.onkeydown = e => { if (e.key === "Enter" && e.target.matches && e.target.matches(".vn-g input")) { e.preventDefault(); siguiente(e.target); } };
+    raiz.onclick = e => {
+      const b = e.target.closest("button"); if (!b) return;
+      const gr = b.closest(".vn-g"), i = gr ? +gr.dataset.i : -1;
+      if (b.dataset.a === "ayuda") { const a = q("[data-ayuda]"); a.hidden = !a.hidden; b.setAttribute("aria-expanded", String(!a.hidden)); }
+      else if (b.dataset.a === "otra") { d.grupos.push(grupoVacio()); pintarGrupos(); guardarBor(); enfocar(q(`.vn-g[data-i="${d.grupos.length - 1}"] [data-c]`)); }
+      else if (b.dataset.a === "sig") siguiente(campos().includes(document.activeElement) ? document.activeElement : null);
+      else if (b.dataset.a === "guardar") enviar(false);
+      else if (b.dataset.a === "volver") cfg.alVolver();
+      else if (b.dataset.quitar != null) { d.grupos.splice(+b.dataset.quitar, 1); pintarGrupos(); guardarBor(); }
+      else if (b.hasAttribute("data-ant")) { d.grupos[i].v = anterior(); d.grupos[i].sf = false; pintarGrupos(); guardarBor(); siguiente(q(`.vn-g[data-i="${i}"] [data-v]`)); }
+      else if (b.hasAttribute("data-sf")) { d.grupos[i].sf = !d.grupos[i].sf; if (d.grupos[i].sf) d.grupos[i].v = ""; pintarGrupos(); guardarBor(); }
+      else if (b.hasAttribute("data-cal")) abrirCal(i);
+      else if (b.dataset.rep === "ok") { bor.borrar(cfg.origen); if (cfg.alTerminar) cfg.alTerminar({ ok: true, sinCambios: true }); }
+      else if (b.dataset.rep === "otra") { q("[data-rep-m]").hidden = false; q("[data-motivo]").focus(); }
+      else if (b.dataset.rep === "si") { const m = q("[data-motivo]").value.trim(); if (!m) return q("[data-motivo]").focus(); enviar(true, m); }
+    };
+    function abrirCal(i) {
+      const t = document.createElement("input"); t.type = "date"; t.style.cssText = "position:fixed;left:50%;top:40%;opacity:0;width:1px;height:1px"; document.body.appendChild(t);
+      t.onchange = () => { if (t.value) { const l = leer(t.value); d.grupos[i].v = l.texto; d.grupos[i].sf = false; pintarGrupos(); guardarBor(); } t.remove(); };
+      t.onblur = () => setTimeout(() => t.remove(), 400);
+      if (t.showPicker) { try { t.showPicker(); return; } catch (e) {} }
+      t.focus(); t.click();
+    }
+    pintarGrupos();
+    if (previo && previo.ean === f.ean && conDatos(previo)) msg("Se recuperó lo que estabas cargando. Todavía no está guardado.", "");
+    const prim = q(f.tipo === "unidad" && uc > 1 ? "[data-s]" : "[data-c]");
+    if (prim && !cfg.sinFoco) prim.focus();
+    return { datos: d };
+  }
+
+  const fechaHtml = l => esc(mostrar(l.vence));
+  function bloque(l, op) {
+    op = op || {};
+    if (!l) return `<div class="vn-aviso">No se pudieron leer los vencimientos.</div>`;
+    const uc = l.uc, sinF = l.sin_fecha_unidades;
+    const filas = l.grupos.map(x => {
+      const [t, c] = ESTADO[x.estado] || ["", "nada"];
+      return `<div class="vn-f"><b>${fechaHtml(x)}</b><span class="vn-chip ${c}">${t}</span><span class="vn-mas">${esc(cant(x.unidades, uc))}</span>
+        <small>${x.remito ? "Remito " + esc(x.remito) : "Cargada sobre mercadería existente"}${op.corregir ? ` · <button type="button" class="vn-link" data-corr="${esc(x.id)}">Corregir fecha</button>` : ""}</small></div>`;
+    }).join("");
+    return `<div class="vn-lista">
+      ${l.exacto ? "" : `<div class="vn-aviso"><b>Conciliación pendiente</b>${esc(l.advertencia || "")}</div>`}
+      ${filas}
+      ${sinF > 0 ? `<div class="vn-f"><span class="vn-chip nada">SIN FECHA</span><span>Sin vencimiento registrado</span><span class="vn-mas">${esc(cant(sinF, uc))}</span></div>` : ""}
+      ${!filas && !sinF ? `<div class="vn-f"><span>Sin stock registrado.</span></div>` : ""}
+    </div>`;
+  }
+  function resumenLinea(l) {
+    if (!l) return "Sin vencimiento registrado";
+    const pr = l.proximo;
+    const txt = pr ? `<span class="vn-chip ${(ESTADO[pr.estado] || [])[1] || "nada"}">${(ESTADO[pr.estado] || [])[0] || ""}</span> ${fechaHtml(pr)}` : (l.sin_fecha_unidades > 0 ? "Sin vencimiento registrado" : "");
+    return txt + (l.exacto ? "" : ` <span class="vn-chip ojo">CONCILIACIÓN PENDIENTE</span>`);
+  }
+
+  /* cfg: {ficha, rpc, quien(), aviso(), alCambiar()} */
+  function panel(raiz, cfg) {
+    ponerCss();
+    const f = cfg.ficha, ean = String(f.ean);
+    function leerL() { return cfg.rpc("qr_lotes_de", { p_ean: ean }); }
+    function pintar() {
+      let l;
+      try { l = leerL(); } catch (e) { raiz.innerHTML = `<div class="vn-aviso mal">No se pudieron leer los vencimientos: ${esc(e.message)} <button type="button" class="vn-link" data-r>Reintentar</button></div>`; raiz.querySelector("[data-r]").onclick = pintar; return; }
+      raiz.innerHTML = bloque(l, { corregir: true }) + `<div class="vn-acc">
+        ${l.lugar_unidades > 0 ? `<button type="button" class="vn-op" data-a="completar">Completar vencimientos</button>` : ""}
+        ${l.exacto ? "" : `<button type="button" class="vn-op" data-a="conciliar">Identificar qué salió</button>`}</div>`;
+      raiz.onclick = e => {
+        const b = e.target.closest("button"); if (!b) return;
+        if (b.dataset.a === "completar") completar(l);
+        else if (b.dataset.a === "conciliar") conciliar(l);
+        else if (b.dataset.corr) corregir(l, b.dataset.corr);
+      };
+    }
+    function hecho(m) { if (cfg.aviso && m) cfg.aviso(m, "ok"); if (cfg.alCambiar) cfg.alCambiar(); pintar(); }
+    function completar(l) {
+      raiz.onclick = null;
+      formulario(raiz, { ficha: f, modo: "completar", origen: cfg.origen || "stock", rpc: cfg.rpc, quien: cfg.quien, aviso: cfg.aviso, lugar: l.lugar_unidades,
+        alTerminar: () => { raiz.oninput = raiz.onkeydown = null; hecho(); }, alVolver: () => { raiz.oninput = raiz.onkeydown = null; pintar(); } });
+    }
+    function conciliar(l) {
+      const uc = l.uc, op = idOp("cnc");
+      raiz.innerHTML = `<div class="vn-form"><div class="vn-aviso"><b>Por identificar: ${esc(cant(l.salida_sin_asignar, uc))}</b>Indicá de qué fecha salió solo lo que sepas. Lo demás queda pendiente de revisión; el stock no cambia.</div>
+        ${l.grupos.map(x => `<div class="vn-g"><div class="vn-g-t"><span>${fechaHtml(x)} · registradas ${esc(cant(x.unidades, uc))}</span></div>
+          <div class="vn-2 ${uc === 1 ? "uno" : ""}"><label class="vn-c">${uc === 1 ? "Unidades que salieron" : "Cajas que salieron"}<input class="vn-i" inputmode="numeric" data-l="${esc(x.id)}" data-k="c"></label>
+          ${uc === 1 ? "" : `<label class="vn-c">Sueltas que salieron<input class="vn-i" inputmode="numeric" data-l="${esc(x.id)}" data-k="s"></label>`}</div></div>`).join("")}
+        ${l.sin_fecha_unidades > 0 ? `<div class="vn-g"><div class="vn-g-t"><span>Sin vencimiento registrado · ${esc(cant(l.sin_fecha_unidades, uc))}</span></div>
+          <div class="vn-2 ${uc === 1 ? "uno" : ""}"><label class="vn-c">${uc === 1 ? "Unidades que salieron" : "Cajas que salieron"}<input class="vn-i" inputmode="numeric" data-l="" data-k="c"></label>
+          ${uc === 1 ? "" : `<label class="vn-c">Sueltas que salieron<input class="vn-i" inputmode="numeric" data-l="" data-k="s"></label>`}</div></div>` : ""}
+        <div data-m></div>
+        <div class="vn-barra"><button type="button" class="vn-b" data-a="dejar">Dejar pendiente</button><button type="button" class="vn-b pri" data-a="ok">Guardar</button></div></div>`;
+      raiz.onclick = e => {
+        const b = e.target.closest("button"); if (!b) return;
+        if (b.dataset.a === "dejar") return pintar();
+        if (b.dataset.a !== "ok") return;
+        const porL = new Map();
+        raiz.querySelectorAll("[data-l]").forEach(i => { const u = (+dig(i.value) || 0) * (i.dataset.k === "c" ? uc : 1); porL.set(i.dataset.l, (porL.get(i.dataset.l) || 0) + u); });
+        const asignar = [...porL].filter(([k, u]) => k && u).map(([lote, unidades]) => ({ lote, unidades })), sin_fecha = porL.get("") || 0;
+        let r; try { r = cfg.rpc("qr_lote_conciliar", { p: { op, ean, quien: cfg.quien(), asignar, sin_fecha } }); }
+        catch (er) { raiz.querySelector("[data-m]").innerHTML = `<div class="vn-aviso mal">No se guardó: ${esc(er.message)}. Tocá de nuevo, no se duplica.</div>`; return; }
+        if (!r || !r.ok) { raiz.querySelector("[data-m]").innerHTML = `<div class="vn-aviso mal">${esc((r && r.motivo) || "No se pudo guardar.")}</div>`; return; }
+        hecho("Identificado");
+      };
+    }
+    function corregir(l, id) {
+      const x = l.grupos.find(y => y.id === id), op = idOp("cor");
+      raiz.innerHTML = `<div class="vn-form"><div class="vn-g"><div class="vn-g-t"><span>Corregir ${fechaHtml(x)} · no cambia cantidades</span></div>
+        <label class="vn-c">Fecha correcta<input class="vn-i" inputmode="numeric" maxlength="10" placeholder="DD/MM/AAAA" data-nv></label>
+        <label class="vn-c">Motivo<input class="vn-i" style="font-size:16px;text-align:left" data-mt></label></div><div data-m></div>
+        <div class="vn-barra"><button type="button" class="vn-b" data-a="no">Volver</button><button type="button" class="vn-b pri" data-a="ok">Guardar</button></div></div>`;
+      const nv = raiz.querySelector("[data-nv]"); nv.oninput = () => { nv.value = escribir(nv.value); };
+      raiz.onclick = e => {
+        const b = e.target.closest("button"); if (!b) return;
+        if (b.dataset.a === "no") return pintar();
+        if (b.dataset.a !== "ok") return;
+        const le = leer(nv.value), m = raiz.querySelector("[data-m]");
+        if (!le.ok) { m.innerHTML = `<div class="vn-aviso mal">${esc(le.motivo)}</div>`; return; }
+        let r; try { r = cfg.rpc("qr_lote_corregir", { p: { op, lote: id, vence: le.iso, motivo: raiz.querySelector("[data-mt]").value, quien: cfg.quien() } }); }
+        catch (er) { m.innerHTML = `<div class="vn-aviso mal">No se guardó: ${esc(er.message)}</div>`; return; }
+        if (!r || !r.ok) { m.innerHTML = `<div class="vn-aviso mal">${esc((r && r.motivo) || "No se pudo guardar.")}</div>`; return; }
+        hecho("Fecha corregida");
+      };
+    }
+    pintar();
+    return { pintar };
+  }
+
+  /* Recepción desde Excel, con vista previa. cfg: {XLSX, articulos(), rpc, quien(), aviso(), remito(), adjunto(), alTerminar()} */
+  function importador(raiz, cfg) {
+    ponerCss();
+    let val = null, op = idOp("xls"), rep = [];
+    raiz.innerHTML = `<div class="vn-form"><div class="vn-acc" style="margin:0"><button type="button" class="vn-op" data-a="pl">Bajar plantilla</button>
+      <label class="vn-op" style="display:inline-flex;align-items:center;cursor:pointer">Elegir Excel<input type="file" accept=".xlsx,.xls" data-f hidden></label></div><div data-pv></div></div>`;
+    const pv = raiz.querySelector("[data-pv]");
+    raiz.querySelector('[data-a="pl"]').onclick = () => plantilla(cfg.XLSX);
+    raiz.querySelector("[data-f]").onchange = e => {
+      const fi = e.target.files[0]; if (!fi) return;
+      const rd = new FileReader();
+      rd.onerror = () => { pv.innerHTML = `<div class="vn-aviso mal">No se pudo leer el archivo.</div>`; };
+      rd.onload = () => {
+        try {
+          const wb = cfg.XLSX.read(rd.result, { type: "array", cellNF: true, cellText: true, cellDates: false });
+          val = validarFilas(celdasDe(cfg.XLSX, wb.Sheets[wb.SheetNames[0]]), cfg.articulos());
+          rep = [];
+          const remito = String(cfg.remito() || "").trim();
+          if (!val.errores.length && remito) rep = (cfg.rpc("qr_recepcion_previa", { p: { remito, items: val.items.map(i => ({ ean: i.ean })) } }) || {}).repetidos || [];
+          op = idOp("xls"); previa();
+        } catch (er) { pv.innerHTML = `<div class="vn-aviso mal">No se pudo procesar: ${esc(er.message)}</div>`; }
+      };
+      rd.readAsArrayBuffer(fi); e.target.value = "";
+    };
+    function previa(msg) {
+      const v = val, nombre = e => (v.items.find(i => i.ean === e) || {}).nombre || e;
+      const remito = String(cfg.remito() || "").trim();
+      const puede = !v.errores.length && v.items.length && remito && !rep.length;
+      pv.innerHTML = `${v.errores.length ? `<div class="vn-aviso mal"><b>${v.errores.length} error(es): no se puede confirmar</b>${v.errores.map(x => "Fila " + x.fila + (x.codigo ? " (" + esc(x.codigo) + ")" : "") + ": " + esc(x.motivo)).join("<br>")}</div>` : ""}
+        ${rep.length ? `<div class="vn-aviso mal"><b>Este remito ya tiene cargado:</b>${rep.map(x => esc(nombre(x.ean))).join("<br>")}<br>No se puede confirmar.</div>` : ""}
+        ${v.avisos.length ? `<div class="vn-aviso"><b>Para revisar</b>${v.avisos.map(x => "Fila " + x.fila + ": " + esc(x.motivo)).join("<br>")}</div>` : ""}
+        ${v.items.length ? `<div style="overflow-x:auto"><table class="vn-tabla"><thead><tr><th>Artículo</th><th class="n">U/caja</th><th>Vencimiento</th><th class="n">Cajas</th><th class="n">Sueltas</th><th class="n">Unidades</th></tr></thead><tbody>
+          ${v.items.map(it => it.grupos.map(g2 => `<tr><td>${esc(it.nombre)}</td><td class="n">${it.uc}</td><td>${g2.vence ? esc(mostrar(g2.vence)) : "Sin vencimiento registrado"}</td><td class="n">${g2.cajas}</td><td class="n">${g2.sueltas}</td><td class="n">${unidades(g2.cajas, g2.sueltas, it.uc)}</td></tr>`).join("")).join("")}
+          </tbody></table></div>` : ""}
+        ${!remito && !v.errores.length ? `<div class="vn-aviso mal">Falta el número de remito. Cargalo y volvé a elegir el archivo.</div>` : ""}
+        <div data-m>${msg || ""}</div>
+        <div class="vn-acc"><button type="button" class="vn-b pri" style="padding:0 18px" data-conf ${puede ? "" : "disabled"}>Confirmar recepción</button></div>`;
+      const b = pv.querySelector("[data-conf]");
+      b.onclick = () => {
+        b.disabled = true;
+        let r;
+        try { r = cfg.rpc("qr_recepcion_registrar", { p: { op, remito, quien: cfg.quien(), origen: "excel", adjunto: cfg.adjunto ? cfg.adjunto() : null, items: v.items.map(i => ({ ean: i.ean, grupos: i.grupos })) } }); }
+        catch (e) { previa(`<div class="vn-aviso mal">No se guardó: ${esc(e.message)}. Tocá confirmar de nuevo, no se duplica.</div>`); return; }
+        if (r && r.razon === "repetida") { rep = r.repetidos || []; return previa(); }
+        if (!r || !r.ok) { previa(`<div class="vn-aviso mal">${esc((r && r.motivo) || "No se pudo guardar.")}</div>`); return; }
+        if (cfg.aviso) cfg.aviso("Recepción guardada: " + v.items.length + " artículo(s)", "ok");
+        if (cfg.alTerminar) cfg.alTerminar(r);
+      };
+    }
+  }
+
+  const api = { escribir, leer, mostrar, diasHasta, unidades, cant, cuenta, validarFilas, celdasDe, plantilla, hoyTxt };
+  const ui = { formulario, panel, importador, bloque, resumenLinea, borrador: bor, conDatos, ponerCss };
+  g.Venc = api; g.VencUI = ui;
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+})(typeof window !== "undefined" ? window : globalThis);
+</script>
+<!-- VENCIMIENTOS:FIN -->
 </head>
 <body>
 <div class="layout">
@@ -1304,17 +1823,15 @@ function goTab(tab){
   document.querySelectorAll('.mnav-item').forEach(el=>el.classList.remove('active'));
   document.getElementById('tab-'+tab).classList.add('active');
   document.getElementById('header-title').textContent = TITLES[tab];
-  document.querySelectorAll('.sbnav-item').forEach((el,i)=>{
-    if(ORDEN_TABS[i]===tab) el.classList.add('active');
-  });
-  document.querySelectorAll('.mnav-item').forEach((el,i)=>{
-    if(ORDEN_TABS[i]===tab) el.classList.add('active');
+  document.querySelectorAll('.sbnav-item,.mnav-item').forEach(el=>{
+    const m=(el.getAttribute('onclick')||'').match(/goTab\('(\w+)'\)/);
+    if(m&&m[1]===tab) el.classList.add('active');
   });
   if(tab==='analytics') renderAnalytics();
   if(tab==='vendedores') renderVendedores();
   if(tab==='precios') renderHistorial();
   if(tab==='ofertas') renderOfertas();
-  if(tab==='catalogo') renderCatKPIs();
+  if(tab==='catalogo'){ renderCatKPIs(); if(window.vtNuevoOrden) vtNuevoOrden(); }
   if(tab==='listas') renderListas();
   if(tab==='clientes') renderClientesListas();
 }
@@ -1918,7 +2435,9 @@ renderCatKPIs();
     chequeSobre: "final",
   };
 
+  let configSimulada = null;
   function config() {
+    if (configSimulada) return Object.assign({}, POR_DEFECTO, configSimulada);
     try {
       return Object.assign({}, POR_DEFECTO, JSON.parse(localStorage.getItem(K_CFG)) || {});
     } catch (e) { return Object.assign({}, POR_DEFECTO); }
@@ -1937,7 +2456,7 @@ renderCatKPIs();
   const pesoDe = (alicuota, sobre) =>
     (Number(alicuota) || 0) * (sobre === "final" ? (1 + IVA) : 1);
 
-  function setConfig(o) {
+  function setConfig(o, soloValidar) {
     const c = Object.assign(config(), o || {});
     /* Un margen de lista de 1 o más significa dividir por cero o por un
        negativo: el precio se dispara o sale al revés. Se corta acá y no
@@ -1953,8 +2472,13 @@ renderCatKPIs();
       throw new Error("El margen de lista tiene que estar entre 0% y 95%. " +
         "Vino " + Math.round(total * 1000) / 10 + "%.");
     }
+    if (soloValidar) return c;
     localStorage.setItem(K_CFG, JSON.stringify(c));
     return c;
+  }
+  function simular(o, fn) {
+    configSimulada = setConfig(o, true);
+    try { return fn(); } finally { configSimulada = null; }
   }
 
   /* ── El margen de lista ───────────────────────────────────────────
@@ -2027,7 +2551,7 @@ renderCatKPIs();
   }
 
   global.Precio = {
-    IVA, config, setConfig, margenLista, neto, final, desarmar, desglose, redondear,
+    IVA, config, setConfig, simular, margenLista, neto, final, desarmar, desglose, redondear,
     _reset: () => localStorage.removeItem(K_CFG),
   };
 
@@ -5026,11 +5550,7 @@ renderCatKPIs();
   }
 
   function conConfig(c, costoNeto) {
-    const guardado = Precio.config();
-    Precio.setConfig(c);
-    const d = Precio.desglose(costoNeto);
-    Precio.setConfig(guardado);          // se deja como estaba: esto es preview
-    return d;
+    return Precio.simular(c, () => Precio.desglose(costoNeto));
   }
 
   /* El degradé que marca hasta dónde llega la barra. Se calcula acá y
@@ -6115,7 +6635,7 @@ renderCatKPIs();
         <label class="aa-in" title="Ganancia limpia en pesos por unidad"><span>Utilidad $ por u.</span>
           <input type="text" inputmode="decimal" value="${Math.round(r.util).toLocaleString("es-AR")}"
             onchange="aaUtilidad(${i}, this.value)" onkeydown="if(event.key==='Enter')this.blur()"></label>
-        <label class="aa-in"><span>Vence</span>
+        <label class="aa-in" title="Fecha cargada a mano para sugerir ofertas. El vencimiento de la mercadería está en Stock."><span>Vence (dato comercial)</span>
           <input type="date" value="${esc(r.vto)}" onchange="aaVto(${i}, this.value)"></label>
         <div class="aa-acc">${r.propio
           ? `<button type="button" class="aa-sec" onclick="aaSoltar(${i})" title="Vuelve al margen de su sección o al general">Quitar propio</button>`
@@ -6517,6 +7037,14 @@ renderCatKPIs();
      vendedor. Antes era una clave suelta de este navegador (qa_) que no
      llegaba a ningún lado: se pausaba acá y el vendedor lo seguía viendo. */
   const esActivo = p => window.aaEsVendible ? aaEsVendible(p) : true;
+  let filtroActivo = "todos", ordenCat = null, activoFoto = new Map();
+  function rankear() {
+    activoFoto = new Map(CATALOGO.map(p => [getKey(p), esActivo(p)]));
+    const r = [...CATALOGO].sort((a, b) => (activoFoto.get(getKey(a)) ? 0 : 1) - (activoFoto.get(getKey(b)) ? 0 : 1) || String(a.nombre).localeCompare(String(b.nombre), "es"));
+    ordenCat = new Map(r.map((p, i) => [getKey(p), i]));
+  }
+  window.vtNuevoOrden = () => { ordenCat = null; if (window.renderCatRow && window.renderCatRow.__vt) renderCatTabla(); };
+  window.vtActivoFiltro = v => { filtroActivo = v; vtNuevoOrden(); };
   /* Stock = el compartido (físico − reservado), solo para mirar: se carga
      en la pantalla de Stock. Pausado no es lo mismo que sin stock: sin
      stock se sigue viendo, pero no se puede comprar. */
@@ -6533,6 +7061,7 @@ renderCatKPIs();
 
   /* ── Filtros ───────────────────────────────────────────────────── */
   function pasa(p) {
+    if (filtroActivo !== "todos" && activoFoto.get(getKey(p)) !== (filtroActivo === "activos")) return false;
     if (filtroMarca && p.marca !== filtroMarca) return false;
     if (!filtroEstado) return true;
     const d = datosDe(p);
@@ -6551,6 +7080,9 @@ renderCatKPIs();
     const wrap = document.createElement("div");
     wrap.className = "vt-filtros";
     wrap.innerHTML = `
+      <span class="vt-seg" role="group" aria-label="Estado del artículo">
+        <button type="button" data-a="todos" onclick="vtActivoFiltro('todos')">Todos</button><button type="button" data-a="activos" onclick="vtActivoFiltro('activos')">Activos</button><button type="button" data-a="inactivos" onclick="vtActivoFiltro('inactivos')">Inactivos</button>
+        <button type="button" class="vt-reord" onclick="vtNuevoOrden()" title="Ordena de nuevo la lista después de editar">Actualizar orden</button></span>
       <select id="vtMarca" class="form-sel" aria-label="Marca" onchange="vtFiltrar()">
         <option value="">Todas las marcas</option>${marcas.map(m => `<option>${esc(m)}</option>`).join("")}
       </select>
@@ -6575,7 +7107,7 @@ renderCatKPIs();
     const thead = document.querySelector("#tab-catalogo thead tr");
     if (thead) thead.innerHTML = `<th></th><th>Producto</th>
       <th class="vt-num">Costo neto</th><th class="vt-num">Precio c/u</th><th class="vt-num">Precio caja</th>
-      <th>Margen</th><th>Vence</th><th style="text-align:center">Disponible<br><small>cajas</small></th><th style="text-align:center">Activo</th>`;
+      <th>Margen</th><th title="Fecha cargada a mano para sugerir ofertas. El vencimiento de la mercadería está en Stock.">Vence (comercial)</th><th style="text-align:center">Disponible<br><small>cajas</small></th><th style="text-align:center">Activo</th>`;
 
     window.renderCatRow = fila;
     window.renderCatRow.__vt = true;
@@ -6584,8 +7116,10 @@ renderCatKPIs();
       const q = ($("cat-search").value || "").toLowerCase();
       let items = catFiltro !== "TODAS" ? CATALOGO.filter(p => p.cat === catFiltro) : CATALOGO;
       if (q) items = items.filter(p => (p.nombre + " " + (p.marca || "")).toLowerCase().includes(q));
-      items = items.filter(pasa);
+      if (!ordenCat || CATALOGO.some(p => !ordenCat.has(getKey(p)))) rankear();
+      items = items.filter(pasa).sort((a, b) => ordenCat.get(getKey(a)) - ordenCat.get(getKey(b)));
       visibles = items;
+      document.querySelectorAll(".vt-seg [data-a]").forEach(b => b.classList.toggle("on", b.dataset.a === filtroActivo));
       $("cat-tbody").innerHTML = items.length ? items.map(fila).join("")
         : `<tr><td colspan="9" class="vt-vacio">Ningún artículo con esos filtros.</td></tr>`;
       const c = $("vtCuenta"); if (c) c.textContent = items.length + " de " + CATALOGO.length;
@@ -7613,6 +8147,7 @@ renderCatKPIs();
         <div class="af-pie"><small>El EAN no se cambia: es la clave del stock, las reservas y las ofertas. Las unidades por caja no se pueden cambiar con mercadería en depósito o reservada.
           Físico = cajas cerradas + unidades sueltas.</small>
           <button type="button" class="af-btn prim" onclick="afCodigos()">Guardar códigos</button></div>
+        ${local ? variantes.map(v => `<h4>Vencimientos${p.tipo === "familia" ? " · " + esc(v.nombre) : ""}</h4><div data-af-venc="${esc(v.ean)}"></div>`).join("") : ""}
         ${local ? `<h4>Últimos movimientos${p.tipo === "familia" ? " · " + esc(variantes[0].nombre) : ""}</h4>
           <div class="af-tabla">${window.asMovimientosHTML ? asMovimientosHTML(variantes[0].ean, 5) : ""}</div>` : ""}
       </section>
@@ -7624,6 +8159,10 @@ renderCatKPIs();
      Los campos se guardan al salir de ellos (o con Enter). Lo único que
      puede quedar escrito sin guardar son los códigos (tienen su botón) o
      un campo que todavía tiene el cursor adentro. */
+  new MutationObserver(() => {
+    if (!window.venPanel) return;
+    document.querySelectorAll("#afCuerpo [data-af-venc]:empty").forEach(el => venPanel(el, el.dataset.afVenc));
+  }).observe(document.documentElement, { childList: true, subtree: true });
   function sinGuardar() {
     const c = $("afCuerpo"); if (!c) return [];
     return [...c.querySelectorAll("input[type=text], input:not([type]), input[inputmode]")]
@@ -7907,11 +8446,13 @@ renderCatKPIs();
   let filas = [], cargado = null, error = "", filtro = "todos", texto = "";
 
   /* ── Datos ─────────────────────────────────────────────────────── */
+  let vencAS = null;
   function cargar() {
     if (!conBase()) { error = "El tablero necesita conexión con el servidor."; return; }
     try {
       QRSrv.olvidar();
       filas = QRSrv.get("qr_tablero_stock", "select=*", 0) || [];
+      try { vencAS = new Map((QRSrv.rpc("qr_lotes_resumen", {}) || []).map(l => [l.ean, l])); } catch (e) { vencAS = null; }
       cargado = new Date(); error = "";
     } catch (e) {
       /* Se siguen mostrando los últimos datos, diciendo de cuándo son. */
@@ -7972,6 +8513,7 @@ renderCatKPIs();
             oninput="asBuscar(this.value)" onkeydown="if(event.key==='Enter')asEnter()">
           <div class="as-filtros" role="group" aria-label="Filtrar">${FILTROS.map(f =>
             `<button type="button" data-f="${f[0]}" onclick="asFiltro('${f[0]}')">${f[1]}</button>`).join("")}</div>
+          <button type="button" class="btn-prim" onclick="venRecibir()">Recibir mercadería</button>
         </div>
         <div id="asEstado" class="as-estado"></div>
         <div id="asCuerpo" class="as-tabla"></div>
@@ -7987,7 +8529,7 @@ renderCatKPIs();
     $("asCuerpo").innerHTML = !base.length && !error ? `<p class="as-vacio">Todavía no hay artículos incorporados al stock.</p>` : `
       <table><thead><tr>
         <th></th><th>Artículo</th><th>Código</th><th class="n">Físico</th><th class="n">Reservado</th><th class="n">Disponible</th>
-        <th class="n">A revisar</th><th>Estado</th><th>Actualizado</th><th></th></tr></thead>
+        <th class="n">A revisar</th><th>Estado</th><th>Vencimiento</th><th>Actualizado</th><th></th></tr></thead>
       <tbody>${lista.map(r => {
         const [txt, cls] = estadoDe(r);
         return `<tr data-ean="${esc(r.ean)}" onclick="asAbrir('${esc(r.ean)}', event)">
@@ -7999,6 +8541,7 @@ renderCatKPIs();
           <td class="n"><b>${cant(r.disponible_cajas, r.disponible_cajas ? 0 : r.disponible_unidades)}</b>${r.faltante_unidades ? `<small class="mal">faltan ${r.faltante_unidades} u. reservadas</small>` : ""}</td>
           <td class="n">${r.a_revisar ? `<span class="as-chip ojo">${cant(r.a_revisar_cajas, r.a_revisar_sueltas)}</span>` : "—"}</td>
           <td><span class="as-chip ${cls}">${txt}</span></td>
+          <td>${!vencAS ? "—" : vencAS.has(r.ean) ? VencUI.resumenLinea(vencAS.get(r.ean)) : (r.fisico_cajas || r.fisico_sueltas ? "Sin vencimiento registrado" : "—")}</td>
           <td class="as-fecha">${hora(r.actualizado)}</td>
           <td class="as-acc">
             <button type="button" onclick="asOperar('${esc(r.ean)}','recibir')">Recibir</button>
@@ -8006,7 +8549,7 @@ renderCatKPIs();
             <button type="button" onclick="asOperar('${esc(r.ean)}','ajustar')">Ajustar</button>
             <button type="button" onclick="asMovimientos('${esc(r.ean)}')" title="Movimientos" aria-label="Movimientos">Mov.</button>
           </td></tr>`;
-      }).join("") || `<tr><td colspan="10" class="as-vacio">Ningún artículo con esos filtros.</td></tr>`}</tbody></table>
+      }).join("") || `<tr><td colspan="11" class="as-vacio">Ningún artículo con esos filtros.</td></tr>`}</tbody></table>
       <p class="as-pie">${lista.length} de ${base.length} artículos incorporados.
         Para incorporar uno nuevo, usá <b>Recibir</b> desde su ficha (buscador) o la app de Stock.</p>`;
   }
@@ -8036,6 +8579,7 @@ renderCatKPIs();
   };
   let op = null;
   window.asOperar = function (ean, tipo) {
+    if (tipo === "recibir" && window.venRecibir) return venRecibir(String(ean));
     if (!conBase()) return alert("Las operaciones de stock necesitan conexión con el servidor.");
     cargar();
     const r = filas.find(x => x.ean === String(ean)) || { ean: String(ean), fisico_cajas: 0, fisico_sueltas: 0, uc: (ficha(ean) || {}).uc || 1 };
@@ -8212,7 +8756,8 @@ renderCatKPIs();
       if ($("mnav-stock")) $("mnav-stock").classList.add("active");
       if ($("header-title")) $("header-title").textContent = "Stock";
       if (window.qrTeñir) qrTeñir("catalogo");
-      refrescar();
+      if ($("asEstado")) $("asEstado").textContent = "Actualizando…"; else panel.innerHTML = '<p class="as-vacio">Cargando stock…</p>';
+      setTimeout(refrescar, 30);
     };
     window.goTab.__qr = orig.__qr;
     if (conBase()) QRSrv.escuchar(["qr_stock", "qr_reservas"], () => { if (activa() && !document.hidden) refrescar(); else if (window.afRepintar) afRepintar(); });
@@ -13812,5 +14357,117 @@ renderCatKPIs();
 
 })();
 
-</script></body>
+</script><!-- VENC-ADMIN:INICIO -->
+<script>
+/* Admin → Recibir mercadería: reutiliza el mismo formulario que Stock del celular, y suma Excel y adjunto. */
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const K_QUIEN = "qr_admin_quien_v1";
+  const rpc = (fn, a) => QRSrv.rpc(fn, a);
+  const aviso = m => { if (window.toast) toast(m); };
+  const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const quien = () => { const i = $("venQuien"); const v = (i ? i.value : (localStorage.getItem(K_QUIEN) || "")).trim().toUpperCase(); if (v) { try { localStorage.setItem(K_QUIEN, v); } catch (e) {} } return v; };
+  const quienPanel = () => quien() || "ADMINISTRACIÓN";
+  let adjunto = null, modo = "manual";
+
+  const articulos = () => QRSrv.get("qr_articulos", "select=ean,dun,nombre,uc", 60000) || [];
+  function fichaDe(ean) {
+    const c = window.Catalogo && Catalogo.buscar ? Catalogo.buscar(ean) : null;
+    const a = articulos().find(x => String(x.ean) === String(ean)) || {};
+    return { ean: String(ean), nombre: (c && (c.nombreCompleto || c.nombre)) || a.nombre || String(ean), marca: (c && c.marca) || "", uc: Number(a.uc) || (c && Number(c.uc)) || 1,
+      imagen: window.qrFotoUrl ? qrFotoUrl(ean) : "", tipo: "caja" };
+  }
+  function css() {
+    if ($("venCss")) return;
+    const s = document.createElement("style"); s.id = "venCss";
+    s.textContent = `#venDlg{position:fixed;inset:0;z-index:4000;display:none;align-items:flex-start;justify-content:center;background:rgba(15,23,42,.45);padding:24px;overflow:auto}
+      #venDlg.on{display:flex}.ven-caja{background:#fff;border-radius:14px;width:100%;max-width:760px;padding:20px}
+      .ven-t{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.ven-t h3{margin:0;font-size:18px}.ven-x{border:0;background:none;font-size:24px;cursor:pointer;color:#475569}
+      .ven-datos{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.ven-datos label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;font-weight:700;color:#475569}
+      .ven-datos input[type=text]{padding:9px 11px;border:1px solid #cbd5e1;border-radius:9px;font:inherit;font-size:14px;font-weight:500}
+      .ven-tabs{display:flex;gap:6px;margin-bottom:12px}.ven-tabs button{border:1px solid #cbd5e1;background:#fff;border-radius:99px;padding:8px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}.ven-tabs button.on{background:#334155;color:#fff;border-color:#334155}
+      .ven-busca{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #cbd5e1;border-radius:9px;font:inherit;font-size:14px;margin-bottom:8px}
+      .ven-r{display:block;width:100%;text-align:left;border:1px solid #e2e8f0;background:#fff;border-radius:9px;padding:9px 12px;margin-bottom:6px;font:inherit;font-size:14px;cursor:pointer}.ven-r small{display:block;color:#64748b;font-size:12px}
+      .ven-nota{font-size:12.5px;color:#475569;margin:0 0 10px}.vn-form.card{padding:0;border:0;box-shadow:none}
+      @media (max-width:640px){#venDlg{padding:0}.ven-caja{border-radius:0;min-height:100%}.ven-datos{grid-template-columns:1fr}}
+      .vt-seg{display:inline-flex;gap:0;margin-right:10px;vertical-align:middle}.vt-seg button{border:1px solid #cbd5e1;background:#fff;padding:7px 12px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+      .vt-seg button:first-child{border-radius:9px 0 0 9px}.vt-seg button:nth-child(3){border-radius:0 9px 9px 0}.vt-seg button+button{border-left:0}.vt-seg button.on{background:#334155;color:#fff;border-color:#334155}.vt-seg .vt-reord{margin-left:8px;border:0;background:none;color:#0c4c91;text-decoration:underline;font-weight:600;border-radius:0}`;
+    document.head.appendChild(s);
+  }
+  function montar() {
+    if ($("venDlg")) return;
+    const d = document.createElement("div"); d.id = "venDlg"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
+    d.innerHTML = `<div class="ven-caja"><div class="ven-t"><h3>Recibir mercadería</h3><button type="button" class="ven-x" aria-label="Cerrar" id="venCerrar">×</button></div>
+      <div class="ven-datos"><label>Remito del proveedor<input type="text" id="venRemito" autocomplete="off" placeholder="ej: 0001-00012345"></label>
+        <label>Quién recibe<input type="text" id="venQuien" autocomplete="off"></label>
+        <label style="grid-column:1/-1">Adjuntar remito (foto o PDF, opcional)<input type="file" id="venArchivo" accept="application/pdf,image/jpeg,image/png"><span id="venAdj" style="font-weight:500"></span></label></div>
+      <p class="ven-nota">Suma al stock y registra vencimientos. No cambia precios ni costos.</p>
+      <div class="ven-tabs"><button type="button" data-m="manual">Carga manual</button><button type="button" data-m="excel">Importar Excel</button></div>
+      <div id="venCuerpo"></div></div>`;
+    document.body.appendChild(d);
+    $("venCerrar").onclick = () => { d.classList.remove("on"); if (window.asRefrescar) asRefrescar(); };
+    d.querySelectorAll("[data-m]").forEach(b => { b.onclick = () => { modo = b.dataset.m; pintar(); }; });
+    $("venArchivo").onchange = e => subir(e.target.files[0]);
+  }
+  function subir(f) {
+    adjunto = null;
+    const el = $("venAdj"); if (!f) { el.textContent = ""; return; }
+    const ext = f.type === "application/pdf" ? "pdf" : f.type === "image/png" ? "png" : f.type === "image/jpeg" ? "jpg" : "";
+    if (!ext) { el.textContent = "Solo PDF, JPG o PNG."; return; }
+    if (f.size > 5 * 1048576) { el.textContent = "Pesa más de 5 MB: no se adjuntó."; return; }
+    const nombre = "rem-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
+    el.textContent = "Subiendo…";
+    QRSrv.subir("/local/remito/" + nombre, f).then(() => { adjunto = nombre; el.textContent = "Adjuntado: " + f.name; })
+      .catch(e => { el.textContent = "No se pudo adjuntar (" + e.message + "). Podés recibir igual."; });
+  }
+  function pintar(ean) {
+    document.querySelectorAll("#venDlg [data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === modo));
+    const c = $("venCuerpo"); c.oninput = c.onkeydown = c.onclick = null;
+    if (modo === "excel") {
+      if (!window.XLSX) { c.innerHTML = `<div class="vn-aviso mal">No se cargó el lector de Excel. Revisá la conexión y recargá.</div>`; return; }
+      VencUI.importador(c, { XLSX: window.XLSX, articulos, rpc, quien, aviso, remito: () => $("venRemito").value, adjunto: () => adjunto, alTerminar: () => { if (window.asRefrescar) asRefrescar(); limpiar(); pintarListo(); } });
+      return;
+    }
+    if (ean) return formulario(ean);
+    const b = VencUI.borrador.leer("admin");
+    c.innerHTML = `${VencUI.conDatos(b) ? `<div class="vn-aviso" style="margin-bottom:8px"><b>Quedó una carga sin guardar</b>${esc(b.ficha.nombre)}<div class="vn-acc"><button type="button" class="vn-op" id="venCont">Continuar</button><button type="button" class="vn-op" id="venDesc">Descartar</button></div></div>` : ""}
+      <input class="ven-busca" id="venBusca" placeholder="Buscar artículo por nombre, EAN o DUN" autocomplete="off"><div id="venRes"></div>`;
+    if ($("venCont")) { $("venCont").onclick = () => { if (b.remito) $("venRemito").value = b.remito; formulario(b.ean); }; $("venDesc").onclick = () => { VencUI.borrador.borrar("admin"); pintar(); }; }
+    const lista = articulos();
+    $("venBusca").oninput = e => {
+      const t = norm(e.target.value).split(/\s+/).filter(Boolean), q = e.target.value.trim();
+      const r = !t.length ? [] : lista.filter(a => String(a.ean) === q || String(a.dun || "") === q || t.every(x => norm(a.nombre).includes(x))).slice(0, 8);
+      $("venRes").innerHTML = r.map(a => `<button type="button" class="ven-r" data-e="${esc(a.ean)}">${esc(a.nombre)}<small>${esc(a.ean)} · ${a.uc} u. por caja</small></button>`).join("");
+      $("venRes").querySelectorAll("[data-e]").forEach(x => { x.onclick = () => formulario(x.dataset.e); });
+    };
+    $("venBusca").focus();
+  }
+  function limpiar() { adjunto = null; const a = $("venArchivo"); if (a) a.value = ""; const t = $("venAdj"); if (t) t.textContent = ""; }
+  function pintarListo() { modo = "manual"; pintar(); }
+  function formulario(ean) {
+    const c = $("venCuerpo"), f = fichaDe(ean);
+    const st = (window.Stock && Stock.fisico) ? Stock.fisico(ean) : { cajas: 0, sueltas: 0 };
+    VencUI.formulario(c, { ficha: f, modo: "recibir", origen: "admin", rpc, quien, remito: () => $("venRemito").value, enfocarRemito: () => $("venRemito").focus(), aviso, adjunto: () => adjunto,
+      fisicoTxt: "Stock actual: <b>" + st.cajas + " cajas + " + st.sueltas + " sueltas</b> · " + f.uc + " unidades por caja",
+      textoGuardar: "Guardar y seguir", alVolver: () => { VencUI.borrador.borrar("admin"); pintar(); },
+      alTerminar: () => { if (window.QRSrv.olvidar) QRSrv.olvidar(); if (window.asRefrescar) asRefrescar(); limpiar(); pintar(); } });
+  }
+  window.venRecibir = function (ean) {
+    css(); VencUI.ponerCss(); montar();
+    modo = "manual"; limpiar();
+    $("venQuien").value = localStorage.getItem(K_QUIEN) || "";
+    $("venDlg").classList.add("on");
+    pintar(ean);
+  };
+  window.venPanel = function (el, ean) {
+    VencUI.ponerCss();
+    VencUI.panel(el, { ficha: fichaDe(ean), origen: "admin", rpc, quien: quienPanel, aviso });
+  };
+  css(); VencUI.ponerCss();
+})();
+</script>
+<!-- VENC-ADMIN:FIN -->
+</body>
 </html>
