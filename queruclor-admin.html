@@ -1831,7 +1831,7 @@ function goTab(tab){
   if(tab==='vendedores') renderVendedores();
   if(tab==='precios') renderHistorial();
   if(tab==='ofertas') renderOfertas();
-  if(tab==='catalogo'){ renderCatKPIs(); if(window.vtNuevoOrden) vtNuevoOrden(); }
+  if(tab==='catalogo'){ renderCatKPIs(); if(window.vtOrdenSiCambio) vtOrdenSiCambio(); }
   if(tab==='listas') renderListas();
   if(tab==='clientes') renderClientesListas();
 }
@@ -7044,6 +7044,7 @@ renderCatKPIs();
     ordenCat = new Map(r.map((p, i) => [getKey(p), i]));
   }
   window.vtNuevoOrden = () => { ordenCat = null; if (window.renderCatRow && window.renderCatRow.__vt) renderCatTabla(); };
+  window.vtOrdenSiCambio = () => { if (ordenCat && CATALOGO.some(p => activoFoto.get(getKey(p)) !== esActivo(p))) vtNuevoOrden(); };
   window.vtActivoFiltro = v => { filtroActivo = v; vtNuevoOrden(); };
   /* Stock = el compartido (físico − reservado), solo para mirar: se carga
      en la pantalla de Stock. Pausado no es lo mismo que sin stock: sin
