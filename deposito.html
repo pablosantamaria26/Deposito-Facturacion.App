@@ -6710,7 +6710,8 @@ var qrcode = function() {
 
   /* ── Estado ─────────────────────────────────────────────────────── */
   const st = { estado: null, pid: null, firma: null, ultimo: null, surtida: null, vista: "leer", verOps: false,
-    sinLector: false, corrigiendo: null, error: null, leyendo: false, reabriendo: false, guardando: false, ayuda: null, verCajas: {} };
+    sinLector: false, corrigiendo: null, error: null, leyendo: false, reabriendo: false, guardando: false, ayuda: null, verCajas: {},
+    faltante: false, faltanteEan: null, faltanteStock: null, lote: null, lotes: [] };
   /* El pedido al servidor es SÍNCRONO (QRSrv.rpc): bloquea el hilo hasta la
      respuesta y el navegador no repinta en el medio. Para que «Guardando…»
      se vea de verdad, se pinta ANTES y el pedido se difiere un instante
@@ -6722,7 +6723,8 @@ var qrcode = function() {
   function leerEstado(forzar) {
     const p = pedido(); if (!p) return null;
     if (!forzar && st.estado && st.pid === p.id && Date.now() - st.t < 1200) return st.estado;
-    try { st.estado = QRSrv.rpc("qr_prep_estado", { p_pedido: String(p.id) }); st.pid = p.id; st.t = Date.now(); st.error = null; }
+    const otroPedido = st.pid !== p.id;
+    try { st.estado = QRSrv.rpc("qr_prep_estado", { p_pedido: String(p.id) }); st.pid = p.id; st.t = Date.now(); st.error = null; if (otroPedido) { st.lote = null; leerLotes(); } }
     catch (e) { st.error = "Sin conexión con el servidor: no se puede leer la preparación."; }
     return st.estado;
   }
@@ -6765,7 +6767,7 @@ var qrcode = function() {
 
   function resultado(r, p) {
     if (!r) return null;
-    return { ok: !!r.ok, texto: r.mensaje || "", n: r.n, etiqueta: r.etiqueta, nombre: r.nombre, origen: p && p.origen, repetida: r.repetida, t: Date.now(), completa: r.completa,
+    return { ok: !!r.ok, lote: r.lote || null, texto: r.mensaje || "", n: r.n, etiqueta: r.etiqueta, nombre: r.nombre, origen: p && p.origen, repetida: r.repetida, t: Date.now(), completa: r.completa,
       ambiguo: r.motivo === "ambiguo" ? { codigo: p && p.codigo, opciones: r.opciones || [] } : null };
   }
 
@@ -6791,24 +6793,85 @@ var qrcode = function() {
     const args = { op: nuevaOp(), pedido: String(p.id), sig: p.sig || null, codigo, origen, quien: quien(), dispositivo };
     if (st.surtida) args.surtida = st.surtida;
     if (eleccion) args.eleccion = eleccion;
-    diferir(() => {
-      st.leyendo = true;
-      const r = enviar("qr_prep_leer", args);
-      st.leyendo = false;
-      if (r.pendiente) st.ultimo = { pendiente: true, texto: r.bloqueada
-        ? "Hay una lectura anterior sin confirmar y no hay conexión: esta caja NO se registró. No pegues etiqueta; se reintenta sola."
-        : "Sin respuesta del servidor: esta lectura NO está confirmada. No pegues etiqueta todavía; se reintenta sola con la misma identidad." };
-      else st.ultimo = resultado(r, args);
-      if (r && r.ok && r.completa && st.surtida) st.surtida = null;
-      st.desplazar = true;
-    });
+    st.lote = null;
+    diferir(() => procesarLectura(args));
+  }
+  function procesarLectura(args) {
+    st.leyendo = true;
+    const r = enviar("qr_prep_leer", args);
+    st.leyendo = false;
+    if (r.motivo === "elegir_lote") { st.lote = { args, ean: r.ean, info: r.lotes, agotado: r.agotado }; st.desplazar = true; return; }
+    if (r.pendiente) st.ultimo = { pendiente: true, texto: r.bloqueada
+      ? "Hay una lectura anterior sin confirmar y no hay conexión: esta caja NO se registró. No pegues etiqueta; se reintenta sola."
+      : "Sin respuesta del servidor: esta lectura NO está confirmada. No pegues etiqueta todavía; se reintenta sola con la misma identidad." };
+    else st.ultimo = resultado(r, args);
+    if (r && r.ok && r.completa && st.surtida) st.surtida = null;
+    st.desplazar = true;
+  }
+
+  /* ── Vencimiento de la caja: se elige una vez por pedido, armador y artículo ── */
+  const fmtVence = v => { const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(String(v || "")); return m ? (m[3] ? m[3] + "/" : "") + m[2] + "/" + m[1] : ""; };
+  function leerLotes() {
+    const p = pedido(); if (!p || !quien()) { st.lotes = []; return; }
+    try { st.lotes = QRSrv.rpc("qr_prep_lote_actual", { p: { pedido: String(p.id), quien: quien() } }) || []; } catch (e) {}
+  }
+  function cambiarLote(ean) {
+    const p = pedido(); if (!p) return;
+    try { st.lote = { args: null, ean, info: QRSrv.rpc("qr_prep_lote_opciones", { p: { pedido: String(p.id), quien: quien(), ean } }) }; }
+    catch (e) { st.ultimo = { ok: false, texto: "Sin conexión: no se pudieron leer los vencimientos." }; }
+    pintar();
+  }
+  function elegirLote(lote, noSe) {
+    const p = pedido(), l = st.lote; if (!p || !l) return;
+    let r;
+    try { r = QRSrv.rpc("qr_prep_lote_elegir", { p: { pedido: String(p.id), quien: quien(), ean: l.ean, lote: lote || null, no_se: !!noSe } }); }
+    catch (e) { st.ultimo = { ok: false, texto: "Sin conexión: no se guardó el vencimiento. Probá de nuevo. La caja NO se registró." }; return pintar(); }
+    if (!r || !r.ok) { st.ultimo = { ok: false, texto: (r && r.mensaje) || "No se pudo guardar el vencimiento." }; return pintar(); }
+    const args = l.args;
+    st.lote = null; leerLotes();
+    if (args) diferir(() => procesarLectura(args)); else pintar();
+  }
+  function htmlLote() {
+    const l = st.lote, ops = (l.info && l.info.opciones) || [], uc = (l.info && l.info.uc) || 1;
+    const sugerida = (ops.find(o => o.libres >= uc) || {}).id;
+    return `<div class="lq-sinl lq-lote" role="group" aria-label="Vencimiento de la caja"><b>¿Qué vencimiento tiene la caja?</b>
+      <p>${esc((l.info && l.info.nombre) || "")}. ${l.agotado ? "El vencimiento anterior ya no tiene cajas registradas. " : ""}Mirá el envase y confirmá el que tenés en la mano.</p>
+      ${l.info && l.info.exacto === false ? `<p class="lq-mut">Hay conciliación pendiente: las cantidades por fecha pueden no ser exactas.</p>` : ""}
+      <div class="lq-lote-ops">${ops.map(o => `<button type="button" class="lq-b lq-lote-op${o.id === sugerida ? " prim" : ""}" data-lote="${esc(o.id)}" ${o.libres >= uc ? "" : "disabled"}>
+          <b>${esc(fmtVence(o.vence))}</b><small>${o.id === sugerida ? "Sugerida: la más próxima · " : ""}${o.libres >= uc ? Math.floor(o.libres / uc) + " caja(s) registradas" : "sin cajas libres"}</small></button>`).join("")}</div>
+      <div class="lq-acc"><button type="button" class="lq-b" data-lote-nose>No sé</button><button type="button" class="lq-b" data-lote-no>Cancelar</button></div>
+      <p class="lq-mut">Con «No sé» la caja se prepara igual y queda sin identificar.</p></div>`;
+  }
+  function htmlLoteBar() {
+    if (st.surtida) return `<p class="lq-mut">Las cajas surtidas no registran vencimiento: quedan sin identificar.</p>`;
+    const v = st.lotes.filter(x => x.grupos >= 2);
+    if (!v.length || st.lote) return "";
+    return `<div class="lq-lote-bar">${v.map(x => `<div><span>${x.no_se ? "<b>Sin identificar</b>" : "Vence <b>" + esc(fmtVence(x.vence)) + "</b>"} · ${esc(x.nombre)}</span><button type="button" class="lq-lnk" data-lote-cambiar="${esc(x.ean)}">Cambiar</button></div>`).join("")}</div>`;
   }
 
   function registrarSinLector(ean, motivo) {
     const p = pedido(); if (!p) return;
-    const r = enviar("qr_prep_leer", { op: nuevaOp(), pedido: String(p.id), sig: p.sig || null, sin_lector: { ean, motivo }, origen: "sin_lector", quien: quien(), dispositivo, motivo });
-    st.ultimo = r.pendiente ? { pendiente: true, texto: "Sin respuesta del servidor: no está confirmada. No pegues etiqueta todavía." } : resultado(r, { origen: "sin_lector" });
+    const args = { op: nuevaOp(), pedido: String(p.id), sig: p.sig || null, sin_lector: { ean, motivo }, origen: "sin_lector", quien: quien(), dispositivo, motivo };
+    const r = enviar("qr_prep_leer", args);
+    if (r.motivo === "elegir_lote") st.lote = { args, ean: r.ean, info: r.lotes, agotado: r.agotado };
+    else st.ultimo = r.pendiente ? { pendiente: true, texto: "Sin respuesta del servidor: no está confirmada. No pegues etiqueta todavía." } : resultado(r, { origen: "sin_lector" });
     st.sinLector = false; st.desplazar = true; pintar();
+  }
+
+  /* 08/11/2026 — «No lo encuentro»: stock del sistema como referencia ANTES
+     de declarar faltante (una sola consulta, al abrir el cuadro o cambiar de
+     artículo — nunca periódica). Lee qr_estado_json, la misma función que ya
+     usa la pantalla de Stock: no se arma una consulta nueva. */
+  function stockRefDe(ean) {
+    if (!ean) return null;
+    try { return QRSrv.rpc("qr_estado_json", { p_ean: ean }); } catch (e) { return null; }
+  }
+  function declararFaltante(ean) {
+    const p = pedido(); const e = st.estado; if (!p || !ean || !e) return;
+    const a = (e.articulos || []).find(x => x.ean === ean);
+    const r = enviar("qr_prep_faltante", { op: nuevaOp(), pedido: String(p.id), quien: quien(), clave: (a && a.clave) || ean });
+    st.ultimo = r.pendiente ? { pendiente: true, texto: "Sin respuesta del servidor: no quedó declarado. Reintentá cuando vuelva la conexión." } : resultado(r, { origen: "faltante" });
+    st.faltante = false; st.faltanteEan = null; st.faltanteStock = null; st.desplazar = true; pintar();
   }
   function corregir(opLectura, motivo) {
     const p = pedido(); if (!p) return;
@@ -6925,20 +6988,23 @@ var qrcode = function() {
     if (!u.ok) return `<div class="lq-res mal" role="alert"><b>✗ No se registró</b><p>${esc(u.texto)}</p></div>`;
     const etq = u.etiqueta && !/Corregido|reabierta|ya no cuenta|Queruclor listo/.test(u.texto);
     return `<div class="lq-res bien" role="status">${etq ? `<div class="lq-etq"><small>Pegá la etiqueta</small><b>${esc(u.etiqueta)}</b></div>` : ""}
-        <div><b>${esc(u.texto)}</b>${u.repetida ? `<p>Ya estaba registrada (reintento): no se sumó otra.</p>` : ""}${u.origen === "teclado" ? `<p>El código llegó escrito a mano (no a la velocidad del lector): quedó marcado.</p>` : ""}${u.origen === "sin_lector" ? `<p>Registrada sin lector, con el motivo: queda marcada para Facturación.</p>` : ""}</div></div>`;
+        <div><b>${esc(u.texto)}</b>${u.lote ? `<p>${u.lote.vence ? "Vence " + esc(fmtVence(u.lote.vence)) : "Vencimiento sin identificar"}</p>` : ""}${u.repetida ? `<p>Ya estaba registrada (reintento): no se sumó otra.</p>` : ""}${u.origen === "teclado" ? `<p>El código llegó escrito a mano (no a la velocidad del lector): quedó marcado.</p>` : ""}${u.origen === "sin_lector" ? `<p>Registrada sin lector, con el motivo: queda marcada para Facturación.</p>` : ""}${u.origen === "faltante" ? `<p>No se descontó stock ni se tocaron las reservas. Facturación lo ve al cerrar esta parte.</p>` : ""}</div></div>`;
   }
 
+  /* 08/11/2026: «Corregir» ahora también deshace un «No lo encuentro» (op
+     tipo 'faltante') — misma función (qr_prep_anular, migración 028), sin
+     duplicar la caja ni tocar stock: solo vuelve a estado='activo'. */
   function htmlOps(e) {
-    const acept = e.ops.filter(o => o.tipo === "lectura").slice(0, 12);
+    const acept = e.ops.filter(o => o.tipo === "lectura" || o.tipo === "faltante").slice(0, 12);
     if (!acept.length) return `<div class="lq-ops"><p class="lq-mut">Todavía no hay lecturas.</p></div>`;
     return `<div class="lq-ops">${acept.map(o => `<div class="lq-op ${o.resultado}">
         <span>${new Date(o.fecha).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · ${esc(o.quien)}</span>
         <b>${o.resultado === "aceptada" ? "✓" : o.resultado === "anulada" ? "↺ corregida" : "✗"} ${esc(o.mensaje || o.motivo || "")}</b>
         ${o.resultado === "anulada" ? `<small>Corregida por ${esc(o.anulada_por || "")}: ${esc(o.anulada_motivo || "")}</small>` : ""}
         ${o.resultado === "aceptada" && puedeLeer(e) ? (st.corrigiendo === o.op
-          ? `<div class="lq-corr"><label>¿Por qué se corrige? <input id="lqMotivo" maxlength="120" placeholder="ej.: leí dos veces la misma caja"></label>
-             <div class="lq-acc"><button type="button" class="lq-b" data-cancelar>Cancelar</button><button type="button" class="lq-b prim" data-confirmar="${esc(o.op)}">Corregir</button></div></div>`
-          : `<button type="button" class="lq-lnk" data-corregir="${esc(o.op)}">Corregir esta lectura</button>`) : ""}
+          ? `<div class="lq-corr"><label>¿Por qué se corrige? <input id="lqMotivo" maxlength="120" placeholder="${o.tipo === "faltante" ? "ej.: apareció en el estante" : "ej.: leí dos veces la misma caja"}"></label>
+             <div class="lq-acc"><button type="button" class="lq-b" data-cancelar>Cancelar</button><button type="button" class="lq-b prim" data-confirmar="${esc(o.op)}">${o.tipo === "faltante" ? "Deshacer" : "Corregir"}</button></div></div>`
+          : `<button type="button" class="lq-lnk" data-corregir="${esc(o.op)}">${o.tipo === "faltante" ? "Ya apareció: deshacer" : "Corregir esta lectura"}</button>`) : ""}
       </div>`).join("")}</div>`;
   }
 
@@ -6948,6 +7014,19 @@ var qrcode = function() {
       <label>Artículo<select id="lqSLArt">${arts.map(a => `<option value="${esc(a.ean)}">${esc(a.nombre)} (${a.preparadas}/${a.pedidas})</option>`).join("")}</select></label>
       <label>Motivo<input id="lqSLMot" maxlength="120" placeholder="ej.: el código del cartón está roto"></label>
       <div class="lq-acc"><button type="button" class="lq-b" id="lqSLNo">Cancelar</button><button type="button" class="lq-b prim" id="lqSLSi" ${arts.length ? "" : "disabled"}>Registrar caja</button></div></div>`;
+  }
+
+  /* 08/11/2026 — «No lo encuentro»: solo artículos cerrados con algo
+     pendiente (igual que «sin lector»). El stock se consulta una vez al
+     abrir o al cambiar de artículo (ver enganchar), nunca en cada pintada. */
+  function htmlFaltante(e) {
+    const arts = e.articulos.filter(a => a.tipo === "cerrada" && a.preparadas < a.pedidas);
+    const s = st.faltanteStock;
+    return `<div class="lq-sinl"><b>Declarar faltante</b><p>Solo si de verdad no está en el estante. No descuenta stock ni toca las reservas: queda para que Facturación lo resuelva con el cliente.</p>
+      <label>Artículo<select id="lqFaltArt">${arts.map(a => `<option value="${esc(a.ean)}" ${a.ean === st.faltanteEan ? "selected" : ""}>${esc(a.nombre)} (${a.preparadas}/${a.pedidas})</option>`).join("")}</select></label>
+      ${s ? `<p class="lq-mut"><b>Stock físico registrado:</b> ${s.fisico_cajas} caja(s) y ${s.fisico_sueltas} suelta(s). Es lo físico, no lo disponible para este pedido: puede incluir cajas ya reservadas para otros. Si figura que hay, volvé a mirar en el estante antes de confirmar.</p>`
+         : arts.length ? `<p class="lq-mut">No se pudo consultar el stock — podés declarar igual.</p>` : ""}
+      <div class="lq-acc"><button type="button" class="lq-b" id="lqFaltNo">Cancelar</button><button type="button" class="lq-b prim" id="lqFaltSi" ${arts.length ? "" : "disabled"}>Declarar faltante</button></div></div>`;
   }
 
   /* ── Ayuda: instrucciones breves por tema (29/10 → 01/11/2026) ──────
@@ -7056,9 +7135,13 @@ var qrcode = function() {
           <div class="lq-col">
             ${htmlResultado()}
             ${st.sinLector ? htmlSinLector(e) : ""}
+            ${st.lote ? htmlLote() : ""}
+            ${htmlLoteBar()}
+            ${st.faltante ? htmlFaltante(e) : ""}
             <div class="lq-links">
               <button type="button" class="lq-lnk" id="lqVerOps">${st.verOps ? "Ocultar lecturas" : "Revisar última lectura"}</button>
               ${leerOk && !st.sinLector && !surt ? `<button type="button" class="lq-lnk" id="lqSinLector">El código no lee</button>` : ""}
+              ${leerOk && !st.faltante && !surt ? `<button type="button" class="lq-lnk" id="lqFaltante">No lo encuentro</button>` : ""}
             </div>
             ${st.verOps ? htmlOps(e) : ""}
           </div>
@@ -7146,7 +7229,19 @@ var qrcode = function() {
     on("lqSinLector", () => { st.sinLector = true; pintar(); });
     on("lqSLNo", () => { st.sinLector = false; pintar(); });
     on("lqSLSi", () => { const m = ($("lqSLMot").value || "").trim(); if (!m) { $("lqSLMot").focus(); return; } registrarSinLector($("lqSLArt").value, m); });
+    on("lqFaltante", () => {
+      const arts = ((e && e.articulos) || []).filter(a => a.tipo === "cerrada" && a.preparadas < a.pedidas);
+      st.faltante = true; st.faltanteEan = arts[0] && arts[0].ean; st.faltanteStock = stockRefDe(st.faltanteEan);
+      pintar();
+    });
+    on("lqFaltNo", () => { st.faltante = false; st.faltanteEan = null; st.faltanteStock = null; pintar(); });
+    on("lqFaltSi", () => declararFaltante(st.faltanteEan));
+    { const x = $("lqFaltArt"); if (x) x.onchange = () => { st.faltanteEan = x.value; st.faltanteStock = stockRefDe(x.value); pintar(); }; }
     on("lqSalirSurt", () => { st.surtida = null; pintar(); });
+    document.querySelectorAll("#qrLector [data-lote]").forEach(b => { b.onclick = () => elegirLote(b.dataset.lote, false); });
+    document.querySelectorAll("#qrLector [data-lote-nose]").forEach(b => { b.onclick = () => elegirLote(null, true); });
+    document.querySelectorAll("#qrLector [data-lote-no]").forEach(b => { b.onclick = () => { st.lote = null; st.ultimo = { ok: false, texto: "Cancelado: la caja NO se registró." }; pintar(); }; });
+    document.querySelectorAll("#qrLector [data-lote-cambiar]").forEach(b => { b.onclick = () => cambiarLote(b.dataset.loteCambiar); });
     on("lqDudaNo", () => { st.dudosa = null; st.ultimo = { ok: false, texto: "No se registró: era la misma caja." }; pintar(); });
     on("lqDudaSi", () => { const d = st.dudosa; st.dudosa = null; leer(d.codigo, d.origen, true); });
     on("lqRevisar", () => { if (cola().length) { st.ultimo = { pendiente: true, texto: "Hay lecturas sin confirmar: esperá la confirmación del servidor antes de cerrar." }; return pintar(); } leerEstado(true); st.vista = "revision"; pintar(); });
@@ -7313,6 +7408,10 @@ var qrcode = function() {
     .lq-etq b{ font-size:26px; font-variant-numeric:tabular-nums; color:var(--lq-ok) }
     .lq-acc{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px } .lq-acc .lq-b{ flex:1 1 160px }
     .lq-links{ display:flex; gap:14px; flex-wrap:wrap }
+    .lq-lote-ops{ display:flex; flex-direction:column; gap:8px; margin:8px 0 }
+    .lq-lote-op{ display:flex; flex-direction:column; align-items:flex-start; gap:2px; width:100%; min-height:58px; text-align:left }
+    .lq-lote-op b{ font-size:18px } .lq-lote-op small{ font-size:12.5px; font-weight:600 }
+    .lq-lote-bar{ margin:6px 0; font-size:14px } .lq-lote-bar div{ display:flex; justify-content:space-between; align-items:center; gap:10px; padding:4px 0 }
     .lq-lista{ display:flex; flex-direction:column; gap:8px }
     .lq-art{ display:grid; grid-template-columns:52px minmax(0,1fr) auto; gap:10px; align-items:start; border:2px solid var(--lq-borde); border-radius:12px; padding:10px 12px; min-width:0 }
     .lq-art.ok{ border-color:var(--lq-ok); background:var(--lq-ok-s) }
@@ -7338,7 +7437,6 @@ var qrcode = function() {
   `;
   document.head.appendChild(css);
 })();
-
 </script>
 <script>
 /* ═══════════════════════════════════════════════════════════════════
