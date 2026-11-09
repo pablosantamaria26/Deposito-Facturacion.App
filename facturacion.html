@@ -10926,6 +10926,8 @@ var qrcode = function() {
          viejísimo no lo tuviera por algún motivo, cae al id interno (como
          era antes): nunca rompe la impresión. */
       codigoCorto: p.codigo_corto || p.id,
+      /* 09/11/2026: lo que Laura tipea en Carga. Sin el respaldo al id interno: si no hay código corto, no se imprime el bloque. */
+      codigoCarga: p.codigo_corto || "",
       cliente: p.cliente_nombre || ("Cliente " + (p.cliente_id || "—")),
       nro: p.cliente_id || "—",
       vendedor: p.vendedor || "—",
@@ -11017,7 +11019,8 @@ var qrcode = function() {
     if (cab > 0) grupos.push(`<span><b>${cab}</b><small>${cab === 1 ? "BULTO" : "BULTOS"}<br>DE CABOS</small></span>`);
     if (q > 0) grupos.push(`<span><b>${q}</b><small>${q === 1 ? "CAJA" : "CAJAS"}</small></span>`);
     return `
-      <div class="etq"${String(d.cliente || "").length > 42 ? " data-compacta" : ""}>
+      <div class="etq" data-total${String(d.cliente || "").length > 42 ? " data-compacta" : ""}>
+        <div class="etq-arriba">
         ${C.encabezado(logo)}
         ${C.filaCliente(d.cliente)}
         ${C.filaDatos(d.nro, d.fecha, d.vendedor)}
@@ -11025,11 +11028,17 @@ var qrcode = function() {
         <div class="bultoband">
           <div class="bb-tit">TOTAL DEL PEDIDO</div>
           <div class="bb-tot">
-            <div class="bb-num">${total}</div>
-            <div class="bb-uni">${total === 1 ? "BULTO" : "BULTOS"}</div>
+            <div class="bb-fila">
+              <div class="bb-lado">
+                <div class="bb-num">${total}</div>
+                <div class="bb-uni">${total === 1 ? "BULTO" : "BULTOS"}</div>
+              </div>
+              ${d.codigoCarga ? `<div class="cod-carga"><span>CÓDIGO PARA CARGA</span><b>${esc(d.codigoCarga)}</b></div>` : ""}
+            </div>
             <div class="bb-eq">${grupos.join("<i>+</i>")}</div>
             ${marcas ? `<div class="bb-marcas">${marcas}</div>` : ""}
           </div>
+        </div>
         </div>
         <div class="hr"></div>
 
@@ -11096,7 +11105,33 @@ var qrcode = function() {
       .bb-eq i{ font-style:normal; font-size:16pt; font-weight:700; color:#000; padding-bottom:2.6mm }
       .bb-marcas{ margin-top:1.6mm; font-size:8px; font-weight:700; letter-spacing:.04em; color:#000 }
       .bb-marcas b{ font-size:9.5px; font-weight:900 }
-    </style></head><body>${cuerpo}</body></html>`;
+      /* El código para tipear en Carga va al lado del total: ahí sobra ancho y no le quita alto al QR. */
+      .bb-fila{ display:flex; align-items:center; justify-content:center }
+      .bb-lado{ flex:1; min-width:0 }
+      .cod-carga{ flex-shrink:0; width:50mm; padding-left:2mm; border-left:0.25mm solid #000 }
+      .cod-carga span{ display:block; font-size:8.5px; font-weight:900; letter-spacing:.08em; line-height:1.2; margin-bottom:1mm }
+      .cod-carga b{ display:block; font-size:30pt; font-weight:900; letter-spacing:.08em; line-height:1 }
+
+      /* 09/11/2026: margen blanco del QR de contacto (4 módulos = 2 mm). La zona de códigos ya no se
+         achica: cede la parte de arriba, primero por niveles y, como último recurso, recortándose
+         antes que pisar el QR. La línea de arriba ya deja 1,5 mm: acá se completan los 2 mm. */
+      .etq-arriba{ flex:0 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column }
+      .etq-arriba > *{ flex-shrink:0 }
+      .etq[data-total] .codigos{ flex:1 0 auto }
+      .etq[data-total] .cod-der{ gap:0 }
+      .etq[data-total] .cod-qr{ padding:.6mm 0 2mm }
+      .etq[data-ajuste] .hr{ margin:1mm 0 }
+      .etq[data-ajuste] .bb-tit{ padding:1mm 0 }
+      .etq[data-ajuste] .bb-tot{ padding:1.2mm 2mm 1.4mm }
+      .etq[data-ajuste] .bb-eq{ margin-top:1.2mm; padding-top:1.2mm }
+      .etq[data-ajuste="2"] .cab-camion, .etq[data-ajuste="3"] .cab-camion{ display:none }
+      .etq[data-ajuste="2"] .bb-num, .etq[data-ajuste="3"] .bb-num{ font-size:34pt }
+      .etq[data-ajuste="2"] .bb-eq b, .etq[data-ajuste="3"] .bb-eq b{ font-size:14pt }
+      .etq[data-ajuste="2"] .bb-eq i, .etq[data-ajuste="3"] .bb-eq i{ font-size:12pt; padding-bottom:2mm }
+      .etq[data-ajuste="3"] .cli-n{ font-size:11.5px; line-height:1.05 }
+      .etq[data-ajuste="3"] .cod-carga b{ font-size:26pt }
+      .etq[data-ajuste="3"] .bb-num{ font-size:28pt }
+    </style></head><body>${cuerpo}<script>(function(){var e=document.querySelector(".etq[data-total]");if(!e)return;var a=e.querySelector(".etq-arriba");for(var n=1;n<=3&&a.scrollHeight>a.clientHeight;n++)e.setAttribute("data-ajuste",n);})()<\/script></body></html>`;
   }
 
   /* ── Imprimir vía iframe aislado (no lo bloquea el navegador) ───── */
