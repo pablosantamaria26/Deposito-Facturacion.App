@@ -14403,7 +14403,7 @@ renderCatKPIs();
     d.innerHTML = `<div class="ven-caja"><div class="ven-t"><h3>Recibir mercadería</h3><button type="button" class="ven-x" aria-label="Cerrar" id="venCerrar">×</button></div>
       <div class="ven-datos"><label>Remito del proveedor<input type="text" id="venRemito" autocomplete="off" placeholder="ej: 0001-00012345"></label>
         <label>Quién recibe<input type="text" id="venQuien" autocomplete="off"></label>
-        <label style="grid-column:1/-1">Adjuntar remito (foto o PDF, opcional)<input type="file" id="venArchivo" accept="application/pdf,image/jpeg,image/png"><span id="venAdj" style="font-weight:500"></span></label></div>
+        <label style="grid-column:1/-1">Adjuntar remito · pendiente: todavía no se puede consultar desde Admin<input type="file" id="venArchivo" accept="application/pdf,image/jpeg,image/png"><span id="venAdj" style="font-weight:500"></span></label></div>
       <p class="ven-nota">Suma al stock y registra vencimientos. No cambia precios ni costos.</p>
       <div class="ven-tabs"><button type="button" data-m="manual">Carga manual</button><button type="button" data-m="excel">Importar Excel</button></div>
       <div id="venCuerpo"></div></div>`;
@@ -14420,7 +14420,7 @@ renderCatKPIs();
     if (f.size > 5 * 1048576) { el.textContent = "Pesa más de 5 MB: no se adjuntó."; return; }
     const nombre = "rem-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
     el.textContent = "Subiendo…";
-    QRSrv.subir("/local/remito/" + nombre, f).then(() => { adjunto = nombre; el.textContent = "Adjuntado: " + f.name; })
+    QRSrv.subir("/local/remito/" + nombre, f).then(() => { adjunto = nombre; el.textContent = "Se subió " + f.name + ". Todavía no se puede consultar desde Admin."; })
       .catch(e => { el.textContent = "No se pudo adjuntar (" + e.message + "). Podés recibir igual."; });
   }
   function pintar(ean) {
