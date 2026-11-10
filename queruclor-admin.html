@@ -6981,14 +6981,14 @@ renderCatKPIs();
   function fila(p) {
     const key = getKey(p), eans = getEans(p), d = datosDe(p);
     const cFoto = p.tipo === "familia" ? p.imagenPrincipal : p.ean, img = (window.qrFotoUrl ? qrFotoUrl(cFoto) : cFoto + ".jpg");
-    const stock = stockDe(p);
     const activo = esActivo(p);
     const costo = d ? d.f.costoNeto : (p.costoNeto || 0);
     const pu = d && d.f.precioUnit ? d.f.precioUnit : p.precioUnit;
     const g = aaDatos.general();
 
     let margen = "—";
-    if (d) {
+    if (d && !(costo > 0)) margen = '<span class="vt-nada" title="Sin costo cargado: el margen no se puede calcular.">Sin costo</span>';
+    else if (d) {
       const cls = d.m < g - 0.05 ? "mal" : d.m < g - 0.005 ? "ojo" : d.propio ? "info" : "neutro";
       margen = `<button type="button" class="vt-link" onclick="vtIrMargen('${esc(p.nombre)}')" title="Cambiar en Precios">
         <span class="est ${cls}">${pct1(d.m)}</span></button>${d.propio ? '<small class="vt-sub">propio</small>' : ""}`;
@@ -7008,8 +7008,7 @@ renderCatKPIs();
       <td class="vt-num vt-gris">${pesos(pu * p.uc)}<small class="vt-sub">${p.uc} u. por caja</small></td>
       <td>${margen}</td>
       <td>${vence}</td>
-      <td style="text-align:center"><span class="est ${stock === 0 ? "mal" : stock <= 2 ? "ojo" : "neutro"}" id="stk-${key}"
-        title="Disponible (físico − reservado). Se carga en Stock.">${stock === 0 ? "Sin stock" : stock}</span></td>
+      <td style="text-align:center" id="stk-${key}">${celdaStock(p)}</td>
       <td style="text-align:center"><label class="toggle-sw" title="${activo ? "Lo ven los vendedores" : "Pausado: oculto para los vendedores"}">
         <input type="checkbox" id="act-${key}" ${activo ? "checked" : ""} onchange="vtActivo('${key}', this.checked)"><span class="t-sl"></span></label></td>
     </tr>`;
@@ -7049,10 +7048,69 @@ renderCatKPIs();
   /* Stock = el compartido (físico − reservado), solo para mirar: se carga
      en la pantalla de Stock. Pausado no es lo mismo que sin stock: sin
      stock se sigue viendo, pero no se puede comprar. */
+  /* catalogo-stock-vivo 10/11/2026 */
+  const stk = { mapa: null, cuando: null, estado: "pendiente", lotes: null, pidiendo: false, otra: false, timer: 0 };
+  const horaDe = d => d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  async function leerJson(url, op) { const r = await fetch(url, Object.assign({ cache: "no-store" }, op || {})); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }
+  async function pedirStock() {
+    if (stk.pidiendo) { stk.otra = true; return; }
+    stk.pidiendo = true;
+    try {
+      const [estado, lotes] = await Promise.all([
+        leerJson("/rest/v1/qr_estado?select=ean,cajas,unidades,fisico_cajas,fisico_sueltas,incorporado"),
+        leerJson("/rest/v1/rpc/qr_lotes_resumen", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => null),
+      ]);
+      stk.mapa = new Map((estado || []).map(e => [String(e.ean), e]));
+      if (lotes) stk.lotes = new Map(lotes.map(l => [String(l.ean), l]));
+      stk.cuando = new Date(); stk.estado = "ok";
+    } catch (e) {
+      stk.estado = stk.mapa ? "viejo" : "error";
+    } finally {
+      stk.pidiendo = false;
+      repintarStock();
+      if (stk.otra) { stk.otra = false; programarStock(); }
+    }
+  }
+  /* Varios avisos juntos (una recepción de 35 artículos) son una sola consulta. */
+  function programarStock() { clearTimeout(stk.timer); stk.timer = setTimeout(pedirStock, 400); }
   function stockDe(p) {
-    if (!window.Stock || !Stock.disponible) return 0;
-    const cajas = e => { try { return Stock.disponible(e).cajas || 0; } catch (x) { return 0; } };
+    if (!stk.mapa) return null;
+    const cajas = e => { const x = stk.mapa.get(String(e)); return x ? Number(x.cajas) || 0 : 0; };
     return p.tipo === "familia" ? p.variantes.reduce((a, v) => a + cajas(v.ean), 0) : cajas(p.ean);
+  }
+  function fisicoDe(p) {
+    if (!stk.mapa) return null;
+    const f = e => { const x = stk.mapa.get(String(e)); return x ? Number(x.fisico_cajas) || 0 : 0; };
+    return p.tipo === "familia" ? p.variantes.reduce((a, v) => a + f(v.ean), 0) : f(p.ean);
+  }
+  function celdaStock(p) {
+    const s = stockDe(p);
+    if (s === null) return stk.estado === "error"
+      ? '<span class="est neutro vt-sindato" title="No se pudo consultar el stock. Se reintenta solo.">Sin dato</span>'
+      : '<span class="est neutro vt-sindato" title="Consultando el stock…">…</span>';
+    const fis = fisicoDe(p), viejo = stk.estado === "viejo";
+    const tit = (viejo ? "Dato anterior, de las " + horaDe(stk.cuando) + ": no se pudo actualizar. " : "") + "Disponible = físico − reservado." + (fis !== s ? " Físico: " + fis + " caja" + (fis === 1 ? "" : "s") + "." : "");
+    return `<span class="est ${s === 0 ? "mal" : s <= 2 ? "ojo" : "neutro"}${viejo ? " vt-viejo" : ""}" title="${tit}">${s === 0 ? "Sin stock" : s}</span>${fis !== s ? `<small class="vt-sub">de ${fis} físicas</small>` : ""}`;
+  }
+  function repintarStock() {
+    if (filtroEstado === "sinstock") { renderCatTabla(); renderCatKPIs(); return; }
+    visibles.forEach(p => { const c = document.getElementById("stk-" + getKey(p)); if (c) c.innerHTML = celdaStock(p); });
+    renderCatKPIs();
+  }
+  const MUEVEN = /^qr_(recepcion_registrar|lote_completar|recibir|contar|ajustar|devolver|reservar|liberar|despachar|reserva_ajustar|conteo_cerrar)$/;
+  function iniciarStockVivo() {
+    if (window.QRSrv && !QRSrv.rpc.__stk) {
+      const rpc0 = QRSrv.rpc;
+      QRSrv.rpc = function (fn) { const r = rpc0.apply(this, arguments); if (MUEVEN.test(fn)) programarStock(); return r; };
+      QRSrv.rpc.__stk = true;
+      if (QRSrv.escuchar) QRSrv.escuchar(["qr_stock", "qr_reservas", "qr_lotes", "qr_lotes_estado"], () => { if (!document.hidden) programarStock(); });
+    }
+    if (typeof window.goTab === "function" && !window.goTab.__stk) {
+      const g0 = window.goTab;
+      window.goTab = function (t) { const r = g0.apply(this, arguments); if (t === "catalogo") programarStock(); return r; };
+      window.goTab.__stk = true;
+    }
+    pedirStock();
   }
   window.vtActivo = (key, on) => {
     const i = CATALOGO.findIndex(x => getKey(x) === key); if (i < 0 || !window.aaHabilitar) return;
@@ -7131,19 +7189,37 @@ renderCatKPIs();
       const n = CATALOGO.length;
       const activos = CATALOGO.filter(esActivo).length;
       const g = aaDatos.general();
-      const mProm = fs.length ? fs.reduce((a, r) => a + r.m, 0) / fs.length : g;
-      const vencen = fs.filter(r => { const d = aaDatos.diasA(r.vto); return d !== null && d <= 30; }).length;
-      const urg = fs.filter(r => { const d = aaDatos.diasA(r.vto); return d !== null && d <= 7; }).length;
+      /* Publicado = lo que ven los vendedores con precio. El costo es otra cosa: sin costo no hay margen. */
+      const conPrecio = CATALOGO.filter(p => { const d = datosDe(p); return esActivo(p) && d && d.f.precioUnit > 0; }).length;
+      const sinCosto = CATALOGO.filter(p => { const d = datosDe(p); return esActivo(p) && d && !(d.f.costoNeto > 0); }).length;
+      const mProm = fs.length ? fs.reduce((a, r) => a + r.m, 0) / fs.length : null;
+      const comerc = fs.filter(r => { const d = aaDatos.diasA(r.vto); return d !== null && d <= 30; }).length;
+      /* Vencimiento real: lotes de Stock. Lo que hay en físico sin lote con fecha se cuenta aparte. */
+      let vencen = null, urg = 0, sinFecha = 0;
+      if (stk.mapa && stk.lotes) {
+        vencen = 0;
+        const fin = v => { if (!v) return null; const [y, m, d] = v.split("-").map(Number); const f = d ? new Date(y, m - 1, d) : new Date(y, m, 0); const h = new Date(); h.setHours(0, 0, 0, 0); return Math.round((f - h) / 86400000); };
+        stk.mapa.forEach((e, ean) => {
+          if (!(Number(e.fisico_cajas) > 0 || Number(e.fisico_sueltas) > 0)) return;
+          const l = stk.lotes.get(ean);
+          if (!l || Number(l.sin_fecha_unidades) > 0) sinFecha++;
+          const dias = l && l.proximo ? fin(l.proximo.vence) : null;
+          if (dias !== null && dias <= 30) { vencen++; if (dias <= 7) urg++; }
+        });
+      }
+      const subV = vencen === null ? (stk.estado === "error" || stk.estado === "viejo" ? "no se pudo consultar Stock" : "consultando Stock…")
+        : urg ? urg + " en 7 días o menos" : sinFecha ? sinFecha + " artículo" + (sinFecha === 1 ? "" : "s") + " con mercadería sin fecha"
+        : comerc ? comerc + " por fecha comercial · ver ofertas" : "nada por vencer";
       const ocultos = n - activos;
       $("kpi-catalogo").innerHTML = `
         <div class="kpi"><div class="kpi-lbl">Artículos en catálogo</div><div class="kpi-val">${n}</div>
-          <div class="kpi-sub">${fs.length} con precio publicado</div></div>
+          <div class="kpi-sub">${conPrecio} con precio publicado${sinCosto ? " · " + sinCosto + " sin costo" : ""}</div></div>
         <div class="kpi ${ocultos ? "ojo" : "bien"}"><div class="kpi-lbl">Visibles para vendedores</div><div class="kpi-val">${activos}</div>
           <div class="kpi-sub">${ocultos ? ocultos + " oculto" + (ocultos === 1 ? "" : "s") : "todos visibles"}</div></div>
-        <div class="kpi ${mProm < g - 0.005 ? "ojo" : "bien"}" onclick="goTab('precios')"><div class="kpi-lbl">Margen promedio s/venta</div>
-          <div class="kpi-val">${pct1(mProm)}</div><div class="kpi-sub">objetivo general ${pct1(g)}</div></div>
-        <div class="kpi ${urg ? "mal" : vencen ? "ojo" : "bien"}" ${vencen ? 'onclick="aaVerVencen()"' : ""}><div class="kpi-lbl">Vencen en ≤30 días</div>
-          <div class="kpi-val">${vencen}</div><div class="kpi-sub">${urg ? urg + " en 7 días o menos" : vencen ? "ver ofertas sugeridas" : "nada por vencer"}</div></div>`;
+        <div class="kpi ${mProm === null ? "" : mProm < g - 0.005 ? "ojo" : "bien"}" onclick="goTab('precios')"><div class="kpi-lbl">Margen promedio s/venta</div>
+          <div class="kpi-val">${mProm === null ? "—" : pct1(mProm)}</div><div class="kpi-sub">${mProm === null ? "sin costos cargados: no se puede calcular" : (fs.length < conPrecio ? "de " + fs.length + " con costo · " : "") + "objetivo general " + pct1(g)}</div></div>
+        <div class="kpi ${vencen === null ? "" : urg ? "mal" : vencen || sinFecha ? "ojo" : "bien"}" ${comerc ? 'onclick="aaVerVencen()"' : ""} title="Vencimiento de la mercadería, según los lotes cargados en Stock."><div class="kpi-lbl">Vencen en ≤30 días</div>
+          <div class="kpi-val">${vencen === null ? "—" : vencen}</div><div class="kpi-sub">${subV}</div></div>`;
     };
 
     /* Ya no hacen falta: stock y activo se guardan solos. */
@@ -7155,6 +7231,7 @@ renderCatKPIs();
 
     montarFiltros();
     renderCatKPIs(); renderCatTabla();
+    iniciarStockVivo();
   }
 
   /* Cuando cambia un precio o un vencimiento en Precios, la tabla del
@@ -7169,6 +7246,7 @@ renderCatKPIs();
     .vt-marca{ font-size:12px; color:var(--ink3) } .vt-cat{ display:inline-block } .vt-cat::first-letter{ text-transform:uppercase }
     .vt-sub{ display:block; font-size:10.5px; color:var(--ink3); margin-top:2px }
     .vt-nada{ color:var(--ink3) }
+    .vt-viejo{ opacity:.6; font-style:italic } .vt-sindato{ color:var(--ink3) }
     .vt-link{ border:0; background:none; padding:0; cursor:pointer; font:inherit }
     .vt-inactivo td{ opacity:.55 } .vt-inactivo td:last-child{ opacity:1 }
     .vt-fila{ cursor:pointer } .vt-fila:hover td{ background:var(--brand-soft) }
