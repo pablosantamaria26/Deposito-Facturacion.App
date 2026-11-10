@@ -1,0 +1,17 @@
+{
+  "name": "ML Admin Queruclor",
+  "short_name": "Admin Queruclor",
+  "description": "Panel de control de Queruclor · Mercado Limpio",
+  "id": "/Deposito-Facturacion.App/queruclor-admin.html",
+  "start_url": "./queruclor-admin.html",
+  "scope": "./queruclor-admin.html",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f2837",
+  "theme_color": "#0f2837",
+  "icons": [
+    { "src": "./admin-queruclor-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./admin-queruclor-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./admin-queruclor-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
