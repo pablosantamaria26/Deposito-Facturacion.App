@@ -8548,6 +8548,13 @@ var qrcode = function() {
       .pie .ped{display:flex;align-items:center;gap:1.6mm;font-size:8.5pt;font-weight:700}
       .pie .gracias{font-family:"Segoe Script","Brush Script MT","Snell Roundhand",cursive;
         font-style:italic;font-size:13pt;font-weight:700}
+      /* remito-transferencia 10/11/2026 */
+      .pie{flex-wrap:wrap}
+      .pie .transf{order:-1;flex-basis:100%;display:flex;align-items:center;justify-content:center;gap:4mm;padding-bottom:1.6mm;margin-bottom:.4mm;border-bottom:.25mm dashed #999}
+      .pie .tf-alias{display:inline-flex;align-items:baseline;gap:2.2mm;border:.4mm solid #000;border-radius:1.6mm;padding:.9mm 3.2mm}
+      .pie .tf-e{font-size:6.6pt;font-weight:900;letter-spacing:.08em;white-space:nowrap}
+      .pie .tf-a{font-family:Consolas,"Courier New",monospace;font-size:13pt;font-weight:800;letter-spacing:.3px}
+      .pie .tf-sec{font-size:7.4pt;color:#333;font-variant-numeric:tabular-nums;white-space:nowrap}
 
       /* Los renglones van al límite de lo legible a propósito: tienen que
          entrar 20 en una cara, y con nombres largos que pasan a dos líneas.
@@ -8631,8 +8638,7 @@ var qrcode = function() {
         <div class="resumen">
           <b>${comp.renglones.length}</b> artículo${comp.renglones.length === 1 ? "" : "s"} ·
           <b>${cajas || "—"}</b> caja${cajas === 1 ? "" : "s"} ·
-          <b>${unidades}</b> unidades<br>
-          <div class="alias">Si pagás por transferencia, el alias es:<br><span class="a">MERCADOLIMPIO.PS</span></div>
+          <b>${unidades}</b> unidades
         </div>
         <div class="totales">
           ${comp.saldo_anterior ? `
@@ -8650,6 +8656,10 @@ var qrcode = function() {
 
       <div class="pie">
         <div class="ped">${ic("pedido", "5mm")}<span>Pedido #${esc(comp.pedido_id != null ? comp.pedido_id : "—")}${comp.emitido_por ? " · Emitió: " + esc(comp.emitido_por) : ""}</span></div>
+        <div class="transf">
+          <div class="tf-alias"><span class="tf-e">ALIAS PARA TRANSFERIR</span><span class="tf-a">mercadolimpio.cs</span></div>
+          <div class="tf-sec">CBU: 0720533020000002757618 · Cuenta: cc$ 533-027576/1</div>
+        </div>
         <div class="gracias">Gracias por elegirnos</div>
       </div>
 
