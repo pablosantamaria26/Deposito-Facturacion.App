@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<script>window.QR_PROD_API="https://queruclor-api.santamariapablodaniel.workers.dev";window.QR_API_BASE="https://queruclor-api.santamariapablodaniel.workers.dev";window.QR_PUESTO="deposito";window.QR_URL_REGISTRO="https://frosty-term-20ea.santamariapablodaniel.workers.dev/";window.QR_FOTOS_BASE="https://gjeyvbidomxzofcdycya.supabase.co/storage/v1/object/public/qr-fotos/";</script>
+<script>window.QR_PROD_API="https://queruclor-api.santamariapablodaniel.workers.dev";window.QR_API_BASE="https://queruclor-api.santamariapablodaniel.workers.dev";window.QR_PUESTO="deposito";window.QR_APP_VER="deposito/20261110";window.QR_URL_REGISTRO="https://frosty-term-20ea.santamariapablodaniel.workers.dev/";window.QR_FOTOS_BASE="https://gjeyvbidomxzofcdycya.supabase.co/storage/v1/object/public/qr-fotos/";</script>
 <script>
 /* ═══════════════════════════════════════════════════════════════════
    CONEXIÓN AL SERVIDOR COMPARTIDO DE PRUEBAS — va PRIMERO en cada pantalla
@@ -126,7 +126,7 @@
   }
   /* El enlace del puesto se guarda al abrir: hay pantallas que casi no consultan al arrancar. */
   if (PROD && window.QR_PUESTO !== "vendedor" && /[#&]puesto=/.test(location.hash)) tokenPuesto();
-  function conToken(h) { var t = tokenPuesto(); if (t) h["X-QR-Token"] = t; return h; }
+  function conToken(h) { var t = tokenPuesto(); if (t) h["X-QR-Token"] = t; if (window.QR_APP_VER) h["X-QR-App"] = window.QR_APP_VER; return h; }
   function vigilarToken(status) {
     if (!PROD || status !== 401) return;
     if (PANEL_TOKEN) return panelToken({ estado: "incorrecto" });
@@ -1348,9 +1348,33 @@ function renderLista() {
         <div class="card-meta">Vendedor: ${p.vendedor||"—"} · ${p.observaciones||"Sin obs."}</div>
         ${p.es_pedido_faltante ? `<div class="badge-faltante">★ PEDIDO DE FALTANTES</div>` : ""}
         ${p.estado==="armado" ? `<div class="badge-armado">✅ ARMADO${p.armado_por ? " · " + p.armado_por : ""}</div>` : ""}
+        ${p.estado!=="armado" && typeof qrChipsPartes === "function" ? qrChipsPartes(p) : ""}
       </div>`;
   }).join("");
 }
+
+/* 10/11/2026: chips de las partes del pedido (lista vs. espera), leídos de qr_bloques. */
+function qrChipsPartes(p) {
+  try {
+    if (!window.QRSrv || !window.Bloques) return "";
+    const filas = (QRSrv.get("qr_bloques", "select=*", 5000) || []).filter(x => String(x.pedido_id) === String(p.id));
+    if (!filas.length) return "";
+    const e = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return '<div class="qr-chips">' + ["habituales", "queruclor"].map(k => {
+      const b = filas.find(x => x.bloque === k); if (!b) return "";
+      const nom = k === "queruclor" ? "🧴 Queruclor" : "🧺 Habituales";
+      if (b.listo) return '<span class="qr-chip ok">' + nom + ' ✓ lista</span>';
+      if (b.esperando_desde && !b.tomado_por) return '<span class="qr-chip esp">' + nom + ' ⏸ esperando ingreso</span>';
+      if (b.tomado_por) return '<span class="qr-chip arm">' + nom + ' · la arma ' + e(b.tomado_por) + '</span>';
+      return '<span class="qr-chip">' + nom + ' · sin tomar</span>';
+    }).join("") + "</div>";
+  } catch (x) { return ""; }
+}
+(function () {
+  const s = document.createElement("style");
+  s.textContent = ".qr-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.qr-chip{font:700 12px/1.2 system-ui,sans-serif;padding:4px 8px;border-radius:6px;background:#e2e8f0;color:#334155}.qr-chip.ok{background:#dcfce7;color:#166534}.qr-chip.esp{background:#fef3c7;color:#92400e;border:1px solid #f59e0b}.qr-chip.arm{background:#e0f2fe;color:#075985}";
+  (document.head || document.documentElement).appendChild(s);
+})();
 
 // ── ABRIR PEDIDO ──
 function pedidoClick(id) {
@@ -2608,10 +2632,14 @@ window.onload = async () => {
     const b = (S.get("qr_bloques", "select=*", 1000) || []).find(x => x.clave === k);
     return b || { tomado_por: null, tomado_at: null, listo: false, listo_at: null };
   }
+  /* armado-espera 10/11/2026 */
+  /* «Rodri» y «rodri» son la misma persona (mismo criterio que la base, migración 034). */
+  const normNombre = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, " ").toLowerCase();
+  const mismoNombre = (a, b) => !!a && !!b && normNombre(a) !== "" && normNombre(a) === normNombre(b);
   function puede(pedidoId, item, quien) {
     const bl = bloqueDe(item), e = estado(pedidoId, bl);
     if (!e.tomado_por) return { ok: true, libre: true, bloque: bl };
-    if (e.tomado_por === quien) return { ok: true, libre: false, bloque: bl };
+    if (mismoNombre(e.tomado_por, quien)) return { ok: true, libre: false, bloque: bl };
     return { ok: false, por: e.tomado_por, bloque: bl };
   }
   function todosListos(pedidoId, items) {
@@ -2625,6 +2653,7 @@ window.onload = async () => {
       return Object.assign({ bloque: b }, DEF[b], e, { total: propios.length, armados: propios.filter(i => i.armado).length });
     });
   }
+  global.qrMismoNombre = mismoNombre;
   global.Bloques = {
     DEF, bloqueDe, bloques, estado,
     tomar: (pedidoId, bloque, quien) => S.rpc("qr_tomar_bloque", { p_pedido: String(pedidoId), p_bloque: bloque, p_quien: quien }),
@@ -2632,6 +2661,9 @@ window.onload = async () => {
     /* 18/10/2026: reasignar con motivo (queda en el historial del bloque). */
     reasignar: (pedidoId, bloque, quien, motivo) => S.rpc("qr_bloque_reasignar", { p: { pedido: String(pedidoId), bloque, quien, motivo } }),
     marcarListo: (pedidoId, bloque, quien) => S.rpc("qr_bloque_listo", { p_pedido: String(pedidoId), p_bloque: bloque, p_quien: quien }),
+    /* 10/11/2026: la parte queda «Esperando ingreso» (libre, no lista, no faltante). Se levanta sola al retomarla. */
+    esperar: (pedidoId, bloque, quien) => S.rpc("qr_bloque_esperar", { p: { pedido: String(pedidoId), bloque, quien } }),
+    mismoNombre,
     puede, todosListos, resumen,
     sinTomar: horas => (S.rpc("qr_bloques_sin_tomar", { p_horas: horas || 2 }) || []),
     _reset: () => { throw new Error("En el sistema compartido los bloques no se borran desde una pantalla."); },
@@ -5874,15 +5906,19 @@ var qrcode = function() {
   const resuelto = i => !!(i.armado || i.faltante_informado);
   const hora = iso => { try { const d = new Date(iso); return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
   function encabezado(b, propios) {
-    const mio = b.tomado_por && b.tomado_por === quien();
+    const mio = b.tomado_por && Bloques.mismoNombre(b.tomado_por, quien());
     const libre = !b.tomado_por && !b.listo;
     const ajeno = b.tomado_por && !mio && !b.listo;
     const hechos = propios.filter(resuelto).length, faltan = propios.length - hechos;
     let estado, acciones = "";
     if (b.listo) estado = `<span class="blqq listo">✓ Listo · ${esc(b.listo_por || b.tomado_por || "")}${b.listo_at ? " · " + hora(b.listo_at) : ""}</span>`;
-    else if (libre) {
+    else if (libre && b.esperando_desde) {
+      estado = `<span class="blqq espera">⏸ Esperando ingreso · desde ${hora(b.esperando_desde)}${b.esperando_por ? " · lo marcó " + esc(b.esperando_por) : ""}</span>`;
+      acciones = `<button class="blq-btn" onclick="qrBloqueTomar('${b.bloque}')">Llegó la mercadería: retomar</button>`;
+    } else if (libre) {
       estado = `<span class="blqq libre">Sin tomar</span>`;
-      acciones = `<button class="blq-btn" onclick="qrBloqueTomar('${b.bloque}')">Tomar mi parte</button>`;
+      acciones = `<button class="blq-btn" onclick="qrBloqueTomar('${b.bloque}')">Tomar mi parte</button>`
+        + (b.bloque === "queruclor" && faltan ? `<button class="blq-lnk" onclick="qrBloqueEsperar('${b.bloque}')">Esperando ingreso</button>` : "");
     } else if (mio) {
       estado = `<span class="blqq mio">Lo estás armando vos · ${hechos} de ${propios.length} renglones resueltos</span>`;
       acciones = faltan
@@ -5890,7 +5926,8 @@ var qrcode = function() {
            <button class="blq-btn" disabled title="Falta resolver ${faltan} renglón(es)">Mi parte está lista</button>
            <div class="blq-falta">Falta resolver ${faltan} ${faltan === 1 ? "renglón" : "renglones"}</div>`
         : `<button class="blq-btn full" onclick="qrBloqueListo('${b.bloque}')">✓ Mi parte está lista</button>`;
-      acciones += `<button class="blq-lnk" onclick="qrBloqueLiberar('${b.bloque}')">Liberar</button>`;
+      acciones += `<button class="blq-lnk" onclick="qrBloqueLiberar('${b.bloque}')">Liberar</button>`
+        + (b.bloque === "queruclor" && faltan ? `<button class="blq-lnk" onclick="qrBloqueEsperar('${b.bloque}')">Esperando ingreso</button>` : "");
     } else {
       estado = `<span class="blqq ajeno">${esc(b.tomado_por)} lo está armando · avance ${hechos} de ${propios.length}</span>`;
       acciones = `<button class="blq-lnk" onclick="qrBloqueReasignar('${b.bloque}')">Reasignar</button>`;
@@ -5906,7 +5943,24 @@ var qrcode = function() {
           </div>
           <div class="blq-acc">${acciones}</div>
         </div>
+        ${libre && b.esperando_desde ? detalleEspera(propios) : ""}
       </div>`;
+  }
+  /* Qué falta de la parte en espera y cuánto hay hoy en el depósito. No reparte nada: si hay
+     varios pedidos esperando lo mismo, cada armador retoma el suyo y lee las cajas que encuentra. */
+  function detalleEspera(propios) {
+    const pend = propios.filter(i => !resuelto(i));
+    if (!pend.length) return "";
+    const filas = pend.map(i => {
+      const q = (window.QRParse && QRParse.parseQueruclor(i.descripcion)) || {};
+      const suelto = q.modo === "sueltas", cant = Number(i.cantidad) || 0;
+      let hay = null;
+      try { if (q.ean && window.Stock) { const f = Stock.fisico(q.ean); hay = suelto ? f.cajas * (f.uc || 0) + f.sueltas : f.cajas; } } catch (e) {}
+      const clase = hay == null ? "" : hay >= cant ? "si" : hay > 0 ? "parte" : "no";
+      return `<li><b>${cant} ${suelto ? "u." : "cj."}</b> ${esc(q.nombre || i.descripcion)} <span class="qr-esp-hay ${clase}">en depósito: ${hay == null ? "—" : hay}</span></li>`;
+    }).join("");
+    return `<div class="qr-esp-det"><div class="qr-esp-t">Falta preparar (${pend.length})</div><ul>${filas}</ul>
+      <p>Lo ya preparado se conserva. «En depósito» es el stock físico de hoy: puede estar comprometido para otros pedidos y nada se asigna solo.</p></div>`;
   }
 
   /* ── Render ───────────────────────────────────────────────────── */
@@ -5929,8 +5983,10 @@ var qrcode = function() {
     const foco = typeof _modoFoco !== "undefined" && _modoFoco;
     const resumen = Bloques.resumen(p.id, its);
 
-    let html = "";
+    const soloQr = !!_soloQr[p.id] && resumen.some(b => b.bloque === "queruclor");
+    let html = barraVista(resumen, its, soloQr);
     for (const b of resumen) {
+      if (soloQr && b.bloque !== "queruclor") continue;
       const propios = its.filter(i => Bloques.bloqueDe(i) === b.bloque);
       html += encabezado(b, propios);
       const visibles = foco ? propios.filter(i => !i.armado) : propios;
@@ -5948,6 +6004,21 @@ var qrcode = function() {
     if (typeof actualizarProgreso === "function") actualizarProgreso();
     pintarBotonGlobal(resumen);
   };
+
+  /* «Ver solo Queruclor»: quien arma Queruclor no ve los habituales (no se confunde de estante).
+     Lo oculto se resume en una línea, con su estado, y se vuelve a ver con un toque. */
+  const _soloQr = {};
+  function barraVista(resumen, its, soloQr) {
+    if (!resumen.some(b => b.bloque === "queruclor")) return "";
+    if (!soloQr) return `<div class="qr-vista"><button type="button" class="qr-vista-b" onclick="qrSoloQr(true)">🧴 Ver solo Queruclor</button></div>`;
+    const otras = resumen.filter(b => b.bloque !== "queruclor").map(b => {
+      const n = its.filter(i => Bloques.bloqueDe(i) === b.bloque).length;
+      const est = b.listo ? "✓ lista" : b.tomado_por ? "la arma " + esc(b.tomado_por) : "sin tomar";
+      return `${esc(b.nombre.toLowerCase())} (${n}) · ${est}`;
+    }).join(" · ");
+    return `<div class="qr-vista on"><span>Ocultos: ${otras}</span><button type="button" class="qr-vista-b" onclick="qrSoloQr(false)">Ver todo el pedido</button></div>`;
+  }
+  window.qrSoloQr = function (si) { const p = pedido(); if (!p) return; _soloQr[p.id] = !!si; window.renderItems(); };
 
   /* Los artículos de un bloque ajeno se apagan y no se pueden tocar. */
   function marcarAjenos() {
@@ -5998,7 +6069,10 @@ var qrcode = function() {
     }
 
     btn.disabled = true;
-    btn.textContent = "⏳ falta " + faltan.map(b => b.nombre.toLowerCase()).join(" y ");
+    const enEspera = b => b.esperando_desde && !b.tomado_por;
+    btn.textContent = faltan.every(enEspera)
+      ? "⏸ " + faltan.map(b => b.nombre.toLowerCase()).join(" y ") + " esperando ingreso · no se despacha todavía"
+      : "⏳ falta " + faltan.map(b => b.nombre.toLowerCase() + (enEspera(b) ? " (esperando ingreso)" : "")).join(" y ");
     btn.classList.add("qr-esperando");
   }
 
@@ -6016,7 +6090,11 @@ var qrcode = function() {
   window.qrBloqueTomar = function (bloque) {
     const p = pedido(); if (!p) return;
     if (!quien()) return window.toast && toast("Primero poné tu nombre", "error");
-    if (llamar(() => Bloques.tomar(p.id, bloque, quien()), "Tomaste la parte " + Bloques.DEF[bloque].nombre.toLowerCase())) { window.renderItems(); qrBloqueContinuar(bloque); }
+    const espera = Bloques.estado(p.id, bloque).esperando_desde;
+    if (llamar(() => Bloques.tomar(p.id, bloque, quien()), espera ? "Retomaste Queruclor: lo ya preparado se conserva" : "Tomaste la parte " + Bloques.DEF[bloque].nombre.toLowerCase())) {
+      if (bloque === "queruclor") { const h = Bloques.estado(p.id, "habituales"); if (!(h.tomado_por && !h.listo && Bloques.mismoNombre(h.tomado_por, quien()))) _soloQr[p.id] = true; }
+      window.renderItems(); qrBloqueContinuar(bloque);
+    }
   };
   window.qrBloqueContinuar = function (bloque) {
     const p = pedido(); if (!p) return;
@@ -6052,6 +6130,14 @@ var qrcode = function() {
     }
     window.renderItems();
   };
+  /* «Esperando ingreso»: la parte se libera para que nadie quede atado a ella, sin faltantes y sin
+     cerrar el pedido. Al retomarla (tomar, leer una caja o reasignar) la espera se levanta sola. */
+  window.qrBloqueEsperar = function (bloque) {
+    const p = pedido(); if (!p) return;
+    if (!quien()) return window.toast && toast("Primero poné tu nombre", "error");
+    if (!confirm("¿Dejar la parte " + Bloques.DEF[bloque].nombre.toLowerCase() + " esperando el ingreso de mercadería?\n\n· Lo ya preparado se conserva.\n· No queda nada como faltante.\n· El pedido no se puede marcar armado hasta completarla.\n· Quedás libre para armar otros pedidos.")) return;
+    if (llamar(() => Bloques.esperar(p.id, bloque, quien()), "Queruclor quedó esperando ingreso. Podés seguir con otro pedido.")) window.renderItems();
+  };
   /* Faltante explícito: el renglón queda resuelto sin tildarlo (al cerrar, va como faltante, igual que hoy). */
   window.qrInformarFaltante = async function (itemId, si) {
     const p = pedido(); const it = items().find(i => String(i.id) === String(itemId)); if (!p || !it) return;
@@ -6069,7 +6155,7 @@ var qrcode = function() {
     for (const it of items()) {
       const fila = document.getElementById("irow-" + it.id); if (!fila || it.armado) continue;
       const b = resumen.find(x => x.bloque === Bloques.bloqueDe(it));
-      if (!b || b.listo || (b.tomado_por && b.tomado_por !== quien())) continue;
+      if (!b || b.listo || (b.tomado_por && !Bloques.mismoNombre(b.tomado_por, quien()))) continue;
       const cont = fila.querySelector(".item-info") || fila;
       if (cont.querySelector(".qr-falt-inf")) continue;
       const d = document.createElement("div"); d.className = "qr-falt-inf";
@@ -6116,6 +6202,16 @@ var qrcode = function() {
        reconoce de los botones de las pestañas. */
     .qrblq .blq-header{ display:flex; gap:12px; align-items:center; flex-wrap:wrap }
     .qrblq .blq-title{ font-size:12px }
+    .blqq.espera{ background:#fef3c7; color:#92400e; border:1px solid #f59e0b }
+    .qr-esp-det{ margin:8px 0 2px; padding:10px 12px; border:1px dashed #f59e0b; border-radius:8px; background:#fffbeb; color:#78350f; font-size:13px }
+    .qr-esp-det ul{ margin:6px 0; padding-left:18px } .qr-esp-det li{ margin:2px 0 } .qr-esp-det p{ margin:4px 0 0; font-size:12px; opacity:.85 }
+    .qr-esp-t{ font-weight:800 }
+    .qr-esp-hay{ font-size:12px; font-weight:700; padding:1px 6px; border-radius:6px; background:#e2e8f0; color:#334155 }
+    .qr-esp-hay.si{ background:#dcfce7; color:#166534 } .qr-esp-hay.parte{ background:#fef9c3; color:#854d0e } .qr-esp-hay.no{ background:#fee2e2; color:#991b1b }
+    .qr-vista{ display:flex; gap:8px; align-items:center; justify-content:flex-end; flex-wrap:wrap; margin:0 0 8px }
+    .qr-vista.on{ justify-content:space-between; background:#fdf2f8; border:1px solid #f9a8d4; border-radius:8px; padding:8px 10px; font-size:12.5px; color:#831843 }
+    .qr-vista-b{ font:inherit; font-weight:700; font-size:13px; padding:8px 12px; border-radius:8px; border:1px solid #be185d; background:#fff; color:#9d174d; cursor:pointer; min-height:40px }
+    .qr-vista-b:focus-visible{ outline:3px solid #f472b6; outline-offset:2px }
 
     /* En el celular el botón se lleva el ancho y el título queda en tres
        líneas. Abajo de 520px baja a su propio renglón. */
@@ -6973,7 +7069,7 @@ var qrcode = function() {
           <div class="lq-av"><b>${a.preparadas}/${a.pedidas}</b>${chip}</div></div>`;
     }).join("");
   }
-  const puedeLeer = e => { const b = e && e.bloque; return !(b && b.listo) && (!b || !b.tomado_por || b.tomado_por === quien()) && !e.remito; };
+  const puedeLeer = e => { const b = e && e.bloque; return !(b && b.listo) && (!b || !b.tomado_por || Bloques.mismoNombre(b.tomado_por, quien())) && !e.remito; };
 
   function htmlResultado() {
     const u = st.ultimo;
@@ -7101,7 +7197,8 @@ var qrcode = function() {
     const enCola = cola().filter(x => x.p.pedido === String((p || {}).id)).length;
     if (!e) { host.innerHTML = `<div class="lq"><div class="lq-res mal"><b>Sin conexión</b><p>${esc(st.error || "No se pudo leer la preparación.")}</p></div></div>`; return; }
     const b = e.bloque || {};
-    const ajeno = b.tomado_por && b.tomado_por !== quien() && !b.listo;
+    const ajeno = b.tomado_por && !Bloques.mismoNombre(b.tomado_por, quien()) && !b.listo;
+    window.__qrTiraFalta = !impresaDe(e) && !b.listo && !e.remito;
     const leerOk = puedeLeer(e);
     const impresa = e.cajas.some(c => c.impresiones > 0);
     const surt = st.surtida && e.cajas.find(c => c.n === st.surtida);
@@ -7122,13 +7219,14 @@ var qrcode = function() {
       cuerpo = htmlRevision(e);
     } else {
       cuerpo = `
+            ${b.esperando_desde && !b.tomado_por ? `<div class="lq-res pend"><b>⏸ Queruclor esperando ingreso</b><p>Desde ${esc(new Date(b.esperando_desde).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }))}${b.esperando_por ? " · lo marcó " + esc(b.esperando_por) : ""}. Cuando llegue la mercadería, leé la primera caja: la parte se retoma sola y se conserva lo ya preparado.</p></div>` : ""}
             ${ajeno ? `<div class="lq-res duda"><b>${esc(b.tomado_por)} está armando la parte Queruclor</b><p>Ves su avance en vivo. Para leer vos, pedile que la libere o reasigná la parte con motivo (arriba).</p></div>` : ""}
             ${leerOk ? `<div class="lq-scan">
                 ${surt ? `<div class="lq-modo">Armando la caja surtida <b>${esc(surt.etiqueta)}</b> · ${surt.contenido_estado === "por_caja" ? "lleva " + lineaCont(surt.contenido) : "sin detalle por caja"} · van ${(surt.prep_comp || []).reduce((s, u) => s + (u.sueltas || 0), 0)}
                     <button type="button" class="lq-lnk" id="lqSalirSurt">Salir de esta caja</button></div>` : ""}
                 <label for="lqCodigo">${surt ? "Código de cada unidad" : "Código del fabricante (caja)"}</label>
                 <input id="lqCodigo" class="lq-in" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="Leé con el lector…" ${!impresa ? "disabled" : ""}>
-                ${!impresa ? `<p class="lq-mut">Primero imprimí la tira del pedido: sin etiquetas no hay qué pegar.</p>`
+                ${!impresa ? `<div class="lq-res mal lq-tira" role="alert"><b>🖨️ Falta imprimir la tira de este pedido</b><p>El lector no registra cajas hasta que se imprime la tira (las etiquetas que se pegan en cada caja). Imprimila en la PC con «Imprimir tira del pedido» y después leé: este campo se habilita solo.</p></div>`
                   : !st.ultimo ? `<p class="lq-mut">La app no puede comprobar si el lector está conectado: si al leer aparece el resultado acá abajo, está funcionando.</p>` : ""}
               </div>` : ""}
         <div class="lq-grid">
@@ -7142,6 +7240,7 @@ var qrcode = function() {
               <button type="button" class="lq-lnk" id="lqVerOps">${st.verOps ? "Ocultar lecturas" : "Revisar última lectura"}</button>
               ${leerOk && !st.sinLector && !surt ? `<button type="button" class="lq-lnk" id="lqSinLector">El código no lee</button>` : ""}
               ${leerOk && !st.faltante && !surt ? `<button type="button" class="lq-lnk" id="lqFaltante">No lo encuentro</button>` : ""}
+              ${leerOk && !surt && !$("blq-queruclor") && !(b.esperando_desde && !b.tomado_por) && e.preparadas < e.total ? `<button type="button" class="lq-lnk" id="lqEsperar">Esperando ingreso (seguir cuando llegue)</button>` : ""}
             </div>
             ${st.verOps ? htmlOps(e) : ""}
           </div>
@@ -7149,7 +7248,7 @@ var qrcode = function() {
             <div class="lq-lista">${htmlArticulos(e)}</div>
             ${e.cajas.filter(c => c.revisar).map(c => `<div class="lq-res mal"><b>${esc(c.etiqueta)} · ${esc(c.nombre)}: el pedido ya no la lleva</b>
                 <p>Sacala de despacho y despegá la etiqueta.</p><button type="button" class="lq-b" data-revisado="${c.n}">Ya la saqué</button></div>`).join("")}
-            ${b.tomado_por === quien() ? `<button type="button" class="lq-b prim lq-full" id="lqRevisar">Revisar y terminar Queruclor</button>` : ""}
+            ${Bloques.mismoNombre(b.tomado_por, quien()) ? `<button type="button" class="lq-b prim lq-full" id="lqRevisar">Revisar y terminar Queruclor</button>` : ""}
           </div>
         </div>`;
     }
@@ -7238,6 +7337,7 @@ var qrcode = function() {
     on("lqFaltSi", () => declararFaltante(st.faltanteEan));
     { const x = $("lqFaltArt"); if (x) x.onchange = () => { st.faltanteEan = x.value; st.faltanteStock = stockRefDe(x.value); pintar(); }; }
     on("lqSalirSurt", () => { st.surtida = null; pintar(); });
+    on("lqEsperar", () => { if (window.qrBloqueEsperar) window.qrBloqueEsperar("queruclor"); });
     document.querySelectorAll("#qrLector [data-lote]").forEach(b => { b.onclick = () => elegirLote(b.dataset.lote, false); });
     document.querySelectorAll("#qrLector [data-lote-nose]").forEach(b => { b.onclick = () => elegirLote(null, true); });
     document.querySelectorAll("#qrLector [data-lote-no]").forEach(b => { b.onclick = () => { st.lote = null; st.ultimo = { ok: false, texto: "Cancelado: la caja NO se registró." }; pintar(); }; });
@@ -7283,6 +7383,25 @@ var qrcode = function() {
     }
   }
 
+  /* Tira sin imprimir: el campo está bloqueado y un lector Bluetooth «escribe» en la nada. Si llega
+     una lectura (muchas teclas en pocos milisegundos y Enter), se dice por qué no se registró. */
+  const impresaDe = e => !!(e && e.cajas && e.cajas.some(c => c.impresiones > 0));
+  let tiraBuf = "", tiraT = 0;
+  document.addEventListener("keydown", ev => {
+    if (!window.__qrTiraFalta || !$("qrLector")) return;
+    const t = ev.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !t.disabled) return;
+    const ahora = performance.now(); if (ahora - tiraT > 250) tiraBuf = ""; tiraT = ahora;
+    if (ev.key === "Enter") {
+      if (tiraBuf.length >= 8) {
+        st.ultimo = { ok: false, texto: "Se leyó " + tiraBuf + ", pero no se registró: falta imprimir la tira de este pedido. Imprimila en la PC y volvé a leer." };
+        st.desplazar = true; pintar();
+        try { if (navigator.vibrate) navigator.vibrate([90, 60, 90]); } catch (x) {}
+      }
+      tiraBuf = ""; return;
+    }
+    if (ev.key && ev.key.length === 1) tiraBuf += ev.key;
+  }, true);
+
   /* ── Dentro de la pantalla del pedido ───────────────────────────── */
   function montar() {
     const box = $("listaItems"); if (!box) return;
@@ -7306,7 +7425,7 @@ var qrcode = function() {
     /* Pedido solo de Queruclor (sin la otra parte): «Marcar como armado» espera a «Queruclor listo». */
     const btn = $("btnArmar"), p = pedido();
     if (btn && !cab && p && p.estado !== "armado" && !(e && e.bloque && e.bloque.listo)) {
-      btn.disabled = true; btn.textContent = "⏳ falta terminar Queruclor"; btn.classList.add("qr-esperando");
+      btn.disabled = true; btn.textContent = e && e.bloque && e.bloque.esperando_desde && !e.bloque.tomado_por ? "⏸ Queruclor esperando ingreso · no se despacha todavía" : "⏳ falta terminar Queruclor"; btn.classList.add("qr-esperando");
     } else if (btn && !cab) btn.classList.remove("qr-esperando");
   }
   /* El encabezado de la parte Queruclor cuenta cajas y deja las acciones de
