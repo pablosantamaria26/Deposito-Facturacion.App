@@ -6190,12 +6190,17 @@ renderCatKPIs();
      anota nada, pero el cambio se hace igual: el historial no puede
      frenar una corrección de precio. */
   const quien = () => (window.qrOperario ? qrOperario(false) : "") || "ADMIN";
-  function anotar(cambios) {
+  /* publicacion-articulos 10/11/2026 */
+  function anotarYa(cambios) {
     cambios = cambios.filter(c => String(c.antes == null ? "" : c.antes) !== String(c.despues == null ? "" : c.despues));
     if (!cambios.length || !window.QR_LOCAL || !window.QRSrv) return;
     try { QRSrv.rpc("qr_anotar_cambios", { p_cambios: cambios, p_quien: quien() }); } catch (e) { console.warn("[historial]", e.message); }
   }
-  window.aaAnotar = anotar;
+  /* Anotar el historial avisa a los vendedores: se hace recién con el catálogo ya publicado. */
+  const colaHist = [];
+  function anotar(cambios) { colaHist.push(...cambios); }
+  window.aaAnotar = anotarYa;
+  const avisarPub = (estado, eans, txt) => { try { window.dispatchEvent(new CustomEvent("qr:publicacion", { detail: { estado, eans: eans || [], txt: txt || "" } })); } catch (e) {} };
   const foto = f => f ? { costo: f.costoNeto, margen: Catalogo.margenDe(f, general()), propio: typeof f.margenOverride === "number", precio: f.precioUnit } : {};
   const pctTxt = m => m == null ? "" : (Math.round(m * 1000) / 10).toLocaleString("es-AR") + "%";
 
@@ -6361,7 +6366,9 @@ renderCatKPIs();
   /* Habilitar / deshabilitar: no cambia precios, solo qué ve el vendedor. */
   function marcarVendible(eans, v) {
     const cambio = f => { f.vendible = v; f.vendibleEn = new Date().toISOString(); };
-    pendientes.push({ eans, cambio, sinPrecio: true });
+    const previo = {}; for (const e of eans) previo[e] = habEan(e);
+    pendientes.push({ eans, cambio, sinPrecio: true, estado: true, previo });
+    avisarPub("pend", eans);
     anotar(eans.map(e => ({ ean: e, campo: "estado", antes: habEan(e) ? "activo" : "pausado", despues: v ? "activo" : "pausado" })));
     const cat = Catalogo._leer();
     for (const ean of eans) if (cat[ean]) cambio(cat[ean]);
@@ -6371,7 +6378,7 @@ renderCatKPIs();
   window.aaHabilitar = function (i, v) {
     const p = CATALOGO[i];
     marcarVendible(eansDe(p), !!v);
-    toastA((v ? "Habilitado: " : "Pausado: ") + p.nombre + (v ? ". Lo ven los vendedores al abrir el catálogo." : ". Los vendedores dejan de verlo y no se puede enviar."));
+    toastA((v ? "Habilitando: " : "Pausando: ") + p.nombre + ". Se publica en unos segundos; con la app abierta, el vendedor lo ve en unos 10 s.");
     pintarTodo(i);
     if (window.vtRepintar) vtRepintar();
   };
@@ -6438,14 +6445,18 @@ renderCatKPIs();
   };
 
   /* ── Publicación automática ────────────────────────────────────── */
-  let timer = null, estado = { t: "", txt: "" };
+  let timer = null, estado = { t: "", txt: "" }, publicando = false, otraVez = false;
   function publicarPronto() {
     clearTimeout(timer);
     pintarEstado("pend", "Guardando…");
     timer = setTimeout(async () => {
       timer = null;
+      /* De a una: si hay una publicación en viaje, esta sale cuando termine. */
+      if (publicando) { otraVez = true; return; }
+      publicando = true;
       pintarEstado("pend", "Publicando…");
-      const ops = pendientes.splice(0);
+      const ops = pendientes.splice(0), hist = colaHist.splice(0);
+      const eansOps = [...new Set(ops.filter(o => o.estado).flatMap(o => o.eans))];
       try {
         /* ¿Publicó otro equipo mientras tanto? Se trae y se combinan. */
         const r = await Catalogo.traer().catch(() => ({}));
@@ -6454,11 +6465,28 @@ renderCatKPIs();
           toastA("Otro equipo había cambiado precios: se combinaron con los tuyos");
         }
         await Catalogo.publicar();
+        anotarYa(hist);
         const h = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-        pintarEstado("ok", "Publicado " + h + " · el vendedor lo ve en menos de 1 minuto");
+        pintarEstado("ok", "Publicado " + h + " · con la app abierta, el vendedor lo ve en unos 10 s");
+        avisarPub("ok", eansOps);
       } catch (e) {
-        pendientes.unshift(...ops);   // quedan para el próximo intento
+        /* Habilitar/pausar que no se publicó vuelve a lo que ven los vendedores. El resto queda para reintentar. */
+        const est = ops.filter(o => o.estado), resto = ops.filter(o => !o.estado);
+        if (est.length) {
+          const cat = Catalogo._leer();
+          for (const o of est.slice().reverse()) for (const ean of o.eans) if (cat[ean]) cat[ean].vendible = o.previo[ean];
+          Catalogo._guardar(cat);
+          pintarTodo();
+          if (window.vtRepintar) vtRepintar();
+          toastA("No se pudo guardar el cambio de habilitado: quedó como lo ven los vendedores");
+        }
+        pendientes.unshift(...resto);
+        colaHist.unshift(...hist.filter(c => c.campo !== "estado" || !eansOps.includes(c.ean)));
         pintarEstado("err", "No se pudo publicar: " + (e.message || e) + ". Tocá para reintentar");
+        avisarPub("err", eansOps, e.message || String(e));
+      } finally {
+        publicando = false;
+        if (otraVez) { otraVez = false; publicarPronto(); }
       }
       if (window.avRevisar) avRevisar();
     }, 1200);
@@ -6497,7 +6525,7 @@ renderCatKPIs();
      cambia en uno aparece en el otro sin recargar. Pregunta barata
      (/api/version) cada minuto y al volver a la ventana. */
   function sincronizar() {
-    if (document.hidden || pendientes.length || timer) return;
+    if (document.hidden || pendientes.length || timer || publicando) return;
     Catalogo.traer().then(r => {
       if (!r || r.estado !== "actualizado") return;
       alinear(); pintarTodo();
@@ -7112,6 +7140,24 @@ renderCatKPIs();
     }
     pedirStock();
   }
+  /* Estado de publicación por artículo: sobrevive a los redibujos de la tabla. */
+  const pubEstado = new Map();
+  function aplicarPub() {
+    visibles.forEach(p => {
+      const inp = document.getElementById("act-" + getKey(p)); if (!inp) return;
+      const lab = inp.closest("label"); if (!lab) return;
+      let est = ""; getEans(p).forEach(x => { const s = pubEstado.get(String(x)); if (s === "pend" || (s && !est)) est = s; });
+      lab.classList.toggle("vt-guardando", est === "pend"); lab.classList.toggle("vt-ok", est === "ok"); lab.classList.toggle("vt-error", est === "err");
+      inp.disabled = est === "pend";
+      if (est === "pend") lab.title = "Guardando y publicando…"; else if (est === "ok") lab.title = "Publicado"; else if (est === "err") lab.title = "No se pudo publicar: quedó como estaba";
+    });
+  }
+  window.addEventListener("qr:publicacion", e => {
+    const d = e.detail || {};
+    (d.eans || []).forEach(x => pubEstado.set(String(x), d.estado));
+    if (d.estado !== "pend") setTimeout(() => { (d.eans || []).forEach(x => { if (pubEstado.get(String(x)) === d.estado) pubEstado.delete(String(x)); }); aplicarPub(); }, d.estado === "ok" ? 2500 : 6000);
+    aplicarPub();
+  });
   window.vtActivo = (key, on) => {
     const i = CATALOGO.findIndex(x => getKey(x) === key); if (i < 0 || !window.aaHabilitar) return;
     aaHabilitar(i, on);
@@ -7182,6 +7228,7 @@ renderCatKPIs();
       $("cat-tbody").innerHTML = items.length ? items.map(fila).join("")
         : `<tr><td colspan="9" class="vt-vacio">Ningún artículo con esos filtros.</td></tr>`;
       const c = $("vtCuenta"); if (c) c.textContent = items.length + " de " + CATALOGO.length;
+      aplicarPub();
     };
 
     window.renderCatKPIs = function () {
@@ -7249,6 +7296,9 @@ renderCatKPIs();
     .vt-viejo{ opacity:.6; font-style:italic } .vt-sindato{ color:var(--ink3) }
     .vt-link{ border:0; background:none; padding:0; cursor:pointer; font:inherit }
     .vt-inactivo td{ opacity:.55 } .vt-inactivo td:last-child{ opacity:1 }
+    .vt-guardando{ opacity:.55; cursor:progress } .vt-guardando .t-sl{ animation:vtLatir 1s ease-in-out infinite }
+    .vt-ok .t-sl{ box-shadow:0 0 0 3px rgb(14 107 62 / .35) } .vt-error .t-sl{ box-shadow:0 0 0 3px rgb(185 28 28 / .45) }
+    @keyframes vtLatir{ 50%{ opacity:.45 } } @media (prefers-reduced-motion:reduce){ .vt-guardando .t-sl{ animation:none } }
     .vt-fila{ cursor:pointer } .vt-fila:hover td{ background:var(--brand-soft) }
     .vt-vacio{ text-align:center; color:var(--ink3); padding:28px !important }
     .vt-filtros{ display:flex; gap:8px; align-items:center; flex-wrap:wrap }
