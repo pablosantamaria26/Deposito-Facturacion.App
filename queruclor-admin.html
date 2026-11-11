@@ -192,21 +192,36 @@
     return datos;
   }
   var cache = {};
+  /* ráfaga 10/11/2026 */
+  /* Una consulta idéntica dentro de la misma tarea del navegador (un dibujado) se hace una sola vez.
+     Las llamadas son síncronas, así que el temporizador no puede correr hasta que el dibujado termina:
+     la tarea siguiente vuelve a consultar. Cualquier escritura vacía esta memoria. */
+  var rafaga = {}, rafagaT = null;
+  function enRafaga(k, pedir) {
+    if (Object.prototype.hasOwnProperty.call(rafaga, k)) return rafaga[k];
+    var v = pedir();
+    rafaga[k] = v;
+    if (!rafagaT) rafagaT = setTimeout(function () { rafaga = {}; rafagaT = null; }, 0);
+    return v;
+  }
   var T0_PAGINA = Date.now();
   var enArranque = function () { return Date.now() - T0_PAGINA < 12000; };
   var SOLO_LECTURA = /^qr_(pendientes|comisiones_abierto|comision_abierta_de|liquidaciones|bloques_sin_tomar|cliente_lista_de|cliente_lista_todos|cliente_lista_historial|lotes_de|lotes_resumen|recepcion_previa|conteo_estado)$/;
   window.QRSrv = {
-    rpc: function (fn, args) { var r = xhr("POST", "/rest/v1/rpc/" + fn, args || {}); if (!SOLO_LECTURA.test(fn)) cache = {}; return r; },
+    rpc: function (fn, args) {
+      if (SOLO_LECTURA.test(fn)) return enRafaga("R " + fn + " " + JSON.stringify(args || {}), function () { return xhr("POST", "/rest/v1/rpc/" + fn, args || {}); });
+      var r = xhr("POST", "/rest/v1/rpc/" + fn, args || {}); cache = {}; rafaga = {}; return r;
+    },
     /* Lecturas con memoria corta: una pantalla pregunta el stock de cada
        tarjeta varias veces por dibujo; con esto es una sola consulta. */
     get: function (tabla, qs, ttl) {
       var k = tabla + "?" + (qs || ""), ahora = Date.now();
       if (cache[k] && ahora - cache[k].t < (ttl == null ? (enArranque() ? 12000 : 1500) : ttl)) return cache[k].v;
-      var v = xhr("GET", "/rest/v1/" + tabla + (qs ? "?" + qs : ""));
-      cache[k] = { t: Date.now(), v: v };
+      var v = enRafaga("G " + k, function () { return xhr("GET", "/rest/v1/" + tabla + (qs ? "?" + qs : "")); });
+      cache[k] = { t: Date.now(), v: v };   // desde la respuesta: la demora de la red no se come la vigencia
       return v;
     },
-    olvidar: function () { cache = {}; },
+    olvidar: function () { cache = {}; rafaga = {}; },
     subir: function (ruta, archivo) { return _fetch(ORIGEN + ruta, { method: "PUT", headers: conToken({}), body: archivo }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ("error " + r.status)); return j; }); }); },
     generacion: function () { return GEN; },
     caido: function () { return caido; },
@@ -245,7 +260,7 @@
     if (this !== window.localStorage || !COMPARTIDAS.test(k)) return g0.call(this, k);
     var c = kvCache[k];
     if (c && Date.now() - c.t < (enArranque() ? 12000 : 800)) return c.v;
-    try { var v = xhr("GET", "/local/kv/" + k).valor; kvCache[k] = { t: Date.now(), v: v }; return v; }
+    try { var v = enRafaga("K " + k, function () { return xhr("GET", "/local/kv/" + k).valor; }); kvCache[k] = { t: Date.now(), v: v }; return v; }
     catch (e) { return c ? c.v : null; }
   };
   S.setItem = function (k, v) {
@@ -257,11 +272,11 @@
     try { x.send(String(v)); } catch (e) { marcar(true); throw new Error("Sin conexión con el servidor: no se guardó."); }
     if (x.status === 409) { avisoGeneracion(); throw new Error("Esta pantalla es de antes de renovar el entorno: no se guardó. Recargala."); }
     if (x.status !== 200) { marcar(true); throw new Error("El servidor no guardó " + k); }
-    kvCache[k] = { t: Date.now(), v: String(v) };
+    kvCache[k] = { t: Date.now(), v: String(v) }; delete rafaga["K " + k];
   };
   S.removeItem = function (k) {
     if (this !== window.localStorage || !COMPARTIDAS.test(k)) return r0.call(this, k);
-    xhr("DELETE", "/local/kv/" + k); delete kvCache[k];
+    xhr("DELETE", "/local/kv/" + k); delete kvCache[k]; delete rafaga["K " + k];
   };
 
   /* ── fetch: Supabase, Worker y Forms van al servidor local ──────── */
@@ -9628,7 +9643,9 @@ renderCatKPIs();
 
   /* Se pisa la función original del admin, que devolvía datos de prueba. */
   if (typeof window.getVendedoresData === "function") {
-    window.getVendedoresData = () => datosReales().map(v => ({
+    /* vendedores: gestión única en el gestor 10/11/2026 */
+    /* Solo activos: los dados de baja siguen en «Vendedores anteriores», con su historial. */
+    window.getVendedoresData = () => datosReales().filter(v => v.activo).map(v => ({
       nombre: v.nombre,
       comision: v.pct,
       ventas: v.neto,                     // el neto cobrado, no lo pedido
@@ -9679,9 +9696,7 @@ renderCatKPIs();
               </td>
               <td class="n"><b>${v.cobra ? money(v.comision) : "—"}</b></td>
               <td class="n">
-                ${v.casa ? "" : `<button class="qrv-b" onclick="qrVendCorregir('${esc(v.id)}')">Corregir nombre</button>
-                  <button class="qrv-b" data-reemplazar="${esc(v.id)}" onclick="qrVendReemplazar('${esc(v.id)}')">Reemplazar</button>
-                  <button class="qrv-b" onclick="qrVendBaja('${esc(v.id)}')">Dar de baja</button>`}
+                
               </td>
             </tr>`).join("")}</tbody>
         </table>
@@ -9689,16 +9704,15 @@ renderCatKPIs();
 
       <div class="qrv-acc">
         <button class="qrv-lock" id="qrVendLock" onclick="qrVendLock()">🔒 Desbloquear las comisiones</button>
-        <button class="qrv-b add" onclick="qrVendAgregar()">+ Vendedor nuevo</button>
+        <a class="qrv-b add" href="https://pablosantamaria26.github.io/App-actualizacion-BaseClientes/" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">Administrar vendedores en el gestor ↗</a>
       </div>
       ${abiertosHTML()}
       ${datos.some(v => !v.activo) ? `<details class="qrv-archivo"><summary>Vendedores anteriores (${datos.filter(v => !v.activo).length})</summary>
-        <ul>${datos.filter(v => !v.activo).map(v => `<li><b>${esc(v.nombre)}</b> <span class="qrv-chip baja">dado de baja</span> · cobrado sin liquidar ${money(v.cobrado)} · comisión ${money(v.comision)}
-          <button class="qrv-b alta" onclick="qrVendAlta('${esc(v.id)}')">Reactivar</button></li>`).join("")}</ul></details>` : ""}
+        <ul>${datos.filter(v => !v.activo).map(v => `<li><b>${esc(v.nombre)}</b> <span class="qrv-chip baja">dado de baja</span> · cobrado sin liquidar ${money(v.cobrado)} · comisión ${money(v.comision)}</li>`).join("")}</ul></details>` : ""}
       ${prestamoHTML()}
       <div class="qrv-nota">Esta lista es la misma del gestor de clientes, la cartera de visitas y Pedidos.
-        <b>Corregir nombre</b> es para la misma persona. <b>Reemplazar</b> es para otra: el anterior queda archivado
-        y el nuevo recibe la cartera con acceso a su historial, sin ventas ni comisiones anteriores.</div>`;
+        <b>Altas, bajas, nombres y carteras se administran solo en el gestor</b>; acá se configura la comisión.
+        Quien se fue queda en «Vendedores anteriores» con su historial: no se borra ni se le pasan ventas a otro.</div>`;
   }
 
   /* ── Prestar cartera ───────────────────────────────────────────────
@@ -9755,7 +9769,7 @@ renderCatKPIs();
   /* ── Registro único: mismas reglas que el gestor ─────────────────── */
   let abiertos = [];
   const abiertosHTML = () => abiertos.map(r => `<div class="qrv-aviso"><b>Reemplazo sin terminar:</b> ${esc(r.datos.anterior_nombre)} → ${esc(r.datos.nombre)}.
-    <button class="qrv-b" onclick="qrVendContinuar('${esc(r.op)}')">Continuar</button></div>`).join("");
+ Terminalo desde el <a href="https://pablosantamaria26.github.io/App-actualizacion-BaseClientes/" target="_blank" rel="noopener">gestor de clientes</a>.</div>`).join("");
   async function refrescar() {
     try { abiertos = (await Vendedores.registro("listar_vendedores")).reemplazos_abiertos || []; } catch (e) {}
     pintar();
