@@ -9719,7 +9719,21 @@ renderCatKPIs();
      Cada vendedor ve SOLO sus clientes en la app. Si uno cubre a otro
      unos días, se le presta la cartera hasta una fecha: vencida, deja de
      verla sola. Se publica enseguida, como todo lo de esta pantalla. */
+  /* préstamo: se administra en el gestor 11/11/2026 */
+  /* Solo consulta: los préstamos se cargan y se terminan en el gestor de clientes. */
   function prestamoHTML() {
+    if (!Vendedores.prestamosDe) return "";
+    const fecha = s => { const [y, m, d] = s.split("-"); return d + "/" + m; };
+    const vig = Vendedores.activos().flatMap(v => Vendedores.prestamosDe(v.nombre).map(p => ({ a: v.nombre, de: p.de, hasta: p.hasta })));
+    return `<div class="qrv-prest">
+      <h4>🤝 Carteras prestadas</h4>
+      <p>Se prestan y se terminan en el <a href="https://pablosantamaria26.github.io/App-actualizacion-BaseClientes/" target="_blank" rel="noopener">gestor de clientes ↗</a>, pestaña Vendedores.</p>
+      ${vig.length ? `<ul class="qrv-prest-l">${vig.map(p => `<li><span><b>${esc(p.a)}</b> atiende la cartera de <b>${esc(p.de)}</b> hasta el ${fecha(p.hasta)}</span></li>`).join("")}</ul>`
+        : `<div class="qrv-prest-n">No hay carteras prestadas.</div>`}
+    </div>`;
+  }
+  /* Versión anterior, con botones (ya no se dibuja). */
+  function prestamoHTMLAnterior() {
     if (!Vendedores.prestar) return "";
     const act = Vendedores.activos().filter(v => !v.casa);
     const hoy = new Date(); const en7 = new Date(hoy); en7.setDate(hoy.getDate() + 7);
