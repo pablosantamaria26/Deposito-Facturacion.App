@@ -7829,5 +7829,356 @@ var qrcode = function() {
 
 })();
 
-</script></body>
+</script><script>
+/* historial y botón ocupado 15/11/2026 */
+/* Botón ocupado (15/11/2026): al tocar un botón que GUARDA o ENVÍA algo se bloquea al instante, dice «Procesando…» con
+   una animación chica y ese mismo toque no se repite mientras la orden se procesa, así nadie vuelve a tocar pensando
+   que no pasó nada. La navegación y las consultas (buscar, abrir, mirar un QR, cerrar) nunca se bloquean.
+   Es una ayuda de uso: NO reemplaza la protección contra duplicados que ya tienen el servidor y cada acción.
+   · Dos toques del MISMO botón (misma acción) con menos de 0,8 s de diferencia: el segundo se descarta antes de que
+     llegue a la pantalla. Se mide con la hora real del toque, así que también funciona cuando la pantalla se traba
+     un momento y los toques quedan en cola.
+   · El botón queda «ocupado» hasta que termina la comunicación con el servidor que ese toque disparó (mínimo 0,7 s,
+     máximo 15 s). Sin servidor de por medio, solo el mínimo.
+   · Con la preferencia de movimiento reducido no hay giro: solo se atenúa el botón.
+   · No toca campos de texto, listas, casillas ni lo marcado con data-sin-bloqueo. */
+(function () {
+  "use strict";
+  if (window.__qrOcupado) return; window.__qrOcupado = true;
+  const BLOQUEO_MS = 800, MIN_MS = 700, MAX_MS = 15000;
+  let enVuelo = 0;
+  const ultimo = new Map();      // acción → { t: hora del toque, red: ¿había comunicación al tocar? }
+  const ocupados = new Set();    // botones con la animación puesta
+
+  /* Cuenta lo que está viajando al servidor (las llamadas sincrónicas congelan la pantalla y no hace falta contarlas). */
+  const fetch0 = window.fetch;
+  if (fetch0) window.fetch = function () { enVuelo++; const p = fetch0.apply(this, arguments); const fin = () => { enVuelo = Math.max(0, enVuelo - 1); }; p.then(fin, fin); return p; };
+  const open0 = XMLHttpRequest.prototype.open, send0 = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function (m, u, a) { this.__qrSync = a === false; return open0.apply(this, arguments); };
+  XMLHttpRequest.prototype.send = function () {
+    if (!this.__qrSync) { enVuelo++; this.addEventListener("loadend", () => { enVuelo = Math.max(0, enVuelo - 1); }, { once: true }); }
+    return send0.apply(this, arguments);
+  };
+
+  /* Solo las acciones que GUARDAN o ENVÍAN algo. Navegar, buscar, abrir una pantalla, mirar un QR o cerrar un cuadro
+     no se bloquean nunca. Una lista cerrada a propósito: lo que no figura acá no se toca. Para sumar un botón nuevo,
+     alcanza con ponerle data-escribe. */
+  const ACCIONABLE = 'button, [role="button"], input[type="button"], input[type="submit"], .btn, [onclick], [data-escribe]';
+  const ES_BOTON = 'button, [role="button"], input[type="button"], input[type="submit"], .btn';
+  const NO = 'input:not([type="button"]):not([type="submit"]), select, textarea, label, a[href], [data-sin-bloqueo], [data-sin-bloqueo] *';
+  const ESCRIBE = /(completarPedido|btnArmar|toggleItem|aplicarToggle|qrBloque(Tomar|Listo|Liberar|Reasignar|Esperar)|qrInformarFaltante|qrImprimirEtiquetas|qrReimprimirUna|lqTira|lqImp(Pedir|Si|No|Cancelar|Reimp)|lqListo|lqReSi|lqFaltSi|lqSLSi|lqDudaSi|confirmar=|a=(rei|si|no|cancelar)(\||$))/;
+
+  const accion = el => el.id || el.getAttribute("onclick") || Object.keys(el.dataset || {}).map(k => k + "=" + el.dataset[k]).join("|") || (el.textContent || "").trim().slice(0, 60) || el.className;
+  const escribe = (el, clave) => el.hasAttribute("data-escribe") || el.matches(".dv4-b.ok") || ESCRIBE.test(clave + "|" + (el.id || ""));
+
+  document.addEventListener("click", ev => {
+    const el = ev.target && ev.target.closest ? ev.target.closest(ACCIONABLE) : null;
+    if (!el || el.disabled || el.matches(NO) || el.closest("[data-sin-bloqueo]")) return;
+    const clave = accion(el);
+    if (!escribe(el, clave)) return;
+    const t = ev.timeStamp, prev = ultimo.get(clave);
+    if (prev && t - prev.t < BLOQUEO_MS) { ev.preventDefault(); ev.stopImmediatePropagation(); return; }
+    if (prev && prev.red && enVuelo > 0 && t - prev.t < MAX_MS) { ev.preventDefault(); ev.stopImmediatePropagation(); return; }
+    ultimo.set(clave, { t, red: false });
+    if (ultimo.size > 200) ultimo.delete(ultimo.keys().next().value);
+    if (el.matches(ES_BOTON)) { ocupar(el, clave); setTimeout(() => { const u = ultimo.get(clave); if (u && u.t === t) u.red = enVuelo > 0; }, 0); }
+  }, true);
+
+  function ocupar(el, clave) {
+    const ancho = el.offsetWidth;
+    el.classList.add("qr-proc"); if (ancho < 72) el.classList.add("qr-proc-c");
+    el.setAttribute("aria-busy", "true");
+    /* «Procesando…» en lugar del texto, solo en botones con lugar (los redondos de tilde llevan solo el giro). */
+    if (ancho >= 96 && el.tagName === "BUTTON" && !el.querySelector("input,select,textarea")) { el.__qrTexto = el.innerHTML; el.innerHTML = '<span class="qr-proc-t">Procesando…</span>'; }
+    const t0 = performance.now(); ocupados.add({ el, t0, clave });
+    if (!ocupar.timer) ocupar.timer = setInterval(soltar, 150);
+  }
+  function soltar() {
+    const ahora = performance.now();
+    for (const o of [...ocupados]) {
+      const fuera = !o.el.isConnected, listo = ahora - o.t0 >= MIN_MS && enVuelo === 0, tarde = ahora - o.t0 >= MAX_MS;
+      if (fuera || listo || tarde) {
+        o.el.classList.remove("qr-proc", "qr-proc-c"); o.el.removeAttribute("aria-busy");
+        /* Se devuelve el texto solo si sigue puesto el «Procesando…» (si la acción cambió el botón, se respeta). */
+        if (o.el.__qrTexto !== undefined) { if (o.el.querySelector(".qr-proc-t") && o.el.children.length === 1) o.el.innerHTML = o.el.__qrTexto; delete o.el.__qrTexto; }
+        ocupados.delete(o);
+      }
+    }
+    if (!ocupados.size) { clearInterval(ocupar.timer); ocupar.timer = null; }
+  }
+
+  const css = document.createElement("style");
+  css.textContent = "@keyframes qrGira{to{transform:rotate(360deg)}}@keyframes qrLate{50%{opacity:.5}}" +
+    ".qr-proc{pointer-events:none!important;opacity:.72;position:relative;cursor:progress}" +
+    ".qr-proc::after{content:'';position:absolute;right:10px;top:50%;width:14px;height:14px;margin-top:-7px;box-sizing:border-box;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:qrGira .7s linear infinite}" +
+    ".qr-proc.qr-proc-c::after{right:auto;left:50%;margin-left:-7px}" +
+    "@media (prefers-reduced-motion:reduce){.qr-proc::after{animation:none;border-right-color:currentColor;opacity:.5}.qr-proc{animation:qrLate 1s ease-in-out infinite}}";
+  (document.head || document.documentElement).appendChild(css);
+})();
+
+/* Historial de etiquetas de Depósito (15/11/2026).
+   Buscar un pedido ya armado por número de cliente, código corto (6 cifras) o el código de una caja (ML-…), ver sus
+   cajas y, sin gastar rollo: previsualizar la etiqueta y mostrar el QR/código en pantalla grande para leerlo con el
+   lector SAT directo del celular (caja que llegó sin etiqueta). Reimprimir es el último recurso: pide confirmar y
+   decir el motivo. Todo lo que se consulta es de solo lectura; las cajas nunca se crean ni se modifican desde acá. */
+(function () {
+  "use strict";
+  if (window.__qrHistorial) return; window.__qrHistorial = true;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const quien = () => (typeof armadorActual !== "undefined" ? armadorActual : "") || "";
+  const aviso = (t, tipo) => { if (window.toast) toast(t, tipo); };
+  const hhmm = iso => { try { return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }); } catch (x) { return ""; } };
+  const fecha = iso => { try { return new Date(iso).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }); } catch (x) { return ""; } };
+  const opNuevo = () => "imp-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  const dispositivo = () => (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? "celular" : "pc");
+  const EN_CURSO = ["solicitada", "tomada", "enviada", "impresa", "incierta"];
+  const H = { abierto: false, seq: 0, q: "", res: null, cargando: false, error: null, det: null, jobs: [], pend: {}, timer: null, buscando: null };
+
+  async function rpc(fn, cuerpo) {
+    const r = await fetch("/rest/v1/rpc/" + fn, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
+    let j = null; try { j = await r.json(); } catch (x) {}
+    if (!r.ok) throw new Error((j && (j.message || j.motivo)) || ("error " + r.status));
+    return j;
+  }
+
+  /* ── Estructura (una sola vez: el campo de búsqueda no se vuelve a dibujar mientras se escribe) ── */
+  function montar() {
+    if ($("qrHOv")) return;
+    const ov = document.createElement("div"); ov.id = "qrHOv"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.setAttribute("aria-label", "Historial de etiquetas");
+    ov.innerHTML = '<div class="qrh-p"><div class="qrh-cab"><button type="button" class="qrh-x" data-a="volver" id="qrHVolver" aria-label="Volver">←</button>' +
+      '<b id="qrHTit">Historial de etiquetas</b><button type="button" class="qrh-x" data-a="cerrar" aria-label="Cerrar">✕</button></div>' +
+      '<div id="qrHBusq"><label class="qrh-l" for="qrHIn">Número de cliente, código corto del pedido (6 cifras) o código de caja (ML-…)</label>' +
+      '<input id="qrHIn" type="search" inputmode="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Ej.: 10122 · 482915 · ML-482915-001">' +
+      '<div id="qrHRes" aria-live="polite"></div></div><div id="qrHDet" hidden></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener("click", ev => { if (ev.target === ov) cerrar(); const b = ev.target.closest("[data-a]"); if (b) accionar(b.dataset.a, b.dataset.c, b); });
+    const inp = $("qrHIn");
+    inp.addEventListener("input", () => { clearTimeout(H.buscando); H.buscando = setTimeout(() => buscar(inp.value), 450); });
+    inp.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); clearTimeout(H.buscando); buscar(inp.value); } });
+    document.addEventListener("keydown", ev => { if (ev.key === "Escape" && H.abierto) { if ($("qrHSub")) cerrarSub(); else cerrar(); } });
+  }
+  function abrir() { montar(); H.abierto = true; $("qrHOv").style.display = "flex"; document.body.style.overflow = "hidden"; vista("busq"); pintarRes(); setTimeout(() => { try { $("qrHIn").focus(); } catch (x) {} }, 100); }
+  function cerrar() { H.abierto = false; clearInterval(H.timer); H.timer = null; cerrarSub(); const o = $("qrHOv"); if (o) o.style.display = "none"; document.body.style.overflow = ""; }
+  function vista(v) {
+    $("qrHBusq").hidden = v !== "busq"; $("qrHDet").hidden = v !== "det"; $("qrHVolver").style.visibility = v === "det" ? "visible" : "hidden";
+    $("qrHTit").textContent = v === "det" && H.det ? "Pedido " + (H.det.pedido.codigo_corto || H.det.pedido.id) : "Historial de etiquetas";
+    if (v === "busq") { clearInterval(H.timer); H.timer = null; }
+  }
+
+  /* ── Búsqueda ──
+     El pedido se busca como en el resto de Depósito (por cliente, por código corto o por el pedido de una caja) y a la
+     base se le pide solo el resumen de cajas y remito de esos pedidos. Se muestran los que tienen etiquetas. */
+  const enc = encodeURIComponent, seguro = p => p.catch(() => []);
+  async function pedidosDe(q) {
+    if (/^ML-/i.test(q)) {
+      const r = await rpc("qr_bultos_resumen", { p: { codigo: q } });
+      return [].concat(...await Promise.all((r || []).map(x => seguro(sbGet("pedidos", "id=eq." + enc(x.pedido_id))))));
+    }
+    const [a, b, c] = await Promise.all([
+      seguro(sbGet("pedidos", "cliente_id=eq." + enc(q) + "&order=created_at.desc&limit=30")),
+      seguro(sbGet("pedidos", "codigo_corto=eq." + enc(q) + "&limit=10")),
+      /^[0-9a-f-]{4,}$/i.test(q) ? seguro(sbGet("pedidos", "id=eq." + enc(q) + "&limit=1")) : Promise.resolve([])]);
+    const vistos = new Set();
+    return [].concat(a || [], b || [], c || []).filter(p => p && p.id != null && !vistos.has(String(p.id)) && vistos.add(String(p.id)));
+  }
+  async function pedidosConCajas(q) {
+    const peds = await pedidosDe(q);
+    if (!peds.length) return [];
+    const r = await rpc("qr_bultos_resumen", { p: { pedidos: peds.map(p => String(p.id)) } });
+    const m = Object.fromEntries((r || []).map(x => [x.pedido_id, x]));
+    const f = p => p.created_at || p.fecha_pedido || p.timestamp_pedido || null;
+    return peds.filter(p => m[String(p.id)]).map(p => Object.assign({}, p, { cajas: m[String(p.id)].cajas, impresas: m[String(p.id)].impresas, remito: m[String(p.id)].remito, creado: f(p) }))
+      .sort((x, y) => String(y.creado || "").localeCompare(String(x.creado || "")) || (Number(y.id) - Number(x.id) || 0));
+  }
+  async function buscar(q) {
+    q = String(q || "").trim(); H.q = q;
+    if (q.length < 3) { H.res = null; H.error = null; H.cargando = false; return pintarRes(); }
+    const mi = ++H.seq; H.cargando = true; pintarRes();
+    try { const r = await pedidosConCajas(q); if (mi !== H.seq) return; H.res = r; H.error = null; }
+    catch (e) { if (mi !== H.seq) return; H.error = /Failed to fetch|NetworkError|Load failed/i.test(e.message) ? "Sin conexión con el servidor. No se pudo buscar." : "No se pudo buscar: " + e.message; }
+    H.cargando = false; pintarRes();
+  }
+  function pintarRes() {
+    const c = $("qrHRes"); if (!c) return;
+    if (H.cargando) return void (c.innerHTML = '<p class="qrh-m">Buscando…</p>');
+    if (H.error) return void (c.innerHTML = '<p class="qrh-m mal">' + esc(H.error) + "</p>");
+    if (H.res === null) return void (c.innerHTML = '<p class="qrh-m">Escribí al menos 3 caracteres. Se muestran los pedidos que tienen etiquetas, del más nuevo al más viejo.</p>');
+    if (!H.res.length) return void (c.innerHTML = '<p class="qrh-m">No hay pedidos con etiquetas para «' + esc(H.q) + '». Revisá el número o probá con el código corto del pedido.</p>');
+    c.innerHTML = H.res.map(p => '<button type="button" class="qrh-ped" data-a="pedido" data-c="' + esc(p.id) + '"><span class="qrh-n">' + esc(p.cliente_nombre || "Cliente " + p.cliente_id) + '</span>' +
+      '<span class="qrh-s"><b>Pedido ' + esc(p.codigo_corto || p.id) + "</b> · " + (p.remito ? "Remito " + esc(p.remito) : "sin remito todavía") + " · " + (p.creado ? esc(fecha(p.creado)) + " " + esc(hhmm(p.creado)) : "sin fecha") + ' · <b class="qrh-est">' + esc(p.estado || "") + "</b></span>" +
+      '<span class="qrh-s">Cliente N° ' + esc(p.cliente_id) + "</span>" +
+      '<span class="qrh-s">' + esc(p.cajas) + " caja" + (Number(p.cajas) === 1 ? "" : "s") + " · " + (Number(p.impresas) === Number(p.cajas) ? "todas impresas" : esc(p.impresas) + " impresas") + (p.vendedor ? " · " + esc(p.vendedor) : "") + "</span></button>").join("");
+  }
+
+  /* ── Detalle del pedido ── */
+  async function elegir(id) {
+    $("qrHDet").hidden = false; $("qrHBusq").hidden = true; $("qrHDet").innerHTML = '<p class="qrh-m">Abriendo el pedido…</p>'; $("qrHVolver").style.visibility = "visible";
+    try {
+      const [bl, ps, items] = await Promise.all([rpc("qr_bultos_de_pedido", { p_pedido: String(id) }), sbGet("pedidos", "id=eq." + enc(id)), sbGet("items_pedido", "pedido_id=eq." + id + "&order=posicion.asc.nullslast,id.asc")]);
+      if (!bl || !ps || !ps[0]) throw new Error("No se encontró el pedido.");
+      H.det = { pedido: ps[0], items: items || [], bultos: bl.bultos || [] };
+    } catch (e) { $("qrHDet").innerHTML = '<p class="qrh-m mal">No se pudo abrir el pedido: ' + esc(e.message) + "</p>"; return; }
+    vista("det"); await jobs(); pintarDet();
+    clearInterval(H.timer); H.timer = setInterval(() => { if (!document.hidden && H.abierto && !$("qrHSub")) jobs().then(pintarDet); }, 4000);
+  }
+  async function jobs() {
+    try { const d = await rpc("qr_imp_estado", { p: { pedido: String(H.det.pedido.id) } }); H.jobs = (d && d.trabajos) || []; H.det.agente = d && d.agente; H.det.err = null; }
+    catch (e) { H.det.err = "Sin conexión: no se puede ver cómo van las impresiones."; }
+  }
+  const jobDe = codigo => H.jobs.find(j => j.tipo === "reimpresion" && (j.codigos || []).includes(codigo)) || null;
+  function chip(j) {
+    if (!j) return "";
+    const b = (c, t, x) => '<div class="qrh-chip ' + c + '"><b>' + t + "</b>" + (x ? "<span>" + x + "</span>" : "") + "</div>";
+    const ag = H.det.agente, pcMal = !ag ? "La PC de impresión todavía no se conectó." : ag.segundos > 90 ? "La PC de impresión no responde desde las " + hhmm(ag.latido) + "." : (ag.estado_impresora && !/^lista/.test(ag.estado_impresora) ? "Impresora: " + ag.estado_impresora + "." : "");
+    const sn = '<div class="qrh-acc"><button type="button" class="qrh-b prim" data-a="si" data-c="' + esc(j.id) + '">Sí, ya la tengo</button><button type="button" class="qrh-b" data-a="no" data-c="' + esc(j.id) + '">No salió</button></div>';
+    switch (j.estado) {
+      case "solicitada": return b("curso", "⏳ Pedida · " + hhmm(j.solicitada_at), pcMal || "Esperando que la PC la tome.") + '<div class="qrh-acc"><button type="button" class="qrh-b" data-a="cancelar" data-c="' + esc(j.id) + '">Cancelar</button></div>';
+      case "tomada": return b("curso", "🖨️ La PC la está preparando…", "");
+      case "enviada": return b("curso", "🖨️ Enviada a la impresora…", "");
+      case "impresa": return b("listo", "✅ La impresora la recibió", "Buscala en la térmica. ¿La tenés en la mano?") + sn;
+      case "incierta": return b("duda", "⚠️ No se sabe si salió", (j.error || "") + " No se reimprime sola.") + sn;
+      case "fallida": return b("mal", "✗ No se pudo imprimir", j.error || "");
+      case "no_salio": return b("mal", "Marcaste que no salió", "");
+      case "confirmada": return b("ok", "✓ Reimpresa y confirmada · " + hhmm(j.confirmada_at), "");
+      default: return "";
+    }
+  }
+  function pintarDet() {
+    const c = $("qrHDet"); if (!c || !H.det || c.hidden) return;
+    const p = H.det.pedido, bs = H.det.bultos, tot = bs.filter(b => b.estado === "activo").length;
+    c.innerHTML = '<div class="qrh-ph"><b>' + esc(p.cliente_nombre || "Cliente " + p.cliente_id) + '</b><span>Cliente N° ' + esc(p.cliente_id) + " · Pedido " + esc(p.codigo_corto || p.id) + " · " + esc(p.estado || "") + " · " + esc(fecha(p.created_at || p.fecha_pedido)) + "</span></div>" +
+      '<p class="qrh-ay"><b>Si llegó una caja sin etiqueta:</b> tocá «Ver QR para escanear» y leelo con el SAT directo de esta pantalla. Reimprimir es solo para un caso extremo: gasta una etiqueta.</p>' +
+      (H.det.err ? '<p class="qrh-m mal">' + esc(H.det.err) + "</p>" : "") +
+      (bs.length ? bs.map(b => {
+        const anul = b.estado !== "activo", j = jobDe(b.codigo), cur = j && EN_CURSO.includes(j.estado);
+        return '<div class="qrh-caja' + (anul ? " anul" : "") + '"><div class="qrh-cod">' + esc(b.codigo) + '</div><div class="qrh-s">' + esc(b.nombre || "") + " · caja " + esc(b.n) + " de " + tot +
+          (anul ? " · ANULADA (el pedido bajó)" : Number(b.impresiones) ? " · impresa " + esc(b.impresiones) + (Number(b.impresiones) === 1 ? " vez" : " veces") : " · sin imprimir") + (b.faltante ? " · FALTANTE" : "") + "</div>" +
+          (anul ? "" : '<div class="qrh-acc"><button type="button" class="qrh-b prim" data-a="qr" data-c="' + esc(b.codigo) + '">📱 Ver QR para escanear</button><button type="button" class="qrh-b" data-a="prev" data-c="' + esc(b.codigo) + '">👁 Etiqueta</button>' +
+            '<button type="button" class="qrh-b sec" data-a="rei" data-c="' + esc(b.codigo) + '"' + (cur ? " disabled" : "") + '>🖨️ Reimprimir…</button></div>') + chip(j) + "</div>";
+      }).join("") : '<p class="qrh-m">Este pedido no tiene cajas registradas.</p>');
+  }
+
+  /* ── Pantallas auxiliares: QR para escanear y previsualización ── */
+  function sub(html, clase) {
+    cerrarSub(); const s = document.createElement("div"); s.id = "qrHSub"; s.className = clase || ""; s.innerHTML = html; document.body.appendChild(s);
+    s.addEventListener("click", ev => { const b = ev.target.closest("[data-a]"); if (b) accionar(b.dataset.a, b.dataset.c, b); else if (ev.target === s) cerrarSub(); });
+  }
+  function cerrarSub() { const s = $("qrHSub"); if (s) s.remove(); if (H.wake) { try { H.wake.release(); } catch (x) {} H.wake = null; } }
+  const bulto = codigo => (H.det.bultos || []).find(b => b.codigo === codigo);
+  function verQR(codigo) {
+    const b = bulto(codigo); if (!b) return;
+    if (!document.getElementById("qrHC128")) { const s = document.createElement("style"); s.id = "qrHC128"; s.textContent = (window.Code128 && Code128.CSS) || ""; document.head.appendChild(s); }
+    const qr = window.QR ? QR.svg(codigo, { nivel: "H", tam: "100%" }) : "";
+    const barras = window.Code128 ? Code128.html(codigo, { modulo: 2, alto: 84 }) : "";
+    sub('<div class="qrh-scan"><div class="qrh-scan-t">' + esc(b.nombre || "") + " · caja " + esc(b.n) + "</div>" +
+      '<div class="qrh-qr">' + qr + '</div><div class="qrh-scan-c">' + esc(codigo) + '</div><div class="qrh-barras">' + barras + "</div>" +
+      '<p class="qrh-scan-n">Acercá el lector SAT a la pantalla. Subí el brillo si no lee. La pantalla no se apaga mientras está abierta.</p>' +
+      '<button type="button" class="qrh-b prim grande" data-a="cerrarsub">Listo</button></div>', "scan");
+    try { if (navigator.wakeLock) navigator.wakeLock.request("screen").then(w => { H.wake = w; }, () => {}); } catch (x) {}
+  }
+  function htmlEtiqueta(b) {
+    const p = H.det.pedido, items = H.det.items, clave = b.clave || b.ean;
+    if (!(window.Etiquetas && Etiquetas.articulosDe(p, items).some(a => Etiquetas.claveDe(a) === clave))) return null;   // el pedido cambió: no se arma otra etiqueta en su lugar
+    return Etiquetas.reimprimirArticulo(p, items, clave, b.codigo, b);
+  }
+  function previsualizar(codigo) {
+    const b = bulto(codigo); if (!b) return;
+    const html = htmlEtiqueta(b);
+    if (!html) return void sub('<div class="qrh-prev"><p class="qrh-m mal">No se puede rearmar esta etiqueta porque el pedido cambió después de armarse. El QR sí sirve para escanear la caja.</p>' +
+      '<div class="qrh-acc"><button type="button" class="qrh-b prim" data-a="qr" data-c="' + esc(codigo) + '">📱 Ver QR para escanear</button><button type="button" class="qrh-b" data-a="cerrarsub">Cerrar</button></div></div>');
+    const cfg = (window.Etiquetas && Etiquetas.cfg) || { ancho: 100, alto: 150 }, pxW = cfg.ancho * 3.7795, pxH = cfg.alto * 3.7795;
+    const e = Math.min(1, (Math.min(window.innerWidth, 520) - 28) / pxW);
+    sub('<div class="qrh-prev"><div class="qrh-prev-m" style="width:' + Math.round(pxW * e) + "px;height:" + Math.round(pxH * e) + 'px"><iframe title="Etiqueta" sandbox="" style="width:' + Math.round(pxW) + "px;height:" + Math.round(pxH) + "px;transform:scale(" + e + ');transform-origin:0 0;border:0;background:#fff" srcdoc="' + esc(html) + '"></iframe></div>' +
+      '<div class="qrh-acc"><button type="button" class="qrh-b prim" data-a="qr" data-c="' + esc(codigo) + '">📱 Ver QR grande para escanear</button><button type="button" class="qrh-b sec" data-a="rei" data-c="' + esc(codigo) + '">🖨️ Reimprimir…</button><button type="button" class="qrh-b" data-a="cerrarsub">Cerrar</button></div></div>');
+  }
+
+  /* ── Reimprimir (último recurso): confirmar, motivo, y el mismo pedido se reintenta sin duplicar ── */
+  async function reimprimir(codigo) {
+    const b = bulto(codigo); if (!b) return;
+    if (!quien()) return aviso("Primero poné tu nombre", "error");
+    const html = htmlEtiqueta(b);
+    if (!html) return aviso("No se puede rearmar esta etiqueta porque el pedido cambió. Usá «Ver QR para escanear».", "error");
+    let pend = H.pend[codigo];
+    if (!pend) {
+      if (!confirm("Reimprimir la etiqueta " + codigo + "\n\nGasta una etiqueta del rollo. Si solo necesitás leer la caja con el SAT, usá «Ver QR para escanear» y no hace falta imprimir.\n\n¿Reimprimir igual?")) return;
+      const motivo = (prompt("¿Por qué se reimprime? (queda registrado)\nEj.: se rompió, se despegó, llegó sin etiqueta") || "").trim();
+      if (!motivo) return;
+      pend = H.pend[codigo] = { op: opNuevo(), motivo };
+    }
+    cerrarSub();
+    try {
+      const r = await rpc("qr_imp_pedir", { p: { op: pend.op, pedido: String(H.det.pedido.id), tipo: "reimpresion", codigos: [codigo], etiquetas: 1, html, quien: quien(), dispositivo: dispositivo(), motivo: pend.motivo } });
+      delete H.pend[codigo];
+      if (r.ok) aviso(r.repetida ? "Ya estaba pedida a Depósito" : "Pedida a la PC de Depósito"); else aviso(r.motivo || "No se pudo pedir la impresión", r.razon === "en_curso" ? undefined : "error");
+    } catch (e) { aviso("No se pudo confirmar el pedido (" + e.message + "). Tocá de nuevo: no se duplica.", "error"); }
+    await jobs(); pintarDet();
+  }
+  async function confirmar(id, salio) {
+    if (!salio && !confirm("¿Confirmás que la etiqueta NO salió?")) return;
+    try { const r = await rpc("qr_imp_confirmar", { p: { id, quien: quien(), salio } }); if (!r.ok) aviso(r.motivo || "No se pudo guardar", "error"); else if (salio) aviso("Listo: reimpresión registrada"); }
+    catch (e) { aviso("Sin conexión: no se guardó. Volvé a tocar cuando haya señal.", "error"); }
+    await jobs(); await elegirRefrescarCajas(); pintarDet();
+  }
+  async function elegirRefrescarCajas() { try { const bl = await rpc("qr_bultos_de_pedido", { p_pedido: String(H.det.pedido.id) }); if (bl) H.det.bultos = bl.bultos || []; } catch (x) {} }
+  async function cancelar(id) {
+    if (!confirm("¿Cancelar el pedido de reimpresión?")) return;
+    try { const r = await rpc("qr_imp_cancelar", { p: { id, quien: quien(), motivo: "cancelada desde el historial" } }); if (!r.ok) aviso(r.motivo, "error"); } catch (e) { aviso("Sin conexión: no se canceló.", "error"); }
+    await jobs(); pintarDet();
+  }
+
+  function accionar(a, c, el) {
+    switch (a) {
+      case "cerrar": return cerrar();
+      case "volver": cerrarSub(); H.det = null; return vista("busq");
+      case "pedido": return elegir(c);
+      case "qr": return verQR(c);
+      case "prev": return previsualizar(c);
+      case "rei": return reimprimir(c);
+      case "cerrarsub": return cerrarSub();
+      case "si": return confirmar(c, true);
+      case "no": return confirmar(c, false);
+      case "cancelar": return cancelar(c);
+    }
+  }
+
+  /* ── Entrada: botón arriba de la lista de pedidos ── */
+  function entrada() {
+    const lista = $("listaPedidos"); if (!lista || $("qrHBar")) return;
+    const d = document.createElement("div"); d.id = "qrHBar";
+    d.innerHTML = '<button type="button" class="qrh-abrir" data-a="abrir">🔎 Historial de etiquetas</button>';
+    lista.parentNode.insertBefore(d, lista);
+    d.addEventListener("click", () => abrir());
+  }
+  entrada();
+  if (!$("qrHBar")) document.addEventListener("DOMContentLoaded", entrada);
+  window.qrHistorialEtiquetas = abrir;
+
+  const css = document.createElement("style");
+  css.textContent = "#qrHBar{padding:6px 14px 2px}.qrh-abrir{font:inherit;font-weight:800;font-size:14px;padding:10px 14px;border-radius:10px;border:1.5px solid #94a3b8;background:var(--card,#fff);color:var(--text,#0f172a);cursor:pointer;min-height:44px;width:100%;text-align:left}" +
+    "#qrHOv{position:fixed;inset:0;z-index:99990;background:rgba(15,23,42,.55);display:none;align-items:stretch;justify-content:center}" +
+    ".qrh-p{background:var(--card,#fff);color:var(--text,#0f172a);width:100%;max-width:640px;overflow-y:auto;padding:0 14px 24px;-webkit-overflow-scrolling:touch}" +
+    ".qrh-cab{position:sticky;top:0;display:flex;align-items:center;gap:8px;padding:12px 0;background:var(--card,#fff);z-index:2;border-bottom:1px solid var(--border,#e2e8f0)}.qrh-cab b{flex:1;font-size:17px}" +
+    ".qrh-x{font:inherit;font-size:20px;font-weight:800;width:44px;height:44px;border-radius:10px;border:1px solid var(--border,#cbd5e1);background:var(--bg,#f8fafc);color:inherit;cursor:pointer}" +
+    ".qrh-l{display:block;margin:14px 0 6px;font-size:13px;font-weight:700;color:var(--muted,#475569)}#qrHIn{width:100%;box-sizing:border-box;font:inherit;font-size:17px;padding:12px;border-radius:10px;border:1.5px solid #94a3b8;background:var(--bg,#fff);color:inherit}" +
+    ".qrh-m{margin:12px 0;font-size:14px;color:var(--muted,#475569)}.qrh-m.mal{color:#b91c1c;font-weight:700}" +
+    ".qrh-ped{display:flex;flex-direction:column;gap:3px;width:100%;text-align:left;font:inherit;padding:12px;margin-top:8px;border-radius:12px;border:1px solid var(--border,#cbd5e1);background:var(--bg,#f8fafc);color:inherit;cursor:pointer;min-height:48px}" +
+    ".qrh-n{font-weight:800;font-size:15.5px}.qrh-s{font-size:13px;color:var(--muted,#475569)}" +
+    ".qrh-ph{display:flex;flex-direction:column;gap:2px;margin:14px 0 6px}.qrh-ph b{font-size:18px}.qrh-ph span{font-size:13px;color:var(--muted,#475569)}" +
+    ".qrh-ay{font-size:13.5px;background:#eff6ff;color:#1e3a8a;border:1px solid #93c5fd;border-radius:10px;padding:10px 12px;margin:10px 0}" +
+    ".qrh-caja{border:1px solid var(--border,#cbd5e1);border-radius:12px;padding:12px;margin-top:10px}.qrh-caja.anul{opacity:.6}.qrh-cod{font:800 17px ui-monospace,Consolas,monospace;letter-spacing:.03em}" +
+    ".qrh-acc{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.qrh-b{font:inherit;font-weight:700;font-size:14px;padding:10px 14px;border-radius:10px;border:1.5px solid #94a3b8;background:var(--bg,#fff);color:inherit;cursor:pointer;min-height:44px}" +
+    ".qrh-b.prim{background:#0f766e;border-color:#0f766e;color:#fff}.qrh-b.sec{border-style:dashed}.qrh-b:disabled{opacity:.5}.qrh-b.grande{width:100%;font-size:17px;min-height:52px}" +
+    ".qrh-chip{margin-top:10px;border-radius:10px;padding:9px 11px;border:1px solid #cbd5e1;background:var(--bg,#f8fafc)}.qrh-chip b{display:block;font-size:14px}.qrh-chip span{display:block;font-size:13px;margin-top:2px}" +
+    ".qrh-chip.curso{border-color:#93c5fd;background:#eff6ff;color:#1e3a8a}.qrh-chip.listo,.qrh-chip.ok{border-color:#86efac;background:#f0fdf4;color:#14532d}.qrh-chip.duda{border-color:#f59e0b;background:#fffbeb;color:#78350f}.qrh-chip.mal{border-color:#fca5a5;background:#fef2f2;color:#7f1d1d}" +
+    "#qrHSub{position:fixed;inset:0;z-index:99995;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;overflow-y:auto;padding:12px}#qrHSub.scan{background:#fff;align-items:flex-start}" +
+    ".qrh-prev{background:var(--card,#fff);color:var(--text,#0f172a);border-radius:14px;padding:12px;max-width:560px;width:100%;box-sizing:border-box}.qrh-prev-m{margin:0 auto;overflow:hidden;border:1px solid #cbd5e1;background:#fff}" +
+    ".qrh-scan{width:100%;max-width:520px;margin:0 auto;text-align:center;color:#000;background:#fff;padding:6px 6px 24px}.qrh-scan-t{font-size:16px;font-weight:800;margin:8px 0}" +
+    ".qrh-qr{width:min(88vw,56vh,460px);aspect-ratio:1;margin:6px auto;background:#fff}.qrh-qr svg{display:block;width:100%;height:100%}.qrh-scan-c{font:800 26px ui-monospace,Consolas,monospace;margin:6px 0;letter-spacing:.04em}" +
+    ".qrh-barras{display:flex;justify-content:center;margin:6px 0;overflow:hidden;background:#fff}.qrh-scan-n{font-size:13px;color:#334155;margin:10px 4px}";
+  (document.head || document.documentElement).appendChild(css);
+})();
+
+</script>
+</body>
 </html>
