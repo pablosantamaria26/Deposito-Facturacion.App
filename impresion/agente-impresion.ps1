@@ -104,9 +104,9 @@ function HtmlAPdf($htmlPath, $pdfPath) {
   if (Test-Path $pdfPath) { Remove-Item $pdfPath -Force }
   $perfil = Join-Path $Dir "perfil-navegador"
   $url = "file:///" + ($htmlPath -replace '\\', '/')
-  $args = @("--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--user-data-dir=$perfil",
+  $argumentos = @("--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--user-data-dir=$perfil",
             "--no-pdf-header-footer", "--print-to-pdf-no-header", "--run-all-compositor-stages-before-draw", "--virtual-time-budget=4000", "--print-to-pdf=$pdfPath", $url)
-  $p = Start-Process -FilePath (Navegador) -ArgumentList $args -PassThru -WindowStyle Hidden
+  $p = Start-Process -FilePath (Navegador) -ArgumentList $argumentos -PassThru -WindowStyle Hidden
   if (-not $p.WaitForExit(90000)) { try { $p.Kill() } catch {}; throw "El navegador no terminó de preparar la etiqueta." }
   for ($i = 0; $i -lt 20 -and -not (Test-Path $pdfPath); $i++) { Start-Sleep -Milliseconds 250 }
   if (-not (Test-Path $pdfPath) -or (Get-Item $pdfPath).Length -lt 500) { throw "No se pudo preparar la etiqueta (PDF vacío)." }
@@ -257,9 +257,9 @@ function Rpc($fn, $cuerpo) {
   $json = $cuerpo | ConvertTo-Json -Depth 6 -Compress
   Invoke-RestMethod -Method Post -Uri "$API/rest/v1/rpc/$fn" -Headers $h -UserAgent "ML-AgenteImpresion/$VERSION" -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($json)) -TimeoutSec 30
 }
-function Avance($id, $estado, $error) {
+function Avance($id, $estado, $detalle) {
   $c = @{ p = @{ id = $id; agente = $AGENTE; estado = $estado } }
-  if ($error) { $c.p.error = [string]$error }
+  if ($detalle) { $c.p.error = [string]$detalle }
   for ($i = 0; $i -lt 30; $i++) {
     try { $r = Rpc "qr_imp_avance" $c; if (-not $r.ok) { Log "  aviso «$estado» rechazado: $($r.motivo)" }; return $r } catch { Log "  sin conexión para avisar «$estado»: reintento"; Start-Sleep -Seconds ([Math]::Min(60, 2 + $i * 2)) }
   }
@@ -344,7 +344,8 @@ function PruebaPedida() {
   $sol = Join-Path $Dir "imprimir-prueba.solicitud"; if (-not (Test-Path $sol)) { return }
   Remove-Item $sol -Force -ErrorAction SilentlyContinue
   $res = Join-Path $Dir "imprimir-prueba.resultado"
-  try { $i = ElegirImpresora; $e = ImprimirHtml ("instalador-" + (Get-Date).ToString("yyyyMMddHHmmss")) (HtmlPrueba) $i $null; $r = Seguir $e.doc $e.jobId $e.desde $i $e.paginas
+  $aArch = if (Valor "salida_dir" "") { Join-Path (Valor "salida_dir" "") "prueba-instalador.pdf" } else { $null }   # solo pruebas: a archivo
+  try { $i = ElegirImpresora; $e = ImprimirHtml ("instalador-" + (Get-Date).ToString("yyyyMMddHHmmss")) (HtmlPrueba) $i $aArch; $r = Seguir $e.doc $e.jobId $e.desde $i $e.paginas
         (@{ estado = $r.estado; error = $r.error; impresora = $i; papel = [MLEtiqueta]::UltimoPapel; usuario = $env:USERNAME; sesion = [Environment]::UserInteractive } | ConvertTo-Json) | Set-Content $res -Encoding UTF8 }
   catch { (@{ estado = "fallida"; error = $_.Exception.Message; usuario = $env:USERNAME } | ConvertTo-Json) | Set-Content $res -Encoding UTF8 }
   Get-ChildItem $DIARIO -Filter "instalador-*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue

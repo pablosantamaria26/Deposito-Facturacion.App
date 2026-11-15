@@ -18,6 +18,9 @@ $ErrorActionPreference = "Stop"
 $DIR = Join-Path $env:ProgramData "MLImpresion"
 $TAREA = "ML Impresion Deposito"
 $usuario = "$env:USERDOMAIN\$env:USERNAME"
+# Un agente corriendo es un powershell que ejecuta el ARCHIVO del agente (-File ...\agente-impresion.ps1).
+# Nunca este instalador, aunque su línea de comandos nombre al agente en -Agente (11/11: se cerraba a sí mismo).
+function EsAgente($p) { $p.ProcessId -ne $PID -and [string]$p.CommandLine -match '-File\s+"?[^"]*\\agente-impresion\.ps1' }
 function Paso($t) { Write-Host ""; Write-Host "== $t" -ForegroundColor Cyan }
 function Bien($t) { Write-Host "   OK  $t" -ForegroundColor Green }
 function Mal($t) { Write-Host "   !!  $t" -ForegroundColor Yellow }
@@ -28,7 +31,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 
 if ($Desinstalar) {
   Unregister-ScheduledTask -TaskName $TAREA -Confirm:$false -ErrorAction SilentlyContinue
-  Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -match 'agente-impresion\.ps1' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { EsAgente $_ } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   Remove-Item $DIR -Recurse -Force -ErrorAction SilentlyContinue
   Bien "Agente desinstalado (las etiquetas pendientes quedan en la cola del servidor)."
   return
@@ -37,10 +40,15 @@ if ($Desinstalar) {
 Paso "1 · Copiar el agente"
 if (-not $Agente -or -not (Test-Path $Agente)) { throw "Falta el archivo del agente." }
 New-Item -ItemType Directory -Force -Path $DIR | Out-Null
-Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -match 'agente-impresion\.ps1' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { EsAgente $_ } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Copy-Item $Agente (Join-Path $DIR "agente-impresion.ps1") -Force
-& icacls $DIR /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "${usuario}:(OI)(CI)M" /T /Q | Out-Null
-Bien "Agente en $DIR (acceso: Administradores, SYSTEM y $usuario)"
+# Permisos a la CARPETA (sin /T) y después herencia para lo de adentro. Con /T el archivo quedaba sin ningún permiso y la
+# tarea, que corre como el usuario (sin elevar), no podía ni leer el agente: «Acceso denegado» (11/11).
+$sal = & icacls $DIR /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "${usuario}:(OI)(CI)M" /Q 2>&1
+if ($LASTEXITCODE -ne 0) { throw "No se pudieron fijar los permisos de $DIR : $sal" }
+& icacls "$DIR\*" /reset /T /Q | Out-Null
+try { [void][IO.File]::ReadAllBytes((Join-Path $DIR "agente-impresion.ps1")) } catch { throw "El agente quedó ilegible para este usuario ($usuario): $($_.Exception.Message)" }
+Bien "Agente en $DIR (acceso: Administradores, SYSTEM y $usuario) · legible para $usuario"
 
 Paso "2 · Impresora"
 $imp = Get-Printer | Where-Object { $_.DriverName -match '4BARCODE|4B-2054|LDT|3nstar' } | Select-Object -First 1
@@ -88,7 +96,7 @@ function CrearTarea($modo) {
 function ProbarTarea() {
   $res = Join-Path $DIR "imprimir-prueba.resultado"; Remove-Item $res -Force -ErrorAction SilentlyContinue
   Set-Content (Join-Path $DIR "imprimir-prueba.solicitud") "1"
-  Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -match 'agente-impresion\.ps1' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { EsAgente $_ } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   Start-ScheduledTask -TaskName $TAREA
   for ($i = 0; $i -lt 120 -and -not (Test-Path $res); $i++) { Start-Sleep -Seconds 1 }
   if (-not (Test-Path $res)) { return @{ estado = "sin respuesta"; error = "La tarea no imprimió en 2 minutos." } }
