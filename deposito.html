@@ -2132,7 +2132,7 @@ function toggleDarkDep() {
 }
 function initDarkDep() {
   const saved = localStorage.getItem("depDark");
-  if (saved === "1") {
+  if (saved !== "0") {   // 16/11/2026: oscuro por defecto en Depósito
     document.body.classList.add("dark-forced");
     document.getElementById("btnDarkDep").textContent = "☀️";
   } else if (saved === "0") {
@@ -8632,5 +8632,255 @@ var qrcode = function() {
   (document.head || document.documentElement).appendChild(s);
 })();
 </script>
+<style id="depNoche">
+/* ═══════════════════════════════════════════════════════════════════
+   16/11/2026 · DEPÓSITO · ETAPA VISUAL (modo oscuro, S9 + PC)
+   Solo estilos: no cambia funciones, datos ni controles. Es la ÚLTIMA capa,
+   por eso manda sobre los colores claros que quedaron fijos en capas viejas.
+   Colores sobrios, cada uno con un solo significado:
+     verde  = Habituales / guardado / listo      rosa = Queruclor
+     ámbar  = atención / sin confirmar           rojo = error o acción que requiere atención
+     azul   = información / en curso
+   ═══════════════════════════════════════════════════════════════════ */
+body.dark-forced{
+  --n-bg:#0e1622; --n-sup:#16202f; --n-sup2:#1d2a3d; --n-borde:#2e3e57; --n-borde2:#42567a;
+  --n-tx:#e8eef6; --n-mut:#a9b7cb;
+  --n-hab:#7fd6a2; --n-hab-s:#11261c; --n-hab-b:#2f6f4d; --n-hab-btn:#2a8556;
+  --n-qr:#f3a3b6; --n-qr-s:#2a1921; --n-qr-b:#a45a6e;
+  --n-ok:#7fd6a2; --n-ok-s:#11261c; --n-ok-b:#2f6f4d;
+  --n-mal:#ff9d94; --n-mal-s:#371613; --n-mal-b:#a8463d;
+  --n-av:#f2cd77; --n-av-s:#30260f; --n-av-b:#8c6d24;
+  --n-inf:#9cc4f5; --n-inf-s:#14253b; --n-inf-b:#3a5f93;
+  --bg:var(--n-bg); --card:var(--n-sup); --text:var(--n-tx); --muted:var(--n-mut); --border:var(--n-borde);
+  --ok:#5ec98b; --ok-bg:var(--n-ok-s); --ok-brd:var(--n-ok-b);
+  --hoy:#ff9d94; --hoy-bg:var(--n-mal-s); --hoy-brd:var(--n-mal-b);
+  --pend:#9cc4f5; --pend-bg:var(--n-inf-s); --pend-brd:var(--n-inf-b);
+  --mod:#f2cd77; --mod-bg:var(--n-av-s);
+  --shadow:0 1px 0 rgba(255,255,255,.03), 0 6px 18px rgba(0,0,0,.35);
+  background:var(--n-bg) !important; color:var(--n-tx);
+}
+body.dark-forced #app{ background:var(--n-bg) }
+/* ── Encabezados ── */
+body.dark-forced .header, body.dark-forced .det-header{ background:rgba(14,22,34,.94) !important; border-color:var(--n-borde) !important; color:var(--n-tx) }
+body.dark-forced .header-title, body.dark-forced .det-title{ color:var(--n-tx) !important }
+body.dark-forced .btn-back{ background:var(--n-sup2) !important; border:1.5px solid var(--n-borde2) !important; color:var(--n-tx) !important; min-height:42px }
+body.dark-forced .timer-chip{ background:var(--n-ok-s) !important; border-color:var(--n-ok-b) !important; color:var(--n-ok) !important }
+body.dark-forced #btnDarkDep{ background:var(--n-sup2); border:1.5px solid var(--n-borde2); color:var(--n-tx); border-radius:10px; min-width:42px; min-height:42px }
+/* ── Lista de pedidos ── */
+body.dark-forced .tabs{ background:var(--n-sup) !important; border-color:var(--n-borde) !important }
+body.dark-forced .tab-btn{ background:var(--n-sup2) !important; color:var(--n-mut) !important; border-color:var(--n-borde) !important }
+body.dark-forced .tab-btn.hoy.active{ background:var(--n-mal-s) !important; color:var(--n-mal) !important; border-color:var(--n-mal-b) !important }
+body.dark-forced .tab-btn.pend.active{ background:var(--n-inf-s) !important; color:var(--n-inf) !important; border-color:var(--n-inf-b) !important }
+body.dark-forced .pedido-card{ background:var(--n-sup) !important; border-color:var(--n-borde) !important; color:var(--n-tx) !important; box-shadow:var(--shadow) }
+body.dark-forced .pedido-card.urgente{ border-left-color:var(--n-mal-b) !important }
+body.dark-forced .pedido-card.pendiente{ border-left-color:var(--n-inf-b) !important }
+body.dark-forced .card-nombre{ color:var(--n-tx) !important }
+body.dark-forced .card-num, body.dark-forced .card-meta, body.dark-forced .card-ndiario{ color:var(--n-mut) !important }
+body.dark-forced .card-ndiario{ background:var(--n-sup2) !important; border-color:var(--n-borde) !important }
+body.dark-forced .card-entrega.urg{ color:var(--n-mal) !important; background:var(--n-mal-s) !important; border-color:var(--n-mal-b) !important }
+body.dark-forced .card-entrega.pend{ color:var(--n-inf) !important; background:var(--n-inf-s) !important; border-color:var(--n-inf-b) !important }
+body.dark-forced .card-entrega.falt{ color:var(--n-av) !important; background:var(--n-av-s) !important; border-color:var(--n-av-b) !important }
+body.dark-forced .badge-faltante{ background:var(--n-av-s) !important; color:var(--n-av) !important } body.dark-forced .badge-armado{ background:var(--n-ok-s) !important; color:var(--n-ok) !important }
+body.dep-celu .dep-filtro button{ font-size:13.5px; padding:6px 8px }
+body.dark-forced .qr-chip{ background:var(--n-sup2); color:var(--n-mut); border:1px solid var(--n-borde) }
+body.dark-forced .qr-chip.ok{ background:var(--n-ok-s); color:var(--n-ok); border-color:var(--n-ok-b) }
+body.dark-forced .qr-chip.esp{ background:var(--n-av-s); color:var(--n-av); border-color:var(--n-av-b) }
+body.dark-forced .qr-chip.arm{ background:var(--n-inf-s); color:var(--n-inf); border-color:var(--n-inf-b) }
+body.dark-forced .dep-filtro button{ background:var(--n-sup2); border-color:var(--n-borde2); color:var(--n-tx) }
+body.dark-forced .dep-filtro button.on{ background:var(--n-qr-s); border-color:var(--n-qr); color:var(--n-qr) }
+body.dark-forced .dep-vacio{ background:var(--n-sup2); color:var(--n-mut) }
+body.dark-forced .empty, body.dark-forced .empty p{ color:var(--n-mut) }
+body.dark-forced .metrics-panel{ background:var(--n-sup) !important; border-color:var(--n-borde) !important; color:var(--n-tx) }
+/* ── Datos del pedido ── */
+body.dark-forced .det-info{ background:var(--n-sup) !important; border-color:var(--n-borde) !important }
+body.dark-forced .det-nombre{ color:var(--n-tx) !important }
+body.dark-forced .det-num, body.dark-forced #detNumDiario, body.dark-forced .det-sub{ color:var(--n-mut) !important }
+body.dark-forced .det-entrega.urg{ color:var(--n-mal) !important } body.dark-forced .det-entrega.norm{ color:var(--n-inf) !important }
+body.dark-forced .armador-chip{ background:var(--n-sup2) !important; border-color:var(--n-borde2) !important; color:var(--n-tx) !important }
+body.dark-forced .armador-chip strong{ color:var(--n-tx) !important }
+body.dark-forced .filter-bar{ background:transparent !important; border-color:var(--n-borde) !important }
+body.dark-forced .btn-foco{ background:var(--n-sup2) !important; border:1.5px solid var(--n-borde2) !important; color:var(--n-tx) !important; min-height:40px; padding:8px 14px }
+body.dark-forced .btn-foco.activo{ background:var(--n-inf-s) !important; border-color:var(--n-inf) !important; color:var(--n-inf) !important }
+body.dark-forced .foco-count{ color:var(--n-mut) !important }
+body.dark-forced #detFaltantesPrevios{ background:var(--n-av-s) !important; border-left-color:var(--n-av-b) !important; color:var(--n-av) }
+body.dark-forced #detFaltantesPrevios *{ color:var(--n-av) !important }
+/* ── Renglones (Habituales) ── */
+body.dark-forced .item-row{ background:var(--n-sup) !important; border-color:var(--n-borde) !important; box-shadow:none !important }
+body.dark-forced .item-row.armado{ background:var(--n-hab-s) !important; border-color:var(--n-hab-b) !important }
+body.dark-forced .item-row.modificado-row{ border-color:var(--n-av-b) !important }
+body.dark-forced .item-desc{ color:var(--n-tx) !important }
+body.dark-forced .item-desc.tachado{ color:var(--n-mut) !important; text-decoration-color:rgba(169,183,203,.55) !important; opacity:1 !important }
+body.dark-forced .item-row .item-info small, body.dark-forced .item-row .qr-pres, body.dark-forced .item-sub{ color:var(--n-mut) !important }
+body.dark-forced .armado-por{ color:var(--n-hab) !important }
+body.dark-forced .mod-badge{ background:var(--n-av-s) !important; color:var(--n-av) !important; border-color:var(--n-av-b) !important }
+body.dark-forced .item-qty-badge{ background:var(--n-sup2) !important; color:var(--n-tx) !important; border-color:var(--n-borde2) !important }
+body.dark-forced .item-qty-badge.es-caja{ background:var(--n-hab-s) !important; color:var(--n-hab) !important; border-color:var(--n-hab-b) !important }
+body.dark-forced .check-btn:not(.on){ background:var(--n-sup2) !important; border-color:var(--n-borde2) !important }
+body.dark-forced .check-btn.on{ background:var(--n-hab-btn) !important; border-color:var(--n-hab-btn) !important; color:#fff !important }
+body.dark-forced .btn-edit-toggle{ background:transparent !important; border:1.5px dashed var(--n-borde2) !important; color:var(--n-tx) !important }
+body.dark-forced .item-edit-bar{ background:var(--n-av-s) !important; border-color:var(--n-av-b) !important }
+body.dark-forced .edit-input, body.dark-forced .edit-qty{ background:var(--n-bg) !important; color:var(--n-tx) !important; border-color:var(--n-borde2) !important }
+body.dark-forced .btn-edit-save{ background:var(--n-hab-btn) !important; color:#fff !important }
+body.dark-forced .btn-edit-cancel{ background:var(--n-sup2) !important; color:var(--n-tx) !important; border:1px solid var(--n-borde2) !important }
+body.dark-forced .item-row.qr-ajeno{ opacity:.62 }
+body.dark-forced .qr-falt-stk{ background:var(--n-av-s) !important; color:var(--n-av) !important; border-color:var(--n-av-b) !important }
+body.dark-forced .qr-ean{ background:var(--n-sup2) !important; color:var(--n-tx) !important; border-color:var(--n-borde) !important }
+body.dark-forced .qr-ean.chico, body.dark-forced .qr-ean-lbl{ color:var(--n-mut) !important; background:transparent !important }
+/* ── Partes del pedido ── */
+body.dark-forced .qrblq .blq-header{ border-radius:12px !important; box-shadow:none !important }
+body.dark-forced .qrblq.habituales .blq-header{ background:var(--n-hab-s) !important; border:1.5px solid var(--n-hab-b) !important }
+body.dark-forced .qrblq.queruclor .blq-header{ background:var(--n-qr-s) !important; border:1.5px solid var(--n-qr-b) !important }
+body.dark-forced .qrblq.habituales .blq-title{ color:var(--n-hab) !important } body.dark-forced .qrblq.queruclor .blq-title{ color:var(--n-qr) !important }
+body.dark-forced .qrblq .blq-note{ color:var(--n-mut) !important }
+body.dark-forced .qrblq .blqq{ color:var(--n-tx) !important; font-weight:700 }
+body.dark-forced .qrblq .blqq.listo{ color:var(--n-ok) !important } body.dark-forced .qrblq .blqq.espera{ color:var(--n-av) !important } body.dark-forced .qrblq .blqq.libre{ color:var(--n-mut) !important }
+body.dark-forced .qrblq .blq-falta{ color:var(--n-mut) !important }
+body.dark-forced .qrblq .blq-btn{ background:transparent !important; border:1.5px solid var(--n-borde2) !important; color:var(--n-tx) !important; min-height:46px; font-weight:800 }
+body.dark-forced .qrblq.habituales .blq-btn{ border-color:var(--n-hab-b) !important; color:var(--n-hab) !important }
+body.dark-forced .qrblq.queruclor .blq-btn{ border-color:var(--n-qr-b) !important; color:var(--n-qr) !important }
+body.dark-forced .qrblq.habituales .blq-btn.full, body.dark-forced .qrblq.habituales .blq-btn:not(:disabled):last-of-type{ background:var(--n-hab-btn) !important; border-color:var(--n-hab-btn) !important; color:#fff !important }
+body.dark-forced .qrblq .blq-btn:disabled{ opacity:.55; background:transparent !important; color:var(--n-mut) !important; border-color:var(--n-borde) !important }
+body.dark-forced .qrblq .blq-lnk{ color:var(--n-inf) !important; min-height:40px; padding:8px 6px; font-size:14px }
+body.dark-forced .qr-esp-det{ background:var(--n-av-s) !important; border-color:var(--n-av-b) !important; color:var(--n-tx) !important }
+body.dark-forced .qr-esp-det *{ color:inherit } body.dark-forced .qr-esp-t{ color:var(--n-av) !important }
+body.dark-forced .blq-header.ingresaron{ background:var(--n-hab-s) !important; border-color:var(--n-hab-b) !important } body.dark-forced .blq-header.ingresaron .blq-title{ color:var(--n-hab) !important }
+body.dark-forced .blq-header.consultar{ background:var(--n-av-s) !important; border-color:var(--n-av-b) !important } body.dark-forced .blq-header.consultar .blq-title{ color:var(--n-av) !important }
+body.dark-forced .qr-vista-b{ background:var(--n-qr-s) !important; border:1.5px solid var(--n-qr-b) !important; color:var(--n-qr) !important; min-height:44px }
+body.dark-forced .qr-vista.on{ background:var(--n-hab-s) !important; border:1.5px solid var(--n-hab-b) !important; color:var(--n-tx) !important; border-radius:12px; padding:8px 10px 8px 12px }
+body.dark-forced .qr-vista.on .qr-vista-hab b{ color:var(--n-hab) }
+body.dark-forced .qr-vista.on .qr-vista-b{ background:transparent !important; border-color:var(--n-hab-b) !important; color:var(--n-hab) !important }
+body.dark-forced .qr-vista.ayuda{ background:var(--n-ok-s) !important; border-color:var(--n-ok-b) !important; color:var(--n-tx) !important }
+/* ── Pie ── */
+body.dark-forced .det-footer{ background:rgba(14,22,34,.96) !important; border-top:1px solid var(--n-borde) !important; box-shadow:0 -6px 18px rgba(0,0,0,.35) !important }
+body.dark-forced #msgMotDep, body.dark-forced .progreso{ color:var(--n-mut) !important }
+body.dark-forced .btn-armar{ background:var(--n-hab-btn) !important; color:#fff !important; box-shadow:none !important; border-radius:14px !important; padding:14px 16px !important; font-size:16.5px !important; font-family:inherit !important }
+body.dark-forced .btn-armar:disabled, body.dark-forced #btnArmar.qr-esperando, body.dark-forced #btnArmar:disabled{ background:var(--n-sup2) !important; color:var(--n-mut) !important; border:1px solid var(--n-borde) !important; box-shadow:none !important }
+body.dark-forced #btnArmar:not(:disabled):not(.qr-esperando){ background:var(--n-hab-btn) !important; color:#fff !important }
+/* ── Avisos flotantes y modales ── */
+body.dark-forced .toast{ background:#e8eef6 !important; color:#0e1622 !important; box-shadow:0 8px 24px rgba(0,0,0,.5) !important }
+body.dark-forced .toast.ok{ background:#bfe9cf !important; color:#0b2a19 !important }
+body.dark-forced .toast.error{ background:#ffc9c3 !important; color:#3d0f0a !important }
+body.dark-forced .toast.mod{ background:#f6dc9b !important; color:#33260a !important }
+body.dark-forced .modal-box, body.dark-forced .dv4-box, body.dark-forced .etq-reimp-modal, body.dark-forced .lqh{ background:var(--n-sup) !important; color:var(--n-tx) !important; border:1px solid var(--n-borde2) }
+body.dark-forced .modal-input{ background:var(--n-bg) !important; color:var(--n-tx) !important; border-color:var(--n-borde2) !important }
+body.dark-forced .modal-box *:not(button):not(input), body.dark-forced .dv4-box *:not(button):not(input):not(select){ color:inherit }
+body.dark-forced .lqh-ov{ background:rgba(4,8,14,.72) }
+body.dark-forced .lqh-s{ color:var(--n-mut) }
+body.dark-forced .lqh-op{ background:var(--n-sup2); border-color:var(--n-borde2); color:var(--n-tx) }
+body.dark-forced .lqh-op small{ color:var(--n-mut) }
+body.dark-forced .lqh-op.prim{ background:var(--n-qr-s); border-color:var(--n-qr); color:var(--n-qr) } body.dark-forced .lqh-op.prim small{ color:var(--n-tx) }
+body.dark-forced .lqh-chip{ background:var(--n-sup2); border-color:var(--n-borde2); color:var(--n-tx) }
+body.dark-forced .lqh-in{ background:var(--n-bg); color:var(--n-tx); border-color:var(--n-borde2) }
+body.dark-forced .lqh-x{ color:var(--n-mut) }
+body.dark-forced .etq-reimp-op{ background:var(--n-sup2) !important; color:var(--n-tx) !important; border-color:var(--n-borde2) !important }
+/* ── Lector de Queruclor ── */
+body.dark-forced #qrLector{ --lq-fondo:var(--n-sup); --lq-tinta:var(--n-tx); --lq-mut:var(--n-mut); --lq-borde:var(--n-borde);
+  --lq-acento:var(--n-qr); --lq-acento-s:var(--n-qr-s); --lq-ok:var(--n-ok); --lq-ok-s:var(--n-ok-s); --lq-mal:var(--n-mal); --lq-mal-s:var(--n-mal-s);
+  --lq-duda:var(--n-av); --lq-duda-s:var(--n-av-s); --lq-azul:var(--n-inf); --lq-azul-s:var(--n-inf-s) }
+body.dark-forced #qrLector .lq{ border:1.5px solid var(--n-qr-b); background:var(--n-sup) }
+body.dark-forced #qrLector .lq-b{ background:var(--n-sup2); border:1.5px solid var(--n-borde2); color:var(--n-tx) }
+body.dark-forced #qrLector .lq-b.prim{ background:var(--n-qr); border-color:var(--n-qr); color:#2a0f18 }
+body.dark-forced #qrLector .lq-b:disabled{ opacity:.55 }
+body.dark-forced #qrLector .lq-lnk{ color:var(--n-inf) }
+body.dark-forced #qrLector .lq-in{ background:var(--n-bg); color:var(--n-tx); border:2px solid var(--n-qr); caret-color:var(--n-qr) }
+body.dark-forced #qrLector .lq-in::placeholder{ color:#8496ae }
+body.dark-forced #qrLector .lq-in:disabled{ border-color:var(--n-borde2); opacity:.7 }
+body.dark-forced #qrLector .lq-in:focus{ outline:3px solid rgba(243,163,182,.35); outline-offset:2px; box-shadow:none }
+body.dark-forced #qrLector .lq-ayuda-b{ background:var(--n-sup2); border:1.5px solid var(--n-borde2); color:var(--n-tx) }
+body.dark-forced #qrLector .lq-res{ border-width:1.5px }
+body.dark-forced #qrLector .lq-res.vacio{ color:var(--n-mut); border-color:var(--n-borde) }
+body.dark-forced #qrLector .lq-res.bien{ background:var(--n-ok-s); border-color:var(--n-ok-b); color:var(--n-tx) }
+body.dark-forced #qrLector .lq-res.mal{ background:var(--n-mal-s); border-color:var(--n-mal-b); color:var(--n-tx) } body.dark-forced #qrLector .lq-res.mal > b{ color:var(--n-mal) }
+body.dark-forced #qrLector .lq-res.duda, body.dark-forced #qrLector .lq-res.pend{ background:var(--n-av-s); border-color:var(--n-av-b); color:var(--n-tx) } body.dark-forced #qrLector .lq-res.duda > b, body.dark-forced #qrLector .lq-res.pend > b{ color:var(--n-av) }
+body.dark-forced #qrLector .lq-etq{ background:var(--n-bg); border-color:var(--n-ok); color:var(--n-ok) } body.dark-forced #qrLector .lq-etq small{ color:var(--n-mut) } body.dark-forced #qrLector .lq-etq b{ color:var(--n-ok) }
+body.dark-forced #qrLector .lq-art{ background:var(--n-sup2); border-color:var(--n-borde) } body.dark-forced #qrLector .lq-art.ok{ background:var(--n-ok-s); border-color:var(--n-ok-b) }
+body.dark-forced #qrLector .lq-cant{ background:var(--n-bg); border-color:var(--n-borde2); color:var(--n-tx) }
+body.dark-forced #qrLector .lq-tag{ background:var(--n-inf-s); color:var(--n-inf) }
+body.dark-forced #qrLector .lq-chip.falt{ background:var(--n-mal-s); color:var(--n-mal) }
+body.dark-forced #qrLector .lq-srv{ border:1px solid transparent }
+body.dark-forced #qrLector .lq-srv.ok{ background:var(--n-ok-s); color:var(--n-ok); border-color:var(--n-ok-b) }
+body.dark-forced #qrLector .lq-srv.activo, body.dark-forced #qrLector .lq-srv.pend{ background:var(--n-av-s); color:var(--n-av); border-color:var(--n-av-b) }
+body.dark-forced #qrLector .lq-srv.mal{ background:var(--n-mal-s); color:var(--n-mal); border-color:var(--n-mal-b) }
+body.dark-forced #qrLector .lq-modo{ background:var(--n-inf-s); color:var(--n-inf); border-color:var(--n-inf-b) }
+body.dark-forced #qrLector .lq-sinl, body.dark-forced #qrLector .lq-corr, body.dark-forced #qrLector .lq-ops, body.dark-forced #qrLector .lq-op{ background:var(--n-sup2); border-color:var(--n-borde); color:var(--n-tx) }
+body.dark-forced #qrLector .lq-sinl input, body.dark-forced #qrLector .lq-sinl select, body.dark-forced #qrLector .lq-corr input{ background:var(--n-bg); color:var(--n-tx); border-color:var(--n-borde2) }
+body.dark-forced #qrLector .lq-lote-bar{ background:var(--n-sup2); border-color:var(--n-borde); color:var(--n-tx) }
+body.dark-forced .lq-ov-box{ background:var(--n-sup) !important; color:var(--n-tx) !important; border:1px solid var(--n-borde2) }
+body.dark-forced .lq-ov-tab{ background:var(--n-sup2); color:var(--n-mut); border-color:var(--n-borde) } body.dark-forced .lq-ov-tab.on{ background:var(--n-qr-s); color:var(--n-qr); border-color:var(--n-qr-b) }
+body.dark-forced .lq-ov-x{ color:var(--n-tx) }
+/* Impresión */
+body.dark-forced .lq-imp{ background:var(--n-sup2) !important; border-color:var(--n-borde) !important; color:var(--n-tx) !important }
+body.dark-forced .lq-imp.curso{ background:var(--n-inf-s) !important; border-color:var(--n-inf-b) !important } body.dark-forced .lq-imp.curso b{ color:var(--n-inf) }
+body.dark-forced .lq-imp.listo, body.dark-forced .lq-imp.ok{ background:var(--n-ok-s) !important; border-color:var(--n-ok-b) !important; color:var(--n-tx) !important } body.dark-forced .lq-imp.listo b, body.dark-forced .lq-imp.ok b{ color:var(--n-ok) }
+body.dark-forced .lq-imp.duda, body.dark-forced .lq-imp.aviso{ background:var(--n-av-s) !important; border-color:var(--n-av-b) !important; color:var(--n-tx) !important } body.dark-forced .lq-imp.duda b, body.dark-forced .lq-imp.aviso b{ color:var(--n-av) }
+body.dark-forced .lq-imp.mal{ background:var(--n-mal-s) !important; border-color:var(--n-mal-b) !important; color:var(--n-tx) !important } body.dark-forced .lq-imp.mal b{ color:var(--n-mal) }
+body.dark-forced .lq-imp.info{ color:var(--n-mut) !important }
+/* Guía */
+body.dark-forced .lq-guia{ background:var(--n-qr-s); border:1.5px solid var(--n-qr-b); color:var(--n-tx) }
+body.dark-forced .lq-guia.ok{ background:var(--n-ok-s); border-color:var(--n-ok-b) }
+body.dark-forced .lq-g-q{ color:var(--n-mut) } body.dark-forced .lq-g-q b{ color:var(--n-qr) }
+body.dark-forced .lq-g-f{ border-top-color:rgba(164,90,110,.45) } body.dark-forced .lq-g-f.ok b{ color:var(--n-ok) }
+body.dark-forced .lq-g-falta{ color:var(--n-qr) }
+body.dark-forced .lq-g-c code, body.dark-forced .lq-leido code{ color:var(--n-tx); background:rgba(255,255,255,.07); border-radius:6px; padding:1px 6px }
+/* Historial de etiquetas */
+body.dark-forced .qrh-p, body.dark-forced .qrh-prev{ background:var(--n-sup) !important; color:var(--n-tx) !important }
+
+/* Antes de imprimir la tira el paso real es imprimir: la guía de lectura aparece cuando el lector ya está habilitado. */
+#qrLector .lq-guia:has(~ .lq-scan .lq-tira){ display:none }
+
+/* ═══ Galaxy S9: el lector primero, nada fijo encima ═══ */
+body.dep-celu #qrLector .lq-res.bien{ display:flex; flex-direction:column; align-items:stretch; gap:8px }
+body.dep-celu #qrLector .lq-res.bien .lq-etq{ display:flex; align-items:baseline; justify-content:center; gap:12px; padding:8px 10px; width:auto }
+body.dep-celu #qrLector .lq-res.bien .lq-etq b{ font-size:30px; line-height:1 }
+body.dep-celu #qrLector .lq-res.bien > div:last-child{ font-size:14.5px; line-height:1.35 }
+body.dep-celu #qrLector .lq-tira p{ font-size:14px; line-height:1.35 }
+body.dep-celu #qrLector .lq-modo{ background:none !important; border:0 !important; padding:0 !important; margin:0 !important }
+body.dep-celu .qr-vista.on{ flex-wrap:nowrap !important; gap:8px !important; padding:6px 8px 6px 12px !important }
+body.dep-celu .qr-vista.on .qr-vista-hab{ min-width:0; font-size:14px; line-height:1.25 }
+body.dep-celu .qr-vista.on .qr-vista-hab b{ text-transform:none }
+body.dep-celu .qr-vista.on .qr-vista-b{ flex:0 0 auto; white-space:nowrap; padding:8px 12px !important }
+body.dep-celu .toast{ top:calc(env(safe-area-inset-top) + 62px) !important; bottom:auto !important; max-width:calc(100vw - 24px) !important; white-space:normal !important; text-align:center; padding:10px 16px !important; font-size:14.5px !important; border-radius:12px !important; pointer-events:none }
+body.dep-celu .det-header{ padding-top:8px !important; padding-bottom:8px !important }
+body.dep-celu .det-info{ padding:10px 14px !important }
+body.dep-celu .det-nombre{ font-size:19px !important; line-height:1.2 !important }
+body.dep-celu .det-entrega{ margin-top:4px !important; font-size:14px !important }
+body.dep-celu .det-sub{ font-size:13px !important }
+body.dep-celu .armador-chip{ margin-top:6px !important; padding:4px 10px !important; font-size:13px !important }
+body.dep-celu .filter-bar{ padding:6px 14px !important }
+body.dep-celu .btn-armar{ min-height:44px; padding:10px 12px !important; font-size:15px !important }
+body.dep-celu .det-footer{ padding:6px 12px calc(6px + env(safe-area-inset-bottom)) !important }
+body.dep-celu .det-footer .progreso{ font-size:13px !important; margin:0 0 4px !important }
+body.dep-celu #qrLector .lq{ padding:10px; gap:8px }
+body.dep-celu #qrLector .lq-lnk, body.dep-celu .qrblq .blq-lnk{ min-height:38px; display:inline-flex; align-items:center }
+body.dep-celu #qrLector .lq-links{ gap:4px 14px }
+body.dep-celu #qrLector .lq-scan .lq-mut{ display:none }
+body.dep-celu #qrLector .lq-res.vacio{ padding:8px 10px; font-size:13.5px }
+
+/* ═══ PC: el ancho del monitor para Habituales, Queruclor siempre a la vista ═══ */
+@media (min-width: 1000px){
+  body.dep-pc #app{ max-width:1320px !important }
+  body.dep-pc #vistaLista #listaPedidos{ display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:12px; align-items:start }
+  body.dep-pc #vistaLista #listaPedidos > .pedido-card{ margin:0 !important }
+  body.dep-pc #vistaLista #listaPedidos > :not(.pedido-card){ grid-column:1 / -1 }
+  body.dep-pc .det-info{ display:grid; grid-template-columns:minmax(0, 1fr) auto; column-gap:28px; align-items:center; padding:14px 24px !important }
+  body.dep-pc .det-info > *{ grid-column:1 }
+  body.dep-pc .det-info > .armador-chip{ grid-column:2; grid-row:1 / span 6; align-self:center; margin:0 !important }
+  body.dep-pc .det-entrega{ margin-top:4px !important }
+  body.dep-pc .filter-bar{ padding:8px 24px !important }
+  body.dep-pc #listaItems{ padding:0 8px }
+  body.dep-pc #listaItems:has(> .qrblq.queruclor){ display:grid; grid-template-columns:minmax(0, 1fr) minmax(380px, 460px); column-gap:20px; align-items:start; grid-auto-rows:min-content }
+  body.dep-pc #listaItems:has(> .qrblq.queruclor) > *{ grid-column:1; min-width:0 }
+  body.dep-pc #listaItems:has(> .qrblq.queruclor) > .qr-vista{ grid-column:1 / -1 }
+  body.dep-pc #listaItems:has(> .qrblq.queruclor) > .qrblq.queruclor{ grid-column:2; grid-row:2 }
+  body.dep-pc #listaItems:has(> .qrblq.queruclor) > #qrLector{ grid-column:2; grid-row:3 / span 400; align-self:start; position:sticky; top:74px; max-height:calc(100vh - 170px); overflow:auto; margin:0 }
+  body.dep-pc #listaItems:has(> .qrblq.queruclor) > .item-row{ margin-left:0 !important; margin-right:0 !important }
+  body.dep-pc .qrblq{ padding-left:0 !important; padding-right:0 !important }
+  body.dep-pc .item-row .item-desc{ font-size:17px }
+  body.dep-pc .det-footer{ display:flex; align-items:center; gap:18px; padding:10px 24px !important }
+  body.dep-pc .det-footer #msgMotDep{ display:none }
+  body.dep-pc .det-footer .progreso{ margin:0 !important; text-align:left; flex:1 1 auto; font-size:15.5px !important }
+  body.dep-pc .det-footer .btn-armar{ width:auto !important; min-width:340px; flex:0 0 auto }
+}
+</style>
 </body>
 </html>
