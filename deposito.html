@@ -192,6 +192,22 @@
   }
   var cache = {};
   window.QRSrv = {
+    /* 16/11/2026: la misma llamada SIN trabar la pantalla (lector del celular). Mismo token, generación y errores. */
+    rpcAsync: function (fn, args) {
+      var h = conToken({ "Content-Type": "application/json" }); if (GEN) h["X-QR-Gen"] = GEN;
+      return _fetch(ORIGEN + "/rest/v1/rpc/" + fn, { method: "POST", headers: h, body: JSON.stringify(args || {}), cache: "no-store" }).then(function (x) {
+        vigilarToken(x.status);
+        if (x.status === 0 || x.status >= 500) { marcar(true); throw new Error("El servidor no respondió (" + x.status + "): no se guardó."); }
+        marcar(false);
+        return x.text().then(function (txt) {
+          var d = null; try { d = txt ? JSON.parse(txt) : null; } catch (e) {}
+          if (x.status === 409 && d && d.generacion_vieja) avisoGeneracion();
+          if (x.status >= 400) throw new Error((d && (d.message || d.error)) || ("error " + x.status));
+          cache = {}; if (typeof rafaga !== "undefined") rafaga = {};
+          return d;
+        });
+      }, function () { marcar(true); throw new Error("Sin conexión con el servidor: no se guardó."); });
+    },
     rpc: function (fn, args) { var r = xhr("POST", "/rest/v1/rpc/" + fn, args || {}); cache = {}; return r; },
     /* Lecturas con memoria corta: una pantalla pregunta el stock de cada
        tarjeta varias veces por dibujo; con esto es una sola consulta. */
@@ -1272,7 +1288,7 @@ function itemCambioRemoto(tipo, rec) {
     nueva.querySelector(".item-edit-bar").style.display = "none";
     nueva.classList.add("remoto");
   } else if (!row && !hayEdicionAbierta()) {
-    renderItems();                                   // p.ej. destildado en modo foco: vuelve a aparecer
+    if (!(window.qrCambioOculto && window.qrCambioOculto(item))) renderItems();                                   // p.ej. destildado en modo foco: vuelve a aparecer
   }
   actualizarProgreso();
 }
@@ -6018,7 +6034,7 @@ var qrcode = function() {
     const foco = typeof _modoFoco !== "undefined" && _modoFoco;
     const resumen = Bloques.resumen(p.id, its);
 
-    const soloQr = !!_soloQr[p.id] && resumen.some(b => b.bloque === "queruclor");
+    const soloQr = soloQrDe(p, resumen);
     let html = barraVista(resumen, its, soloQr);
     for (const b of resumen) {
       if (soloQr && b.bloque !== "queruclor") continue;
@@ -6043,16 +6059,40 @@ var qrcode = function() {
   /* «Ver solo Queruclor»: quien arma Queruclor no ve los habituales (no se confunde de estante).
      Lo oculto se resume en una línea, con su estado, y se vuelve a ver con un toque. */
   const _soloQr = {};
+  /* 16/11/2026: en el celular se abre directo en Queruclor (Habituales plegado en una línea) mientras Queruclor no esté listo. */
+  function soloQrDe(p, resumen) {
+    const q = resumen.find(b => b.bloque === "queruclor"); if (!q) return false;
+    if (_soloQr[p.id] != null) return !!_soloQr[p.id];
+    /* …salvo que Habituales la esté armando esta misma persona (ayuda desde el celular): ahí se ve todo. */
+    const mia = resumen.some(b => b.bloque !== "queruclor" && !b.listo && b.tomado_por && Bloques.mismoNombre(b.tomado_por, quien()));
+    return !!(window.depCelu && window.depCelu() && !q.listo && !mia);
+  }
   function barraVista(resumen, its, soloQr) {
     if (!resumen.some(b => b.bloque === "queruclor")) return "";
-    if (!soloQr) return `<div class="qr-vista"><button type="button" class="qr-vista-b" onclick="qrSoloQr(true)">🧴 Ver solo Queruclor</button></div>`;
-    const otras = resumen.filter(b => b.bloque !== "queruclor").map(b => {
-      const n = its.filter(i => Bloques.bloqueDe(i) === b.bloque).length;
-      const est = b.listo ? "✓ lista" : b.tomado_por ? "la arma " + esc(b.tomado_por) : "sin tomar";
-      return `${esc(b.nombre.toLowerCase())} (${n}) · ${est}`;
-    }).join(" · ");
-    return `<div class="qr-vista on"><span>Ocultos: ${otras}</span><button type="button" class="qr-vista-b" onclick="qrSoloQr(false)">Ver todo el pedido</button></div>`;
+    _ultimoResumen = resumen;
+    const celu = !!(window.depCelu && window.depCelu());
+    const q = resumen.find(b => b.bloque === "queruclor"), otrasB = resumen.filter(b => b.bloque !== "queruclor");
+    const linea = b => {
+      const propios = its.filter(i => Bloques.bloqueDe(i) === b.bloque), hechos = propios.filter(resuelto).length;
+      const est = b.listo ? "✓ lista" + (b.listo_por ? " · " + esc(b.listo_por) : "") : b.tomado_por ? esc(b.tomado_por) : "sin tomar";
+      return `<span class="qr-vista-hab" data-hab="${esc(b.bloque)}">🧺 <b>${esc(b.nombre)}</b> · ${hechos}/${propios.length} · ${est}</span>`;
+    };
+    if (!soloQr) {
+      const ayuda = celu && q.listo && otrasB.some(b => !b.listo)
+        ? `<div class="qr-vista ayuda">✓ Terminaste Queruclor. Si estás libre podés ayudar con Habituales: tomá la parte si está sin tomar, o coordiná con ${esc(otrasB.map(b => b.tomado_por).filter(Boolean).join(", ") || "quien la arma")}.</div>` : "";
+      return ayuda + `<div class="qr-vista"><button type="button" class="qr-vista-b" onclick="qrSoloQr(true)">🧴 ${celu ? "Volver a Queruclor" : "Ver solo Queruclor"}</button></div>`;
+    }
+    return `<div class="qr-vista on" id="qrVistaOculta">${otrasB.map(linea).join("")}<button type="button" class="qr-vista-b" onclick="qrSoloQr(false)">Abrir ›</button></div>`;
   }
+  let _ultimoResumen = null;
+  /* Un tilde de la PC en un renglón plegado: se actualiza la línea de Habituales, sin redibujar el pedido ni el lector. */
+  window.qrCambioOculto = function (item) {
+    const p = pedido(); if (!p || !_ultimoResumen || !window.Bloques || Bloques.bloqueDe(item) === "queruclor") return false;
+    const el = document.getElementById("qrVistaOculta"); if (!el) return false;
+    el.outerHTML = barraVista(_ultimoResumen, items(), true);
+    if (typeof actualizarProgreso === "function") actualizarProgreso();
+    return true;
+  };
   window.qrSoloQr = function (si) { const p = pedido(); if (!p) return; _soloQr[p.id] = !!si; window.renderItems(); };
 
   /* Los artículos de un bloque ajeno se apagan y no se pueden tocar. */
@@ -6894,11 +6934,12 @@ var qrcode = function() {
     if (r && r.estado) { st.estado = r.estado; st.t = Date.now(); }
     return r || { ok: false, mensaje: "Respuesta vacía del servidor." };
   }
-  setInterval(() => { if (cola().length && vaciarCola() && activo()) pintar(); }, 3000);
+  setInterval(() => { if (!cola().length || vaciandoAsync || (st.enCurso && st.enCurso.length)) return; vaciandoAsync = true;
+    vaciarColaAsync().then(listo => { if (listo && activo()) pintar(); }).finally(() => { vaciandoAsync = false; }); }, 3000);
 
   function resultado(r, p) {
     if (!r) return null;
-    return { ok: !!r.ok, lote: r.lote || null, texto: r.mensaje || "", n: r.n, etiqueta: r.etiqueta, nombre: r.nombre, origen: p && p.origen, repetida: r.repetida, t: Date.now(), completa: r.completa,
+    return { ok: !!r.ok, leido: p && p.codigo, esperaba: p && p.op && st.esperaPorOp ? st.esperaPorOp[p.op] : null, lote: r.lote || null, texto: r.mensaje || "", n: r.n, etiqueta: r.etiqueta, nombre: r.nombre, origen: p && p.origen, repetida: r.repetida, t: Date.now(), completa: r.completa,
       ambiguo: r.motivo === "ambiguo" ? { codigo: p && p.codigo, opciones: r.opciones || [] } : null };
   }
 
@@ -6925,7 +6966,7 @@ var qrcode = function() {
     if (st.surtida) args.surtida = st.surtida;
     if (eleccion) args.eleccion = eleccion;
     st.lote = null;
-    diferir(() => procesarLectura(args));
+    encolarLectura(args);   // 16/11/2026: sin trabar la pantalla
   }
   function procesarLectura(args) {
     st.leyendo = true;
@@ -6965,7 +7006,7 @@ var qrcode = function() {
   function htmlLote() {
     const l = st.lote, ops = (l.info && l.info.opciones) || [], uc = (l.info && l.info.uc) || 1;
     const sugerida = (ops.find(o => o.libres >= uc) || {}).id;
-    return `<div class="lq-sinl lq-lote" role="group" aria-label="Vencimiento de la caja"><b>¿Qué vencimiento tiene la caja?</b>
+    return `<div class="lq-sinl lq-lote lq-decide" role="group" aria-label="Vencimiento de la caja"><b>¿Qué vencimiento tiene la caja?</b>
       <p>${esc((l.info && l.info.nombre) || "")}. ${l.agotado ? "El vencimiento anterior ya no tiene cajas registradas. " : ""}Mirá el envase y confirmá el que tenés en la mano.</p>
       ${l.info && l.info.exacto === false ? `<p class="lq-mut">Hay conciliación pendiente: las cantidades por fecha pueden no ser exactas.</p>` : ""}
       <div class="lq-lote-ops">${ops.map(o => `<button type="button" class="lq-b lq-lote-op${o.id === sugerida ? " prim" : ""}" data-lote="${esc(o.id)}" ${o.libres >= uc ? "" : "disabled"}>
@@ -7070,6 +7111,153 @@ var qrcode = function() {
   const pluralCaja = n => n + " caja" + (n === 1 ? "" : "s");
   const lineaCont = l => (l || []).filter(u => (u.sueltas || u.unidades) > 0).map(u => (u.sueltas != null ? u.sueltas : u.unidades) + " " + esc(u.nombre || u.que || u.ean)).join(" + ");
 
+  /* ═══ 16/11/2026 · Rediseño Depósito: lectura sin trabar la pantalla + guía de qué tiene en la mano ═══
+     Antes cada lectura era una llamada SÍNCRONA al servidor: el celular quedaba congelado mientras viajaba
+     (con internet real, cientos de ms) y «Guardando…» casi no llegaba a verse. Ahora:
+       · el escaneo responde enseguida («Guardando la lectura…») y el servidor contesta sin trabar nada;
+       · las lecturas se mandan EN ORDEN, una por vez, con la misma cola del equipo (si se corta, quedan en
+         la cola con su identidad y se reintentan sin duplicar: la base no cuenta dos veces la misma op);
+       · nunca se dice «Pegá la etiqueta» sin la respuesta del servidor. */
+  let cadenaLect = Promise.resolve(), vaciandoAsync = false;
+  st.enCurso = []; st.esperaPorOp = {}; st.medidas = [];
+  async function vaciarColaAsync() {
+    let c = cola(); if (!c.length) return true;
+    for (const x of c.slice()) {
+      let r;
+      try { r = await QRSrv.rpcAsync(x.fn, { p: x.p }); } catch (e) { return false; }
+      c = cola().filter(y => y.p.op !== x.p.op); guardarCola(c);
+      if (x.p.pedido === String((pedido() || {}).id)) { st.ultimo = resultado(r, x.p); if (r && r.estado) { st.estado = r.estado; st.t = Date.now(); } st.desplazar = true; }
+    }
+    return true;
+  }
+  async function enviarAsync(fn, p) {
+    if (!(await vaciarColaAsync())) return { pendiente: true, bloqueada: true };
+    guardarCola(cola().concat([{ fn, p, t: new Date().toISOString() }]));
+    let r;
+    try { r = await QRSrv.rpcAsync(fn, { p }); }
+    catch (e) { return { pendiente: true }; }
+    guardarCola(cola().filter(y => y.p.op !== p.op));
+    if (r && r.estado) { st.estado = r.estado; st.t = Date.now(); }
+    return r || { ok: false, mensaje: "Respuesta vacía del servidor." };
+  }
+  async function procesarLecturaAsync(args) {
+    st.leyendo = true;
+    const r = await enviarAsync("qr_prep_leer", args);
+    st.leyendo = false;
+    if (r.motivo === "elegir_lote") { st.lote = { args, ean: r.ean, info: r.lotes, agotado: r.agotado }; st.desplazar = true; return; }
+    if (r.pendiente) st.ultimo = { pendiente: true, leido: args.codigo, texto: r.bloqueada
+      ? "Hay una lectura anterior sin confirmar y no hay conexión: esta caja NO se registró. No pegues etiqueta; se reintenta sola."
+      : "Sin respuesta del servidor: esta lectura NO está confirmada. No pegues etiqueta todavía; se reintenta sola con la misma identidad." };
+    else st.ultimo = resultado(r, args);
+    if (r && r.ok && r.completa && st.surtida) st.surtida = null;
+    st.desplazar = true;
+  }
+  /* Encola la lectura: primera respuesta visible YA; la del servidor, cuando llegue (sin congelar). */
+  function encolarLectura(args) {
+    const m = { codigo: args.codigo, t0: performance.now() };
+    st.enCurso.push(args.op); st.guardando = true; st.esperaPorOp[args.op] = esperadoAhora();
+    pintar();
+    requestAnimationFrame(() => { m.visible = Math.round(performance.now() - m.t0); });
+    cadenaLect = cadenaLect.then(() => procesarLecturaAsync(args)).catch(e => console.error("[lector]", e)).then(() => {
+      m.confirmada = Math.round(performance.now() - m.t0); st.medidas.push(m); if (st.medidas.length > 30) st.medidas.shift();
+      st.enCurso = st.enCurso.filter(x => x !== args.op); st.guardando = st.enCurso.length > 0;
+      pintar();
+    });
+  }
+  /* Cambios de otro equipo (la PC tilda Habituales, otra lectura…): se relee el estado SIN trabar la pantalla
+     y sin pisar una lectura en curso (que ya trae su propio estado). */
+  let refrescando = false;
+  async function refrescarAsync() {
+    const p = pedido(); if (!p || refrescando) return; refrescando = true;
+    try {
+      const e = await QRSrv.rpcAsync("qr_prep_estado", { p_pedido: String(p.id) });
+      if ((pedido() || {}).id !== p.id || st.enCurso.length || cola().length || !e) return;
+      st.estado = e; st.pid = p.id; st.t = Date.now(); st.error = null;
+      if (e.bloque && e.bloque.listo) window.renderItems(); else pintar();
+    } catch (x) {} finally { refrescando = false; }
+  }
+
+  /* ── Qué tiene en la mano ─────────────────────────────────────── */
+  const CAT = (() => { const m = {}; ((window.CATALOGO_BASE && CATALOGO_BASE.productos) || []).forEach(x => { if (x && x.ean) m[String(x.ean)] = x; }); return m; })();
+  function infoArt(ean) {
+    let q = null;
+    for (const i of items()) { const x = window.QRParse && QRParse.parseQueruclor(i.descripcion); if (x && String(x.ean) === String(ean)) { q = x; break; } }
+    const c = CAT[String(ean)] || {};
+    return { nombre: (q && q.nombre) || c.nombreCompleto || "", marca: (q && q.marca) || c.marca || "", uc: Number((q && q.uc) || c.uc) || 0, dun: c.dun || "", ean: String(ean || "") };
+  }
+  const pendienteC = c => c.estado === "activo" && !c.preparada && !c.faltante;
+  function proximoArt(e) { return (e.articulos || []).find(x => x.preparadas + x.faltantes < x.pedidas) || null; }
+  function esperadoAhora() {
+    const e = st.estado; if (!e) return "";
+    const sc = st.surtida && e.cajas.find(c => c.n === st.surtida);
+    if (sc) return "un envase de la caja " + sc.etiqueta + (sc.contenido_estado === "por_caja" ? " (" + (sc.contenido || []).map(u => u.nombre || u.que || u.ean).join(", ") + ")" : "");
+    const a = proximoArt(e); if (!a) return "";
+    if (a.tipo !== "cerrada") return "elegir la caja " + (a.nombre || "") + " y leer sus envases";
+    const inf = infoArt(a.ean);
+    return (inf.nombre || a.nombre) + " · código de la caja" + (inf.dun ? " " + inf.dun : "");
+  }
+  function lineasSurtida(c) {
+    const lleva = c.contenido_estado === "por_caja" ? (c.contenido || []) : [];
+    const van = {}; (c.prep_comp || []).forEach(u => { van[u.ean] = (van[u.ean] || 0) + (u.sueltas || 0); });
+    return lleva.map(u => { const n = u.sueltas != null ? u.sueltas : u.unidades, inf = infoArt(u.ean);
+      return { nombre: u.nombre || u.que || inf.nombre || u.ean, ean: u.ean, n: Number(n) || 0, v: van[u.ean] || 0 }; });
+  }
+  function htmlGuia(e) {
+    if (!e || st.lote || st.dudosa || st.vista === "revision") return "";
+    const sc = st.surtida && e.cajas.find(c => c.n === st.surtida);
+    if (sc) {
+      const pack = /^P\|/.test(String(sc.clave)), filas = lineasSurtida(sc), tot = filas.reduce((s, f) => s + f.n, 0);
+      const faltan = filas.filter(f => f.v < f.n), primera = filas[0] && infoArt(filas[0].ean);
+      return `<div class="lq-guia surt" aria-live="polite">
+        <div class="lq-g-q">${pack ? (Number(primera && primera.uc) === 2 * tot ? "Media caja" : "Pack") : "Caja surtida"} <b>${esc(sc.etiqueta)}</b>${tot ? " · " + tot + " envases" : ""}</div>
+        ${pack && primera ? `<div class="lq-g-m">${primera.marca ? esc(primera.marca) + " · " : ""}una etiqueta para este bulto</div>` : ""}
+        ${filas.map(f => `<div class="lq-g-f ${f.v >= f.n ? "ok" : ""}"><span>${esc(f.nombre)}</span><b>${f.v} de ${f.n}${f.v >= f.n ? " ✓" : ""}</b></div>`).join("")}
+        ${faltan.length ? `<div class="lq-g-falta">Faltan ${faltan.map(f => (f.n - f.v) + " " + esc(f.nombre)).join(" · ")}</div>
+          <div class="lq-g-c">Leé el código de cada <b>envase</b>${faltan.length === 1 && faltan[0].ean ? `: <code>${esc(faltan[0].ean)}</code>` : ""}</div>`
+          : filas.length ? `<div class="lq-g-c">Completa: esperá la confirmación y pegá la etiqueta.</div>` : `<div class="lq-g-c">Sin detalle por caja: se arma con lo que pide el renglón.</div>`}
+      </div>`;
+    }
+    const a = proximoArt(e);
+    if (!a) return e.total ? `<div class="lq-guia ok"><b>✓ Todas las cajas preparadas</b><p>Revisá y terminá Queruclor.</p></div>` : "";
+    const inf = infoArt(a.ean);
+    if (a.tipo === "cerrada") {
+      return `<div class="lq-guia" aria-live="polite">
+        <div class="lq-g-q">Leé el código de la <b>caja</b></div>
+        <div class="lq-g-n">${esc(inf.nombre || a.nombre)}</div>
+        <div class="lq-g-m">${inf.marca ? esc(inf.marca) + " · " : ""}${inf.uc ? "caja x" + inf.uc + " · trae " + inf.uc + " envases" : "caja cerrada"}</div>
+        <div class="lq-g-c">${inf.dun ? `Código de la caja: <code>${esc(inf.dun)}</code>` : "Código de barras del cartón de la caja"}</div>
+        <div class="lq-g-av">Van <b>${a.preparadas}</b> de ${a.pedidas} caja${a.pedidas === 1 ? "" : "s"}${a.faltantes ? " · " + a.faltantes + " faltante" + (a.faltantes === 1 ? "" : "s") : ""}</div></div>`;
+    }
+    const c = e.cajas.filter(x => x.clave === a.clave && pendienteC(x)).sort((x, y) => ((y.prep_comp || []).length - (x.prep_comp || []).length) || x.n - y.n)[0];
+    if (!c) return "";
+    const pack = /^P\|/.test(String(a.clave)), filas = lineasSurtida(c), tot = filas.reduce((s, f) => s + f.n, 0);
+    return `<div class="lq-guia" aria-live="polite">
+      <div class="lq-g-q">Próxima: ${pack ? (inf.uc && inf.uc === 2 * tot ? "media caja" : "pack") : "caja surtida"} <b>${esc(c.etiqueta)}</b></div>
+      <div class="lq-g-n">${esc(pack ? (inf.nombre || a.nombre) : a.nombre)}</div>
+      <div class="lq-g-m">${tot ? tot + " envases · " : ""}${filas.map(f => f.n + " " + esc(f.nombre)).join(" + ")}</div>
+      <button type="button" class="lq-b prim lq-full" data-surtida="${c.n}">Armar ${esc(c.etiqueta)} · leer los envases</button></div>`;
+  }
+  function htmlEnCurso() {
+    const n = st.enCurso.length; if (!n) return "";
+    return `<div class="lq-res pend lq-pend-lect" role="status"><b>⏳ Guardando ${n === 1 ? "la lectura" : n + " lecturas"}…</b><p>No pegues etiqueta hasta ver el resultado.</p></div>`;
+  }
+  /* Al reabrir: si quedó una surtida / pack a medio armar por mí, se retoma esa caja. */
+  function retomarSurtida(e) {
+    if (!e || st.surtida || !puedeLeer(e)) return;
+    const b = e.bloque || {}; if (b.tomado_por && !Bloques.mismoNombre(b.tomado_por, quien())) return;
+    const c = e.cajas.find(x => pendienteC(x) && (x.prep_comp || []).length);
+    if (c) st.surtida = c.n;
+  }
+  /* Decisiones (lectura doble, código ambiguo, vencimiento) en un modal propio en el celular. */
+  function moverDecision() {
+    const viejo = $("lqDecideOv"); if (viejo) viejo.remove();
+    if (!document.body.classList.contains("dep-celu")) return;
+    const d = document.querySelector("#qrLector .lq-decide"); if (!d) return;
+    const ov = document.createElement("div"); ov.id = "lqDecideOv"; ov.className = "lqh-ov";
+    const box = document.createElement("div"); box.className = "lqh lq-decide-box"; box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true");
+    ov.appendChild(box); box.appendChild(d); document.body.appendChild(ov);
+  }
+
   function htmlCajaSurtida(e, c) {
     const lleva = c.contenido_estado === "por_caja" && c.contenido.length ? lineaCont(c.contenido) : "sin detalle por caja: se arma con lo que pide el renglón";
     const leidas = (c.prep_comp || []).reduce((s, u) => s + (u.sueltas || 0), 0);
@@ -7106,18 +7294,19 @@ var qrcode = function() {
   }
   const puedeLeer = e => { const b = e && e.bloque; return !(b && b.listo) && (!b || !b.tomado_por || Bloques.mismoNombre(b.tomado_por, quien())) && !e.remito; };
 
-  function htmlResultado() {
+  function htmlResultado() { return htmlEnCurso() + htmlResultado0(); }
+  function htmlResultado0() {
     const u = st.ultimo;
-    if (st.dudosa) return `<div class="lq-res duda" role="alert"><b>Se leyó el mismo código dos veces seguidas.</b>
+    if (st.dudosa) return `<div class="lq-res duda lq-decide" role="alert"><b>Se leyó el mismo código dos veces seguidas.</b>
         <p>Todas las cajas de un mismo producto traen el mismo código: el sistema no puede saber si es otra caja o la misma leída dos veces.</p>
         <div class="lq-acc"><button type="button" class="lq-b" id="lqDudaNo">Fue la misma: no registrar</button><button type="button" class="lq-b prim" id="lqDudaSi">Es otra caja: registrar</button></div></div>`;
     if (!u) return `<div class="lq-res vacio">Leé el código de barras del fabricante en el cartón de la caja. El resultado aparece acá.</div>`;
     if (u.pendiente) return `<div class="lq-res pend" role="alert"><b>⏳ Sin confirmar</b><p>${esc(u.texto)}</p></div>`;
-    if (u.ambiguo) return `<div class="lq-res duda" role="alert"><b>Ese código corresponde a más de un artículo</b>
+    if (u.ambiguo) return `<div class="lq-res duda lq-decide" role="alert"><b>Ese código corresponde a más de un artículo</b>
         <p>${esc(u.texto)}</p>
         <div class="lq-acc">${u.ambiguo.opciones.map((o, i) => `<button type="button" class="lq-b" data-ambiguo="${i}">${esc(o.nombre)} · ${o.tipo === "caja" ? "caja" : "envase"} x ${esc(o.uc)}</button>`).join("")}</div></div>`;
-    if (!u.ok) return `<div class="lq-res mal" role="alert"><b>✗ No se registró</b><p>${esc(u.texto)}</p></div>`;
-    const etq = u.etiqueta && !/Corregido|reabierta|ya no cuenta|Queruclor listo/.test(u.texto);
+    if (!u.ok) return `<div class="lq-res mal" role="alert"><b>✗ No se registró</b><p>${esc(u.texto)}</p>${u.leido ? `<p class="lq-leido">Leíste: <code>${esc(u.leido)}</code>${u.esperaba ? `<br>Se esperaba: <b>${esc(u.esperaba)}</b>` : ""}</p>` : ""}<p class="lq-quehacer">Qué podés hacer: buscá el código que indica el recuadro de arriba y volvé a leer. Si el cartón no lee, «El código no lee»; si no está en el estante, «No lo encuentro».</p></div>`;
+    const etq = u.etiqueta && u.completa !== false && !/Corregido|reabierta|ya no cuenta|Queruclor listo/.test(u.texto);   // 16/11/2026: en surtida / pack, recién con la caja completa
     return `<div class="lq-res bien" role="status">${etq ? `<div class="lq-etq"><small>Pegá la etiqueta</small><b>${esc(u.etiqueta)}</b></div>` : ""}
         <div><b>${esc(u.texto)}</b>${u.lote ? `<p>${u.lote.vence ? "Vence " + esc(fmtVence(u.lote.vence)) : "Vencimiento sin identificar"}</p>` : ""}${u.repetida ? `<p>Ya estaba registrada (reintento): no se sumó otra.</p>` : ""}${u.origen === "teclado" ? `<p>El código llegó escrito a mano (no a la velocidad del lector): quedó marcado.</p>` : ""}${u.origen === "sin_lector" ? `<p>Registrada sin lector, con el motivo: queda marcada para Facturación.</p>` : ""}${u.origen === "faltante" ? `<p>No se descontó stock ni se tocaron las reservas. Facturación lo ve al cerrar esta parte.</p>` : ""}</div></div>`;
   }
@@ -7226,6 +7415,9 @@ var qrcode = function() {
   /* impresión remota 11/11/2026 */
   const IMP_EN_CURSO = ["solicitada", "tomada", "enviada", "impresa", "incierta"];
   const impEstado = { pid: null, datos: null, t: 0, firma: "", pidiendo: false, error: null, pendiente: null };
+  /* 16/11/2026: el pedido de impresión sin confirmar sobrevive a un corte o a cerrar la app (se reintenta con la MISMA identidad). */
+  try { impEstado.pendiente = JSON.parse(localStorage.getItem("qr_imp_pend_v1") || "null"); } catch (x) {}
+  const guardarPendImp = () => { try { if (impEstado.pendiente) localStorage.setItem("qr_imp_pend_v1", JSON.stringify(impEstado.pendiente)); else localStorage.removeItem("qr_imp_pend_v1"); } catch (x) {} };
   const aviso = (t, tipo) => { if (window.toast) toast(t, tipo); };
   const opNuevo = () => "imp-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
   const hhmm = iso => { try { return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }); } catch (x) { return ""; } };
@@ -7241,7 +7433,8 @@ var qrcode = function() {
   async function leerImp() {
     const p = pedido(); if (!p) return;
     const antes = tiraActual();
-    try { const d = await rpcImp("qr_imp_estado", { pedido: String(p.id) }); if ((pedido() || {}).id !== p.id) return; impEstado.pid = p.id; impEstado.datos = d; impEstado.error = null; }
+    try { const d = await rpcImp("qr_imp_estado", { pedido: String(p.id) }); if ((pedido() || {}).id !== p.id) return; impEstado.pid = p.id; impEstado.datos = d; impEstado.error = null;
+      const pv = impEstado.pendiente; if (pv && String(pv.pid) === String(p.id) && (d.trabajos || []).some(x => x.id === pv.p.op)) { impEstado.pendiente = null; guardarPendImp(); } }
     catch (x) { impEstado.error = "Sin conexión: no se puede ver cómo va la impresión."; }
     impEstado.t = Date.now();
     const t = tiraActual(), ag = impEstado.datos && impEstado.datos.agente;
@@ -7303,6 +7496,7 @@ var qrcode = function() {
     }
     if (t && t.estado === "fallida") html = caja("mal", "✗ No se pudo imprimir", t.error || "", `${reimp}<button type="button" class="lq-b" id="lqImpSi">Salió igual</button>${local}`);
     if (t && t.estado === "no_salio") html = caja("mal", "Marcaste que no salió", "", `${reimp}${local}`);
+    { const pv = impEstado.pendiente; if (pv && String(pv.pid) === String((pedido() || {}).id) && !impEstado.pidiendo) html += caja("aviso", "⚠️ Se cortó la conexión al pedir la impresión", "No se sabe si llegó a la PC de Depósito. Tocá el botón: se reintenta el MISMO pedido y no sale dos veces.", ""); }
     if (impEstado.error) html += caja("aviso", impEstado.error, "", "");
     return `<div class="lq-impw${celu ? " celu" : ""}">${html}</div>`;
   }
@@ -7335,6 +7529,7 @@ var qrcode = function() {
   function pedirImpresion() {
     const p = pedido(); if (!p || impEstado.pidiendo) return;
     if (!quien()) return aviso("Primero poné tu nombre", "error");
+    { const pv = impEstado.pendiente; if (pv && String(pv.pid) === String(p.id)) return enviarImp(p, null, null, pv.p.tipo, pv.p.codigos, pv.p.motivo); }
     const arts = Etiquetas.articulosDe(p, items());
     if (!arts.length) return aviso("Este pedido no tiene cajas de Queruclor para etiquetar", "error");
     let bultos;
@@ -7353,12 +7548,13 @@ var qrcode = function() {
       let pend = impEstado.pendiente && impEstado.pendiente.clave === clave ? impEstado.pendiente : null;
       if (!pend) {
         const sub = htmlDeCodigos(p, arts, bultos, codigos);
-        pend = impEstado.pendiente = { clave, n: sub.n, p: { op: opNuevo(), pedido: String(p.id), tipo, codigos, etiquetas: sub.n, html: sub.html, quien: quien(), dispositivo: dispImp(), motivo } };
+        pend = impEstado.pendiente = { clave, pid: p.id, n: sub.n, p: { op: opNuevo(), pedido: String(p.id), tipo, codigos, etiquetas: sub.n, html: sub.html, quien: quien(), dispositivo: dispImp(), motivo } };
       }
+      guardarPendImp();
       let r;
       try { r = await rpcImp("qr_imp_pedir", pend.p); }
       catch (x) { aviso("No se pudo confirmar el pedido de impresión (" + x.message + "). Tocá de nuevo: no se duplica.", "error"); return; }
-      impEstado.pendiente = null;
+      impEstado.pendiente = null; guardarPendImp();
       if (!r.ok) aviso(r.motivo || "No se pudo pedir la impresión", r.razon === "en_curso" ? undefined : "error");
       else aviso(r.repetida ? "Ya estaba pedida a Depósito" : (tipo === "reimpresion" ? "Reimpresión pedida" : "Pedida") + " a la PC de Depósito · " + pend.n + (pend.n === 1 ? " etiqueta" : " etiquetas"));
     } finally { impEstado.pidiendo = false; await leerImp(); pintar(); }
@@ -7446,7 +7642,7 @@ var qrcode = function() {
       ".lq-imp.duda,.lq-imp.aviso{border-color:#f59e0b;background:#fffbeb;color:#78350f}.lq-imp.mal{border-color:#fca5a5;background:#fef2f2;color:#7f1d1d}.lq-imp.info{color:#475569}" +
       /* 16/11/2026: botón único a lo ancho en el celular y hoja grande para elegir qué imprimir */
       ".lq-impw.celu .lq-imp-bar .lq-b{flex:1 1 100%;min-height:52px;font-size:16px}.lq-impw.celu .lq-imp .lq-b{min-height:46px;flex:1 1 auto}" +
-      ".lqh-ov{position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.55);display:flex;align-items:flex-end;justify-content:center}" +
+      ".lqh-ov{position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,.55);display:flex;align-items:flex-end;justify-content:center}" +
       ".lqh{background:#fff;color:#0f172a;width:100%;max-width:520px;max-height:88vh;overflow:auto;box-sizing:border-box;border-radius:16px 16px 0 0;" +
       "padding:18px 16px calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px}" +
       "@media (min-width:700px){.lqh-ov{align-items:center}.lqh{border-radius:16px}}" +
@@ -7494,6 +7690,7 @@ var qrcode = function() {
       cuerpo = `
             ${b.esperando_desde && !b.tomado_por ? `<div class="lq-res pend"><b>⏸ Queruclor esperando ingreso</b><p>Desde ${esc(new Date(b.esperando_desde).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }))}${b.esperando_por ? " · lo marcó " + esc(b.esperando_por) : ""}. Cuando llegue la mercadería, leé la primera caja: la parte se retoma sola y se conserva lo ya preparado.</p></div>` : ""}
             ${ajeno ? `<div class="lq-res duda"><b>${esc(b.tomado_por)} está armando la parte Queruclor</b><p>Ves su avance en vivo. Para leer vos, pedile que la libere o reasigná la parte con motivo (arriba).</p></div>` : ""}
+            ${leerOk ? htmlGuia(e) : ""}
             ${leerOk ? `<div class="lq-scan">
                 ${surt ? `<div class="lq-modo">Armando la caja surtida <b>${esc(surt.etiqueta)}</b> · ${surt.contenido_estado === "por_caja" ? "lleva " + lineaCont(surt.contenido) : "sin detalle por caja"} · van ${(surt.prep_comp || []).reduce((s, u) => s + (u.sueltas || 0), 0)}
                     <button type="button" class="lq-lnk" id="lqSalirSurt">Salir de esta caja</button></div>` : ""}
@@ -7540,6 +7737,7 @@ var qrcode = function() {
       </div>
       ${st.ayuda ? htmlAyuda() : ""}`;
     enganchar(e);
+    moverDecision();
     const inpNuevo = $("lqCodigo");
     if (inpNuevo && enCurso) { inpNuevo.value = enCurso; if (teniaFoco) try { inpNuevo.focus({ preventScroll: true }); } catch (x) {} }
     /* Se desplaza solo después de una lectura o acción propia: un aviso de
@@ -7693,6 +7891,7 @@ var qrcode = function() {
     if (!activo()) return;
     sincronizar();
     const e = leerEstado(true);
+    retomarSurtida(e);
     /* Los renglones de cajas de Queruclor se reemplazan por esta vista; las
        unidades sueltas de Queruclor (si hay) siguen con su tilde. */
     for (const it of items()) {
@@ -7741,8 +7940,7 @@ var qrcode = function() {
     if (!activo() || !$("qrLector")) return;
     const ae = document.activeElement;
     if (ae && ae.id && ae.id !== "lqCodigo" && /^lq/.test(ae.id)) return;   // no pisar lo que se está escribiendo
-    leerEstado(true);
-    if (st.estado && st.estado.bloque && st.estado.bloque.listo) window.renderItems(); else pintar();
+    refrescarAsync();   // 16/11/2026: sin trabar la pantalla
   });
   window.qrLector = { estado: () => st.estado, leer: (c, o) => leer(c, o || "lector"), cola, asegurarVisible, _st: st };
   /* Al abrir el pedido, el campo de lectura a la vista. */
@@ -8308,6 +8506,131 @@ var qrcode = function() {
   (document.head || document.documentElement).appendChild(css);
 })();
 
+</script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   16/11/2026 · DEPÓSITO SEGÚN EL EQUIPO
+   · Celular (Galaxy S9 de Rodri): arma Queruclor. La lista muestra primero
+     sus pendientes de Queruclor; al abrir un pedido va directo a su parte y
+     Habituales queda en una línea con su avance y quién la arma (se abre con
+     un toque). Cuando termina Queruclor, el pedido sale de sus pendientes y
+     puede ayudar con Habituales con las asignaciones de siempre.
+   · PC (Adrián): arma Habituales con todo el pedido a la vista (cliente,
+     entrega, vendedor, observaciones, solo pendientes, cantidad, «Cambiar
+     cantidad», tilde y responsable por renglón) y ve el avance de Queruclor.
+   Nada de esto cambia datos: solo qué se muestra primero en cada equipo.
+   ═══════════════════════════════════════════════════════════════════ */
+(function () {
+  const esCelu = () => /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ||
+    (window.matchMedia && matchMedia("(max-width: 600px)").matches && matchMedia("(pointer: coarse)").matches);
+  window.depCelu = esCelu;
+  const marcar = () => { if (!document.body) return; document.body.classList.toggle("dep-celu", esCelu()); document.body.classList.toggle("dep-pc", !esCelu()); };
+  if (document.body) marcar(); else document.addEventListener("DOMContentLoaded", marcar);
+  /* Si cambia el ancho (girar el celular, achicar la ventana) la vista se vuelve a adaptar sola. */
+  let _eraCelu = esCelu();
+  window.addEventListener("resize", () => { const c = esCelu(); if (c === _eraCelu) return; _eraCelu = c; marcar();
+    try { if (typeof pedidoActivo !== "undefined" && pedidoActivo && document.getElementById("vistaDetalle").style.display !== "none") { if (!document.activeElement || !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) window.renderItems(); } else if (typeof renderLista === "function") renderLista(); } catch (e) {} });
+  const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  /* ── Lista del celular: «Mis pendientes de Queruclor» primero ─────── */
+  let verTodos = false;
+  try { verTodos = sessionStorage.getItem("dep_celu_todos") === "1"; } catch (e) {}
+  const tieneQr = p => /QUERUCLOR/i.test(String(p.productos_raw || p.productos || ""));
+  function bloquesQr() {
+    try { return (window.QRSrv && QRSrv.get("qr_bloques", "select=pedido_id,bloque,listo,tomado_por", 5000)) || []; } catch (e) { return null; }
+  }
+  const _renderLista = window.renderLista;
+  if (typeof _renderLista === "function") {
+    window.renderLista = function () {
+      const r = _renderLista.apply(this, arguments);
+      if (!esCelu()) return r;
+      try {
+        const box = document.getElementById("listaPedidos"); if (!box) return r;
+        const bl = bloquesQr();
+        const listoQr = id => !!(bl || []).find(b => String(b.pedido_id) === String(id) && b.bloque === "queruclor" && b.listo);
+        const cards = [...box.querySelectorAll(".pedido-card")];
+        let mios = 0;
+        cards.forEach(c => {
+          const m = /pedidoClick\('([^']+)'\)/.exec(c.getAttribute("onclick") || ""); const id = m && m[1];
+          const p = (typeof pedidosCache !== "undefined" ? pedidosCache : []).find(x => String(x.id) === String(id));
+          const es = !!(p && tieneQr(p) && !listoQr(id));
+          if (es) mios++;
+          c.classList.toggle("dep-oculta", !verTodos && !es);
+        });
+        const bar = document.createElement("div"); bar.className = "dep-filtro";
+        bar.innerHTML = `<button type="button" class="${verTodos ? "" : "on"}" data-f="qr">🧴 Mis pendientes de Queruclor (${mios})</button>
+          <button type="button" class="${verTodos ? "on" : ""}" data-f="todos">Todos (${cards.length})</button>`;
+        bar.onclick = ev => { const b = ev.target.closest("button"); if (!b) return; verTodos = b.dataset.f === "todos";
+          try { sessionStorage.setItem("dep_celu_todos", verTodos ? "1" : "0"); } catch (e) {} window.renderLista(); };
+        box.insertAdjacentElement("afterbegin", bar);
+        if (!verTodos && !mios && cards.length) bar.insertAdjacentHTML("afterend", `<div class="dep-vacio">No te quedan pedidos de Queruclor por armar en esta pestaña. Si estás libre, tocá «Todos» para ayudar con Habituales.</div>`);
+        if (bl === null) bar.insertAdjacentHTML("afterend", `<div class="dep-vacio">Sin conexión con el servidor: no se puede saber qué Queruclor ya está listo.</div>`);
+      } catch (e) { console.warn("[celu lista]", e); }
+      return r;
+    };
+  }
+
+  /* ── Al tomar Queruclor en el celular: directo a su parte ────────── */
+  const _tomar = window.qrBloqueTomar;
+  if (typeof _tomar === "function") {
+    window.qrBloqueTomar = function (bloque) {
+      const r = _tomar.apply(this, arguments);
+      if (bloque === "queruclor" && esCelu()) Promise.resolve(r).then(() => setTimeout(() => {
+        if (window.qrSoloQr) window.qrSoloQr(true);
+        const h = document.getElementById("qrLector"); if (h) h.scrollIntoView({ block: "start" });
+        /* El paso real: si la tira todavía no se imprimió, el botón de imprimir; si no, el lector. */
+        const i = document.getElementById("lqCodigo"), btn = document.getElementById("lqImpPedir");
+        const destino = i && !i.disabled ? i : btn || i; if (destino) try { destino.focus({ preventScroll: true }); } catch (e) {}
+      }, 60));
+      return r;
+    };
+  }
+
+  const s = document.createElement("style");
+  s.textContent = `
+    .dep-oculta{ display:none !important }
+    .dep-filtro{ display:flex; gap:8px; margin:0 0 10px; flex-wrap:wrap }
+    .dep-filtro button{ flex:1 1 140px; min-height:46px; border-radius:12px; border:1.5px solid #cbd5e1; background:#fff; color:#0f172a; font:800 14.5px/1.2 system-ui,sans-serif; cursor:pointer }
+    .dep-filtro button.on{ background:#a3006a; border-color:#a3006a; color:#fff }
+    .dep-vacio{ margin:0 0 10px; padding:12px 14px; border-radius:12px; background:#f1f5f9; color:#334155; font:600 14px/1.4 system-ui,sans-serif }
+    /* Habituales en una línea (celular) */
+    .qr-vista.on{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
+    .qr-vista-hab{ flex:1 1 auto; font:700 14.5px/1.3 system-ui,sans-serif }
+    .qr-vista.ayuda{ background:#ecfdf5; border:1.5px solid #86efac; color:#14532d; border-radius:12px; padding:10px 12px; font:600 14px/1.4 system-ui,sans-serif }
+    body.dep-celu .qr-vista .qr-vista-b{ min-height:44px; padding:8px 14px }
+    /* Guía «qué tengo en la mano» */
+    .lq-guia{ border:2px solid var(--lq-acento,#c2007a); background:var(--lq-acento-s,#fdeaf5); color:var(--lq-tinta,#1f1630); border-radius:14px; padding:12px 14px; margin:0 0 10px; display:flex; flex-direction:column; gap:4px }
+    .lq-guia.ok{ border-color:var(--lq-ok,#15803d); background:var(--lq-ok-s,#ecfdf5) }
+    .lq-g-q{ font-size:13.5px; font-weight:700; color:var(--lq-mut,#6b6478) } .lq-g-q b{ color:var(--lq-tinta,#1f1630) }
+    .lq-g-n{ font-size:18px; font-weight:900; line-height:1.2; overflow-wrap:anywhere }
+    .lq-g-m{ font-size:14px; font-weight:600 }
+    .lq-g-c{ font-size:14px } .lq-g-c code, .lq-leido code{ font:800 15px/1.2 ui-monospace,Consolas,monospace; letter-spacing:.02em; overflow-wrap:anywhere }
+    .lq-g-av{ font-size:14px }
+    .lq-g-f{ display:flex; justify-content:space-between; gap:10px; font-size:15.5px; padding:5px 0; border-top:1px solid var(--lq-borde,#eadcf0) }
+    .lq-g-f b{ white-space:nowrap } .lq-g-f.ok b{ color:var(--lq-ok,#15803d) }
+    .lq-g-falta{ font-size:15px; font-weight:800; color:var(--lq-acento,#c2007a) }
+    .lq-guia .lq-b{ margin-top:6px; min-height:48px }
+    .lq-leido{ font-size:14px } .lq-quehacer{ font-size:13.5px }
+    /* «Faltan» es avance normal, no un error: color de la línea, no rojo ni ámbar */
+    #qrLector .lq-chip.pend{ background:var(--lq-acento-s,#fdeaf5); color:var(--lq-acento,#c2007a) }
+    .lq-decide-box .lq-res, .lq-decide-box .lq-sinl{ margin:0; border:0; padding:0; background:none }
+    .lq-decide-box .lq-b{ min-height:50px; flex:1 1 100% }
+    body.dep-celu #qrLector .lq-in{ font-size:18px; min-height:52px }
+    /* S9: que el lector y la guía entren en pantalla (el pie fijo era un tercio del alto) */
+    body.dep-celu #msgMotDep{ display:none }
+    body.dep-celu .det-footer{ padding-top:6px !important; padding-bottom:calc(6px + env(safe-area-inset-bottom)) !important }
+    body.dep-celu .det-footer .progreso{ font-size:13px; margin:0 0 4px }
+    body.dep-celu .btn-armar:disabled{ min-height:40px; padding:8px 12px; font-size:14px; border-radius:12px; box-shadow:none }
+    body.dep-celu #qrLector .lq-pie{ display:none }
+    body.dep-celu #qrLector .lq-ayuda-b{ padding:4px 10px; min-height:34px; font-size:13px }
+    body.dep-celu #qrLector .lq-impw.celu .lq-imp.ok{ padding:6px 10px } body.dep-celu #qrLector .lq-impw.celu .lq-imp.ok p{ display:none }
+    body.dep-celu #qrLector .lq-impw.celu .lq-imp-bar .lq-b:not(.prim){ min-height:42px; font-size:15px }
+    body.dep-celu #qrLector .lq-guia{ padding:10px 12px }
+    body.dep-celu #qrLector .lq-modo{ font-size:0; padding:0; margin:0 0 4px; background:none; border:0; text-align:right }
+    body.dep-celu #qrLector .lq-modo b{ display:none } body.dep-celu #qrLector .lq-modo .lq-lnk{ font-size:14px; min-height:36px }
+  `;
+  (document.head || document.documentElement).appendChild(s);
+})();
 </script>
 </body>
 </html>
