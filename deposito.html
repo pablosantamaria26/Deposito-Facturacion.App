@@ -1280,9 +1280,8 @@ function itemCambioRemoto(tipo, rec) {
 
   const row = document.getElementById(`irow-${item.id}`);
   const editando = row && row.querySelector(".item-edit-bar")?.style.display !== "none";
-  if (_modoFoco && item.armado) {
-    row?.remove();                                   // en modo foco el tildado desaparece
-  } else if (row && !editando) {
+  if (_modoFoco && item.armado && row) _focoVisibles.add(item.id);   // 18/11/2026: no desaparece de golpe (se oculta al volver a tocar «Solo pendientes»)
+  if (row && !editando) {
     row.outerHTML = renderItemRow(item, idx);
     const nueva = document.getElementById(`irow-${item.id}`);
     nueva.querySelector(".item-edit-bar").style.display = "none";
@@ -1451,6 +1450,7 @@ async function abrirPedido(id) {
 
     // Modo foco: restaurar estado por pedido
     _modoFoco = _focoStates[pedidoActivo.id] || false;
+    _focoVisibles.clear();
     const btnFoco = document.getElementById("btnFoco");
     if (btnFoco) {
       btnFoco.classList.toggle("activo", _modoFoco);
@@ -1546,8 +1546,8 @@ function renderItems() {
     // ── Pedido de faltantes: dos bloques visuales ──
     const blq1All = itemsActivos.filter(i => !i.es_auto_faltante); // seleccionados por Pablo
     const blq2All = itemsActivos.filter(i =>  i.es_auto_faltante); // auto-inyectados por depósito
-    const blq1 = _modoFoco ? blq1All.filter(i => !i.armado) : blq1All;
-    const blq2 = _modoFoco ? blq2All.filter(i => !i.armado) : blq2All;
+    const blq1 = _modoFoco ? blq1All.filter(pendienteEnFoco) : blq1All;
+    const blq2 = _modoFoco ? blq2All.filter(pendienteEnFoco) : blq2All;
 
     let html = "";
     if (blq1.length > 0) {
@@ -1579,7 +1579,7 @@ function renderItems() {
     box.innerHTML = html;
   } else {
     // ── Pedido normal ──
-    const items = _modoFoco ? itemsActivos.filter(i => !i.armado) : itemsActivos;
+    const items = _modoFoco ? itemsActivos.filter(pendienteEnFoco) : itemsActivos;
     box.innerHTML = items.map(item => renderItemRow(item, itemsActivos.indexOf(item))).join("");
   }
 
@@ -1654,6 +1654,7 @@ async function guardarEdit(itemId, idx) {
 
 // ── TOGGLE ARMADO ──
 async function toggleItem(itemId, idx) {
+  { const i = itemsActivos.findIndex(x => String(x.id) === String(itemId)); if (i < 0) return; idx = i; }   // 18/11/2026: por el artículo, no por la posición
   const nuevoEstado = !itemsActivos[idx].armado;
   if (!nuevoEstado) {
     // untiling - show confirm modal
@@ -1678,6 +1679,8 @@ async function confirmarDestildar() {
 }
 
 async function aplicarToggle(itemId, idx, nuevoEstado) {
+  { const i = itemsActivos.findIndex(x => String(x.id) === String(itemId)); if (i < 0) return; idx = i; }
+  if (nuevoEstado && _modoFoco) _focoVisibles.add(itemId);
   itemsActivos[idx].armado = nuevoEstado;
   itemsActivos[idx].armado_por = nuevoEstado ? armadorActual : null;
   const row  = document.getElementById(`irow-${itemId}`);
@@ -2111,9 +2114,13 @@ async function cargarProgreso() {
 // ── MODO FOCO ──
 let _modoFoco = false;
 const _focoStates = {};
+/* 18/11/2026: lo que se tilda con «Solo pendientes» activo queda a la vista hasta volver a tocar el botón (la lista no se mueve debajo del dedo). */
+const _focoVisibles = new Set();
+function pendienteEnFoco(i) { return !i.armado || _focoVisibles.has(i.id); }
 
 function toggleFoco() {
   _modoFoco = !_modoFoco;
+  _focoVisibles.clear();
   if (pedidoActivo) _focoStates[pedidoActivo.id] = _modoFoco;
   const btn = document.getElementById("btnFoco");
   if (btn) {
@@ -6040,7 +6047,7 @@ var qrcode = function() {
       if (soloQr && b.bloque !== "queruclor") continue;
       const propios = its.filter(i => Bloques.bloqueDe(i) === b.bloque);
       html += encabezado(b, propios);
-      const visibles = foco ? propios.filter(i => !i.armado) : propios;
+      const visibles = foco ? propios.filter(pendienteEnFoco) : propios;
       for (const item of visibles) {
         html += window.renderItemRow(item, its.indexOf(item));
       }
@@ -6245,6 +6252,7 @@ var qrcode = function() {
   const _origToggle = window.toggleItem;
   window.toggleItem = async function (itemId, idx) {
     const p = pedido();
+    { const i = items().findIndex(x => String(x.id) === String(itemId)); if (i >= 0) idx = i; }
     const item = items()[idx];
     if (p && item && window.Bloques && Bloques.bloques(items()).length >= 2) {
       let r;
@@ -6255,7 +6263,7 @@ var qrcode = function() {
       }
       if (item.faltante_informado && !item.armado) { item.faltante_informado = false; try { await sbPatch("items_pedido", "id=eq." + item.id, { faltante_informado: false, faltante_por: null, faltante_at: null }); } catch (e) {} }
     }
-    return _origToggle.apply(this, arguments);
+    return _origToggle.call(this, itemId, idx);
   };
   /* La app base actualiza solo la fila al tildar o destildar: el encabezado del
      bloque (avance, «Mi parte está lista») se vuelve a pintar después. */
@@ -6263,7 +6271,22 @@ var qrcode = function() {
     const _origAplicar = window.aplicarToggle;
     window.aplicarToggle = async function () {
       const r = await _origAplicar.apply(this, arguments);
-      try { if (window.Bloques && pedido() && Bloques.bloques(items()).length >= 2) window.renderItems(); } catch (e) {}
+      /* 18/11/2026: solo se repinta el encabezado de cada parte (avance, «Mi parte está lista»), no toda la lista:
+         redibujarla movía los renglones debajo del dedo y se perdían o desviaban los toques. */
+      try {
+        const p = pedido(), its = items();
+        if (window.Bloques && p && Bloques.bloques(its).length >= 2) {
+          const resumen = Bloques.resumen(p.id, its); let falta = false;
+          for (const b of resumen) {
+            const el = document.getElementById("blq-" + b.bloque);
+            if (!el) { falta = true; continue; }
+            if (b.bloque === "queruclor" && document.getElementById("qrLector")) continue;   // la parte Queruclor la pinta su lector
+            const tmp = document.createElement("div"); tmp.innerHTML = encabezado(b, its.filter(i => Bloques.bloqueDe(i) === b.bloque)).trim();
+            if (tmp.firstElementChild) el.replaceWith(tmp.firstElementChild);
+          }
+          if (falta) window.renderItems(); else { try { pintarBotonGlobal(resumen); pintarFaltantesInformados(resumen); } catch (e) {} try { if (window.qrRetocarEncabezados) qrRetocarEncabezados(); } catch (e) {} if (typeof actualizarProgreso === "function") actualizarProgreso(); }
+        }
+      } catch (e) { try { window.renderItems(); } catch (x) {} }
       return r;
     };
     window.aplicarToggle.__blq = true;
@@ -6675,6 +6698,8 @@ var qrcode = function() {
       if (q) q.textContent = q.textContent.replace(/renglones? resueltos?/, "preparados");
     });
   }
+
+  window.qrRetocarEncabezados = retocarEncabezados;   // 18/11/2026: lo usa el repintado del encabezado después de cada tilde
 
   /* El resumen antes de cerrar la parte con faltantes. */
   function resumenFaltantes(bloque, pend) {
