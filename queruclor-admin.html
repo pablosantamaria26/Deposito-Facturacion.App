@@ -13989,7 +13989,7 @@ renderCatKPIs();
   const remitos = () => (window.Cuentas ? Cuentas.movimientos() : []).filter(m => m.tipo === "remito");
   const notas = () => (window.Cuentas ? Cuentas.movimientos() : []).filter(m => m.tipo === "nc");
   const entregas = () => (window.Reparto && Reparto.entregas ? Reparto.entregas() : []);
-  const casos = () => { if (!conBase()) return []; try { return QRSrv.get("qr_devoluciones", "select=*", 0) || []; } catch (e) { return []; } };
+  const casos = () => { if (!conBase()) return []; try { return (QRSrv.get("qr_devoluciones", "select=*", 0) || []).filter(c => c.estado_fisico === "recibida" || c.estado === "acreditada"); } catch (e) { return []; } };   /* confirmadas: no se descuenta lo que todavía no volvió ni tiene nota */
   const impuestos = () => (window.Precio && Precio.margenLista ? Precio.margenLista(0) : 0);
   const facturas = remitos;
 
@@ -14009,7 +14009,10 @@ renderCatKPIs();
 
   /* Los renglones ENTREGADOS, ya sin lo devuelto. Cada uno con su neto
      sin IVA (proporción del remito) y su costo del día de la venta. */
-  function lineasEntregadas() {
+  /* Se calculan una vez y se reutilizan 1,5 s: antes cada gráfico las volvía a armar (y a consultar las devoluciones). */
+  let _lineasCache = null, _lineasT = 0;
+  function lineasEntregadas() { if (_lineasCache && Date.now() - _lineasT < 1500) return _lineasCache; _lineasCache = calcularLineas(); _lineasT = Date.now(); return _lineasCache; }
+  function calcularLineas() {
     const ent = new Map(entregas().map(e => [String(e.remito), e]));
     const dev = devueltoPorPedido();
     const out = [];
@@ -14029,7 +14032,9 @@ renderCatKPIs();
         }
         if (!unidades) continue;
         const precio = Number(r.precio_unit) || 0;
-        out.push({ f, ean: r.ean, nombre: r.nombre, cajas, sueltas: enCajas ? 0 : unidades, unidades,
+        /* Cajas equivalentes = unidades netas ÷ unidades de la caja CON LA QUE SE VENDIÓ (uc del renglón del remito, no la del catálogo de hoy):
+           12 unidades de una caja de 24 son 0,5. Una surtida ya viene repartida por producto, así que nunca cuenta una caja entera por cada uno. */
+        out.push({ f, ean: r.ean, nombre: r.nombre, uc, equiv: uc ? unidades / uc : 0, completas: enCajas ? cajas : 0, cajas, sueltas: enCajas ? 0 : unidades, unidades,
           neto: dinero(unidades * precio * prop), costo: r.costo_unit != null ? Number(r.costo_unit) * unidades : null,
           fecha: e.registrada || f.fecha });
       }
@@ -14038,13 +14043,28 @@ renderCatKPIs();
   }
 
   /* Días con entregas: desde la primera entrega registrada hasta hoy. */
+  /* ── Período del ranking y de la proyección (se recuerda en este equipo) ─────────── */
+  const PERIODOS = [["hoy", "Hoy"], ["7", "Últimos 7 días"], ["30", "Últimos 30 días"], ["mes", "Este mes"], ["todo", "Todo el historial"]];
+  let periodo = "todo"; try { const g = localStorage.getItem("qr_an_periodo"); if (PERIODOS.some(p => p[0] === g)) periodo = g; } catch (e) {}
+  const TZ = "America/Argentina/Buenos_Aires";
+  const diaAR = ms => new Date(ms).toLocaleDateString("en-CA", { timeZone: TZ });
+  function corte() {
+    const ahora = Date.now();
+    if (periodo === "hoy") return new Date(diaAR(ahora) + "T00:00:00-03:00").getTime();
+    if (periodo === "7") return ahora - 7 * 864e5;
+    if (periodo === "30") return ahora - 30 * 864e5;
+    if (periodo === "mes") return new Date(diaAR(ahora).slice(0, 7) + "-01T00:00:00-03:00").getTime();
+    return 0;
+  }
+  function lineasPeriodo() { const c = corte(); return c ? lineasEntregadas().filter(x => new Date(x.fecha).getTime() >= c) : lineasEntregadas(); }
+  /* Días de entregas que respaldan el cálculo: el período, o desde la primera entrega si el historial es más corto. Con menos de 7 días: sin datos suficientes. */
   function ventana() {
-    const l = lineasEntregadas();
-    const fs = l.map(x => new Date(x.fecha).getTime()).filter(n => !isNaN(n)).sort((a, b) => a - b);
-    const nf = new Set(l.map(x => x.f.comprobante)).size;
-    if (!fs.length) return { dias: 0, desde: null, facturas: 0, suficiente: false };
-    const dias = Math.max(1, Math.round((Date.now() - fs[0]) / 864e5));
-    return { dias, desde: fs[0], facturas: nf, suficiente: dias >= MIN_DIAS };
+    const fsAll = lineasEntregadas().map(x => new Date(x.fecha).getTime()).filter(n => !isNaN(n)).sort((a, b) => a - b);
+    const l = lineasPeriodo(), nf = new Set(l.map(x => x.f.comprobante)).size;
+    if (!fsAll.length) return { dias: 0, desde: null, facturas: 0, suficiente: false, periodo };
+    const desde = Math.max(corte(), fsAll[0]);
+    const dias = Math.max(1, Math.round((Date.now() - desde) / 864e5));
+    return { dias, desde, facturas: nf, suficiente: l.length > 0 && dias >= MIN_DIAS, periodo, primera: fsAll[0] };
   }
 
   function totales() {
@@ -14064,13 +14084,13 @@ renderCatKPIs();
   function ventasPorArticulo() {
     const out = new Map();
     const imp = impuestos();
-    for (const x of lineasEntregadas()) {
+    for (const x of lineasPeriodo()) {
       const p = delCatalogo(x);
       const clave = x.ean || String(x.nombre || "—");
       const e = out.get(clave) || { nombre: x.nombre || (p && (p.nombre || p.nombreCompleto)) || "—", ean: x.ean || "",
-        cat: p && window.Catalogo.rubroDe ? Catalogo.rubroDe(p) : "", cajas: 0, sueltas: 0, unidades: 0, venta: 0, costo: 0,
+        cat: p && window.Catalogo.rubroDe ? Catalogo.rubroDe(p) : "", cajas: 0, sueltas: 0, unidades: 0, equiv: 0, completas: 0, venta: 0, costo: 0,
         ventaConCosto: 0, comprobantes: new Set(), ultima: null, conCosto: true };
-      e.cajas += x.cajas; e.sueltas += x.sueltas; e.unidades += x.unidades; e.venta += x.neto;
+      e.cajas += x.cajas; e.sueltas += x.sueltas; e.unidades += x.unidades; e.equiv += x.equiv; e.completas += x.completas; e.venta += x.neto;
       if (x.costo == null) e.conCosto = false; else { e.costo += x.costo; e.ventaConCosto += x.neto; }
       e.comprobantes.add(x.f.comprobante);
       if (!e.ultima || String(x.fecha) > String(e.ultima)) e.ultima = x.fecha;
@@ -14082,8 +14102,8 @@ renderCatKPIs();
       /* Margen limpio realizado = 1 − impuestos − costo/neto (la misma cuenta de Precios). */
       margen: e.ventaConCosto > 0 ? (1 - imp - e.costo / e.ventaConCosto) * 100 : null,
       utilidad: e.ventaConCosto > 0 ? e.ventaConCosto * (1 - imp) - e.costo : null,
-      porSemana: v.suficiente ? (e.cajas / v.dias) * 7 : null,
-    })).sort((a, b) => b.cajas - a.cajas || b.unidades - a.unidades);
+      porSemana: v.suficiente ? (e.equiv / v.dias) * 7 : null,   /* cajas equivalentes por semana (antes solo contaba cajas completas) */
+    })).sort((a, b) => b.equiv - a.equiv || b.unidades - a.unidades);
   }
 
   function ganancia() {
@@ -14168,7 +14188,8 @@ renderCatKPIs();
         cat: Catalogo.rubroDe ? Catalogo.rubroDe(p) : "",
         stock: st, porSemana, suficiente: v.suficiente,
         dias: v.suficiente && porSemana > 0 ? Math.round((st / porSemana) * 7) : null,
-        vendido: !!s,
+        vendido: !!s, ean: String(p.ean), activo: p.activo !== false,
+        equiv: s ? s.equiv : 0, unidades: s ? s.unidades : 0, completas: s ? s.completas : 0,
       };
     }).sort((a, b) => {
       if (a.dias == null && b.dias == null) return 0;
@@ -14251,7 +14272,7 @@ renderCatKPIs();
     if (cv) {
       const top = arts.slice(0, 8);
       cv.innerHTML = top.length
-        ? top.map(x => barra(x.nombre, x.cajas, top[0].cajas, x.cajas + " cajas", "var(--v)")).join("")
+        ? top.map(x => barra(x.nombre, x.equiv, top[0].equiv, fmtEq(x.equiv) + " cajas eq.", "var(--v)")).join("")
         : vacio("Todavía no hay entregas registradas. Cuando se entreguen los primeros pedidos, acá " +
                 "van a aparecer los artículos que más rotan.");
     }
@@ -14282,7 +14303,7 @@ renderCatKPIs();
          acá es el que se acaba, no el que sobra. */
       const TOPE_DIAS = 60;
       cd.innerHTML = !v.suficiente
-        ? vacio(v.dias ? "Hay " + v.dias + " día(s) de entregas. Con menos de una semana de historial no se puede estimar cuánto dura el stock."
+        ? vacio(v.dias ? "Sin datos suficientes: hay " + v.dias + " día(s) de entregas en este período (hacen falta al menos " + MIN_DIAS + ") para estimar cuánto dura el stock."
             : "Para saber cuántos días dura el stock hace falta una semana de entregas registradas.")
         : rep.length
         ? rep.map(r => barra(r.nombre, Math.min(r.dias, TOPE_DIAS), TOPE_DIAS,
@@ -14308,7 +14329,7 @@ renderCatKPIs();
 
       ab.innerHTML = !v.suficiente && !sinStock.length
         ? `<div style="text-align:center;padding:20px;color:var(--gl);font-size:13px">
-             ${v.dias ? "Todavía no hay una semana de entregas: no se estima reposición." : "Las alertas se calculan cruzando stock con entregas. Todavía no hay entregas."}</div>`
+             ${v.dias ? "Sin datos suficientes: hacen falta al menos ${MIN_DIAS} días de entregas en el período para estimar la reposición." : "Las alertas se calculan cruzando stock con entregas. Todavía no hay entregas."}</div>`
         : lista.length
         ? lista.map(r => `
             <div class="alert-item ${r.stock <= 0 ? "critico" : "bajo"}">
@@ -14333,7 +14354,7 @@ renderCatKPIs();
       const rep = reposicion().filter(r => r.vendido).slice(0, 12);
       rt.innerHTML = !v.suficiente
         ? `<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--gl);font-size:12.5px">
-             Todavía no hay una semana de entregas: no hay historial suficiente para sugerir compras.</td></tr>`
+             Sin datos suficientes: hacen falta al menos ${MIN_DIAS} días de entregas en el período para sugerir compras.</td></tr>`
         : rep.length
         ? rep.map(r => {
             const sug = Math.max(1, Math.ceil(r.porSemana * 6));   // 6 semanas = ciclo
@@ -14354,7 +14375,72 @@ renderCatKPIs();
     }
 
     pintarExtras(v, arts);
+    try { pintarRanking(v); } catch (e) { console.warn("[ranking]", e); }
   }
+
+  /* ── Ranking de artículos y proyección de stock ─────────────────────────────────── */
+  const fmtEq = n => (Math.round(num(n) * 10) / 10).toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const num = n => Number(n) || 0;
+  function pintarRanking(v) {
+    const anc = $("kpi-analytics"); if (!anc) return;
+    let box = $("qrAnRank");
+    if (!box) { box = document.createElement("div"); box.id = "qrAnRank"; anc.parentNode.insertBefore(box, anc.nextSibling); }
+    const rows = reposicion().filter(r => r.activo).sort((a, b) => b.equiv - a.equiv || b.unidades - a.unidades || String(a.nombre).localeCompare(String(b.nombre)));
+    const hoyMs = Date.now(), per = (PERIODOS.find(p => p[0] === periodo) || PERIODOS[4])[1];
+    const desdeTxt = v.desde ? new Date(v.desde).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: TZ }) : "—";
+    const dura = r => {
+      if (!v.suficiente) return '<span class="an-ns">Sin datos suficientes</span>';
+      if (r.stock <= 0) return r.vendido ? '<b class="an-rojo">Sin stock</b>' : '<span class="an-mut">Sin stock · sin ventas</span>';
+      if (!(r.porSemana > 0)) return '<span class="an-mut">Sin ventas en el período</span>';
+      const fecha = new Date(hoyMs + r.dias * 864e5).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", timeZone: TZ });
+      return '<b class="' + (r.dias <= 7 ? "an-rojo" : r.dias <= 14 ? "an-ambar" : "an-verde") + '">' + r.dias + ' días</b> <span class="an-mut">(≈ ' + fecha + ')</span>';
+    };
+    box.innerHTML = '<div class="an-card an-rank"><div class="an-rh"><div><div class="an-t">Ranking de artículos y duración del stock</div>' +
+      '<div class="an-s">Período: <b>' + esc(per) + '</b> · desde ' + desdeTxt + ' · ' + v.facturas + ' remito(s) · ' + (v.dias || 0) + ' día(s) de entregas.<br>' +
+      'Base: remitos <b>entregados</b> menos devoluciones <b>confirmadas</b> (mercadería recibida o con nota de crédito). No cuenta pedidos pendientes ni remitos sin entregar. ' +
+      'Cajas equivalentes = unidades netas ÷ unidades de la caja con la que se vendió (12 un. de una caja de 24 = 0,5); una surtida se reparte entre sus productos.</div></div>' +
+      '<label class="an-sel">Período <select onchange="qrAnPeriodo(this.value)">' + PERIODOS.map(p => '<option value="' + p[0] + '"' + (p[0] === periodo ? " selected" : "") + ">" + p[1] + "</option>").join("") + "</select></label></div>" +
+      (v.suficiente ? "" : '<div class="an-nota">Sin datos suficientes para proyectar: hay ' + (v.dias || 0) + ' día(s) de entregas en este período y hacen falta al menos ' + MIN_DIAS + '. El ranking de ventas sí se muestra.</div>') +
+      '<div class="an-tw"><table class="an-tabla"><thead><tr><th>#</th><th>Artículo</th><th class="n">Cajas equiv.</th><th class="n">Unidades netas</th><th class="n">Cajas completas</th><th class="n">Por semana</th><th class="n">Stock (cajas)</th><th>Dura · se acaba</th></tr></thead><tbody>' +
+      rows.map((r, i) => "<tr><td class='c'>" + (r.equiv > 0 ? i + 1 : "—") + "</td><td><b>" + esc(String(r.nombre).slice(0, 60)) + "</b></td><td class='n'><b>" + fmtEq(r.equiv) + "</b></td><td class='n'>" + Math.round(r.unidades) + "</td><td class='n'>" + Math.round(r.completas) +
+        "</td><td class='n'>" + (v.suficiente ? fmtEq(r.porSemana) : "—") + "</td><td class='n'>" + (Math.round(num(r.stock) * 10) / 10) + "</td><td>" + dura(r) + "</td></tr>").join("") + "</tbody></table></div></div>";
+  }
+  window.qrAnPeriodo = p => { if (!PERIODOS.some(x => x[0] === p)) return; periodo = p; _lineasCache = null; try { localStorage.setItem("qr_an_periodo", p); } catch (e) {} render(); try { if (window.renderCatTabla) renderCatTabla(); } catch (e) {} };
+  /* Ranking por artículo (EAN → cajas equivalentes, en el período elegido): lo usa la tabla de «Listas Queruclor» y el orden «Más vendidos» del Catálogo. */
+  window.qrRankingVentas = () => { const m = new Map(); try { ventasPorArticulo().forEach(x => { if (x.ean) m.set(String(x.ean), x.equiv); }); } catch (e) {} return m; };
+
+  /* ── Catálogo: orden «Más vendidos» (solo reordena las filas ya dibujadas: no toca precios, disponibilidad, habilitaciones ni filtros) ── */
+  let ordenCat = "ventas"; try { ordenCat = localStorage.getItem("qr_orden_catalogo") || "ventas"; } catch (e) {}
+  function ordenarFilasCatalogo() {
+    const tb = $("cat-tbody"); if (!tb) return;
+    ensureSelectorOrden(); setTimeout(ensureSelectorOrden, 300); setTimeout(ensureSelectorOrden, 1500);   /* el botón «Actualizar orden» se monta un poco después */
+    if (ordenCat !== "ventas") return;
+    const rk = window.qrRankingVentas(); if (!rk.size || typeof CATALOGO === "undefined" || typeof getKey !== "function") return;
+    const eq = new Map();
+    CATALOGO.forEach(p => { try { const k = getKey(p), es = typeof getEans === "function" ? getEans(p) : [p.ean]; eq.set(k, es.reduce((a, e) => a + (rk.get(String(e)) || 0), 0)); } catch (e) {} });
+    const filas = [...tb.querySelectorAll("tr[data-key]")]; if (filas.length < 2) return;
+    const orig = new Map(filas.map((r, i) => [r, i]));
+    filas.sort((a, b) => (a.classList.contains("vt-inactivo") ? 1 : 0) - (b.classList.contains("vt-inactivo") ? 1 : 0) || (eq.get(b.dataset.key) || 0) - (eq.get(a.dataset.key) || 0) || orig.get(a) - orig.get(b));
+    filas.forEach(r => tb.appendChild(r));
+  }
+  function ensureSelectorOrden() {
+    if ($("qrOrdenCat")) return;
+    /* Va junto a «Actualizar orden» si ese botón está; si no, justo arriba de la tabla del Catálogo. */
+    const ancla = document.querySelector(".vt-reord"); let padre, antes;
+    if (ancla && ancla.parentNode) { padre = ancla.parentNode; antes = ancla.nextSibling; }
+    else { const tb = $("cat-tbody"), tabla = tb && tb.closest("table"); if (!tabla || !tabla.parentNode) return; const w = tabla.closest(".tbl-wrap") || tabla; padre = w.parentNode; antes = w; }
+    const l = document.createElement("label"); l.className = "an-sel"; l.style.cssText = "margin:6px 10px; display:inline-block";
+    l.innerHTML = 'Orden <select id="qrOrdenCat" onchange="qrOrdenCatalogo(this.value)"><option value="ventas">Más vendidos</option><option value="az">Orden habitual</option></select>';
+    padre.insertBefore(l, antes); $("qrOrdenCat").value = ordenCat;
+  }
+  window.qrOrdenCatalogo = v => { ordenCat = v === "az" ? "az" : "ventas"; try { localStorage.setItem("qr_orden_catalogo", ordenCat); } catch (e) {} if (window.renderCatTabla) renderCatTabla(); };
+  function enganchar() {
+    if (typeof window.renderCatTabla !== "function" || window.renderCatTabla.__rank) return;
+    const orig = window.renderCatTabla;
+    window.renderCatTabla = function () { const r = orig.apply(this, arguments); try { ordenarFilasCatalogo(); } catch (e) {} return r; };
+    window.renderCatTabla.__rank = true;
+  }
+  document.addEventListener("DOMContentLoaded", enganchar); setTimeout(enganchar, 600); setTimeout(enganchar, 1600);
 
   /* ── Los tres listados que la pantalla no tenía ───────────────── */
   function pintarExtras(v, arts) {
@@ -14466,6 +14552,11 @@ renderCatKPIs();
       font-variant-numeric:tabular-nums; margin:2px 0 1px }
     .an-kpis i{ font-style:normal; font-size:10px; color:#94a3b8 }
 
+    .an-rh{ display:flex; gap:14px; justify-content:space-between; align-items:flex-start; flex-wrap:wrap }
+    .an-sel select{ margin-left:6px; min-height:34px; border:1px solid #cbd5e1; border-radius:8px; font:inherit; padding:0 8px; background:#fff }
+    .an-tw{ max-height:520px; overflow:auto; border:1px solid #eef2f7; border-radius:10px } .an-tw .an-tabla th{ position:sticky; top:0; background:#f8fafc; padding:8px 6px; z-index:2 }
+    .an-tabla th.n{ text-align:right } .an-ns{ color:#92400e; font-weight:700 } .an-mut{ color:#64748b } .an-rojo{ color:#b91c1c } .an-ambar{ color:#b45309 } .an-verde{ color:#166534 }
+    .an-rank{ margin:12px 0 }
     .an-nota{ margin-top:12px; padding:12px 14px; background:#fffbeb; border:1px solid #fde68a;
       border-radius:10px; font-size:12px; color:#78350f; line-height:1.55 }
   `;
@@ -14474,7 +14565,7 @@ renderCatKPIs();
   /* Reemplaza la función original. Se hace por asignación y no por
      parche del build para que quede claro qué versión corre. */
   window.renderAnalytics = render;
-  window.QrAnalytics = { ventasPorArticulo, ganancia, stockValorizado,
+  window.QrAnalytics = { setPeriodo: p => { periodo = p; _lineasCache = null; }, lineasPeriodo, ventasPorArticulo, ganancia, stockValorizado,
     ranking, periodos, reposicion, ventana, totales, lineasEntregadas };
 
 })();
