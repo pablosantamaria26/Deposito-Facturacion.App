@@ -9038,6 +9038,7 @@ renderCatKPIs();
         <div class="card-body">${d.avisos.length ? d.avisos.map(a => `<div class="ac-aviso ${a.prioridad}">
           <div class="ac-h"><b>${esc(a.titulo)}</b><i>${hora(a.actualizada)}${a.leida_caja ? " · Caja lo marcó leído" : ""}${a.estado === "en_seguimiento" ? " · en seguimiento" : ""}</i></div>
           <div class="ac-d"><span>Esperado: ${esc(a.esperado)}</span><span>Registrado: ${esc(a.registrado)}</span><span>Diferencia: ${esc(a.diferencia)}</span><span>Cómo se resuelve: ${esc(a.como_resolver)}</span></div>
+          ${CIERRA_ADMIN[a.tipo] ? `<div class="ac-acc"><button type="button" class="ac-b" onclick="acCerrarAviso('${esc(a.id)}','${esc(a.tipo)}')">${CIERRA_ADMIN[a.tipo]}</button></div>` : ""}
         </div>`).join("") : `<p class="ac-vacio">No hay avisos abiertos.</p>`}</div></div>
 
       <div class="card"><div class="card-hdr"><h3>Cobros de Queruclor</h3><p>Cada cobro del repartidor tiene su identidad; un recibo solo sale de uno verificado.</p></div>
@@ -9109,7 +9110,26 @@ renderCatKPIs();
     x.textContent = n;
   }
   window.acFiltroCaja = k => { filtroCaja = k; msg = ""; pintar(); };
-  window.acVerificar = id => { const r = QRSrv.rpc("qr_cobro_verificar_banco", { p: { cobro: id } }); msg = (r && r.motivo) || "Verificada."; pintar(); };
+  /* 17/11/2026 (migración 039): Administración cierra los avisos que le tocan, con nombre y una nota que queda en el historial.
+     Una transferencia se cierra verificándola: el cobro queda listo para el recibo (el recibo lo sigue emitiendo Caja). */
+  const CIERRA_ADMIN = { transferencia_pendiente: "✓ El dinero está en el banco", recepcion_sin_lector: "✓ La mercadería está en el depósito" };
+  const PREGUNTA = { transferencia_pendiente: "¿Cómo lo verificaste? Queda en el historial (por ejemplo: «figura en Santander el 16/11»).",
+    recepcion_sin_lector: "¿Qué verificaste? Queda en el historial (por ejemplo: «la caja devuelta está en el depósito»)." };
+  function pedirNota(tipo) { const n = (prompt(PREGUNTA[tipo] || "¿Qué verificaste? Queda en el historial.") || "").trim(); return n || null; }
+  function resultado(r, ok) { if (!r) return "Sin respuesta del servidor: no se guardó."; if (!r.ok) return r.motivo || "No se pudo."; return r.repetida ? "Ya estaba resuelto." : ok; }
+  window.acCerrarAviso = (id, tipo) => {
+    const nota = pedirNota(tipo); if (!nota) return;
+    try { msg = resultado(QRSrv.rpc("qr_incidencia_cerrar_admin", { p: { id, quien: "PABLO", nota } }),
+      tipo === "transferencia_pendiente" ? "Listo: transferencia verificada y aviso cerrado. Caja ya puede emitir el recibo." : "Listo: aviso cerrado."); }
+    catch (e) { msg = "No se guardó: " + e.message; }
+    pintar();
+  };
+  window.acVerificar = id => {
+    const nota = pedirNota("transferencia_pendiente"); if (!nota) return;
+    try { msg = resultado(QRSrv.rpc("qr_cobro_verificar_banco", { p: { cobro: id, quien: "PABLO", nota } }), "Listo: transferencia verificada. Caja ya puede emitir el recibo."); }
+    catch (e) { msg = "No se guardó: " + e.message; }
+    pintar();
+  };
   window.acAutorizar = id => { const r = QRSrv.rpc("qr_excepcion_aprobar", { p: { id } }); msg = (r && r.motivo) || "Autorizada."; pintar(); };
 
   function montar() {
@@ -9164,6 +9184,7 @@ renderCatKPIs();
     .ac-tabla small{ color:var(--ink3) }
     .ac-fila{ display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; padding:7px 0; border-bottom:1px solid var(--line2, #eef2f7); font-size:13px }
     .ac-b{ padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; font:inherit; font-size:12.5px; font-weight:700; cursor:pointer }
+    .ac-acc{ margin-top:8px; display:flex; gap:8px; flex-wrap:wrap } .ac-acc .ac-b{ background:#ecfdf5; border-color:#86efac; color:#14532d; min-height:36px }
   `;
   document.head.appendChild(st);
 })();
