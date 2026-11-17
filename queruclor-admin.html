@@ -1626,7 +1626,7 @@ td[align=right]{text-align:right; font-variant-numeric:tabular-nums}
     <div class="card-hdr"><h3>Artículos con lista comercial (uso interno)</h3></div>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>Producto</th><th>EAN</th><th>Costo c/IVA</th><th>General (app)</th><th>Utilidad</th><th>Perfumería</th><th>Utilidad</th><th>Mín. cajas</th><th>Actualizado</th></tr></thead>
+        <thead><tr><th>Producto</th><th>EAN</th><th>Costo final c/IVA</th><th>General (app)</th><th>Perfumería</th><th>Mín. cajas</th><th>Actualizado</th></tr></thead>
         <tbody id="listas-cat-tbody"></tbody>
       </table>
     </div>
@@ -2618,7 +2618,7 @@ renderCatKPIs();
   /* ── Columnas de la lista del proveedor (índice 0 = col A) ──────
      A Articulos · B EAN13 · C DUN14 · D Marca · E U/C · L ImagenUrl
      M Costo Unidad · P Costo Unidad Neto (SIN IVA, el header engaña)  */
-  const COL = { nombre: 0, ean: 1, dun: 2, marca: 3, uc: 4, imagen: 11, costoBruto: 12, costoNeto: 15 };
+  const COL = { nombre: 0, ean: 1, dun: 2, marca: 3, uc: 4, imagen: 11, costoBruto: 12, costoNeto: 15, costoFinal: 17 };   /* R = «PRECIO FINAL IVA INCLUIDO» (por unidad, ya con descuentos e IVA) */
 
   const leer = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } };
   const guardar = c => localStorage.setItem(KEY, JSON.stringify(c));
@@ -2673,7 +2673,7 @@ renderCatKPIs();
   }
 
   function desdeLista(filas, margen) {
-    const out = [];
+    const out = [], sinCosto = [];
     for (let i = 2; i < filas.length; i++) {          // 0 y 1 son encabezados
       const r = filas[i];
       if (!r || !r[COL.nombre]) continue;
@@ -2687,8 +2687,13 @@ renderCatKPIs();
       const dunCrudo = codigoTexto(r[COL.dun], 14);
       const dunOk = /^\d{12,14}$/.test(dunCrudo);
 
-      const costoNeto = parseFloat(r[COL.costoNeto]);
-      if (!(costoNeto > 0)) continue;
+      /* 17/11/2026 · el costo sale DIRECTO de la columna R (precio final IVA incluido, por unidad): no se vuelven a aplicar
+         descuentos ni IVA. Solo si la lista no trae la columna R (formato viejo) se usa P. R en 0 o vacío = «Sin costo». */
+      const crudoR = r[COL.costoFinal];
+      const finalIva = crudoR === undefined || crudoR === null ? NaN : parseFloat(crudoR);
+      const tieneR = crudoR !== undefined && crudoR !== null;
+      const costoNeto = tieneR ? finalIva / 1.21 : parseFloat(r[COL.costoNeto]);
+      if (!(costoNeto > 0)) { sinCosto.push(ean); continue; }   // el proveedor lo manda con costo 0: se avisa, no se toca
 
       const uc = parseInt(r[COL.uc], 10) || 1;
       const precioUnit = Math.round(precioVenta(costoNeto, margen) * 100) / 100;
@@ -2700,19 +2705,23 @@ renderCatKPIs();
         nombreCompleto: String(r[COL.nombre]).trim(),
         marca: String(r[COL.marca] == null ? "" : r[COL.marca]).trim(),
         uc,
-        costoNeto: Math.round(costoNeto * 100) / 100,
+        costoNeto: Math.round(costoNeto * 1e6) / 1e6,
+        costoFinalIva: tieneR ? Math.round(finalIva * 100) / 100 : Math.round(costoNeto * 1.21 * 100) / 100,
         precioUnit,
         precioBulto: Math.round(precioUnit * uc * 100) / 100,
         imagen: String(r[COL.imagen] == null ? "" : r[COL.imagen]).trim(),
         activo: true,
       });
     }
+    out.sinCosto = sinCosto;
     return out;
   }
 
   /* ── Compara la lista nueva contra lo guardado ─────────────────
      Devuelve qué cambia sin tocar nada: el admin lo muestra y recién
      al confirmar se escribe.                                        */
+  /* Piso de utilidad sobre costo: el de la planilla de precios (costo + 11%). */
+  const PISO_UTILIDAD = 0.11;
   function comparar(nuevos) {
     const actual = leer();
     const altas = [], cambios = [], iguales = [];
@@ -2722,15 +2731,25 @@ renderCatKPIs();
       if (Math.abs((viejo.costoNeto || 0) - p.costoNeto) < 0.005 && viejo.uc === p.uc) {
         iguales.push(p); continue;
       }
-      cambios.push(Object.assign({}, p, {
+      /* 17/11/2026 · Impacto sobre la utilidad (precio ÷ costo con IVA − 1, como la planilla de Pablo). Los precios de
+         venta NO cambian al subir una lista: acá se ve cuánto aprieta o afloja el costo nuevo en cada lista. */
+      const gen = viejo.precioUnit, perf = viejo.listas && viejo.listas.perfumeria ? viejo.listas.perfumeria.precioUnit : null;
+      const u = (precio, costo) => precio > 0 && costo > 0 ? precio / (costo * 1.21) - 1 : null;
+      const x = { precioActual: gen, perfActual: perf,
+        utilAntes: u(gen, viejo.costoNeto), utilDespues: u(gen, p.costoNeto),
+        perfAntes: u(perf, viejo.costoNeto), perfDespues: u(perf, p.costoNeto) };
+      x.bajoPiso = (x.utilDespues != null && x.utilDespues < PISO_UTILIDAD) || (x.perfDespues != null && x.perfDespues < PISO_UTILIDAD);
+      cambios.push(Object.assign({}, p, x, {
         costoAnterior: viejo.costoNeto,
         pct: viejo.costoNeto ? ((p.costoNeto - viejo.costoNeto) / viejo.costoNeto) * 100 : 0,
         ucAnterior: viejo.uc,
       }));
     }
-    const enLista = new Set(nuevos.map(p => p.ean));
+    const sinCosto = nuevos.sinCosto || [];
+    const enLista = new Set(nuevos.map(p => p.ean).concat(sinCosto));
     const ausentes = Object.values(actual).filter(p => p.activo !== false && !enLista.has(p.ean));
-    return { altas, cambios, iguales, ausentes };
+    const sinCostoArts = sinCosto.map(e => actual[e]).filter(Boolean);
+    return { altas, cambios, iguales, ausentes, sinCosto: sinCostoArts, preciosFijos: Object.values(actual).filter(p => p.precioFijo).length };
   }
 
   /* ── Aplica la lista: alta de nuevos + actualización de existentes ── */
@@ -2760,7 +2779,14 @@ renderCatKPIs();
          el suyo, si no la lista nueva le pisa el precio sin avisar. */
       const general = typeof opts.margen === "number" ? opts.margen
         : (global.Precio ? Precio.config().margenObjetivo : undefined);
-      if (typeof general === "number" && cat[p.ean].costoNeto > 0) {
+      /* 17/11/2026 · Precio fijo (los precios comerciales de Pablo, general y perfumería): subir una lista actualiza SOLO
+         el costo. El precio de venta se conserva tal cual; cambiarlo es una decisión aparte, artículo por artículo. */
+      if (viejo && viejo.precioFijo) {
+        const nuevo = cat[p.ean];
+        nuevo.precioUnit = viejo.precioUnit;
+        nuevo.precioBulto = Math.round(viejo.precioUnit * (nuevo.uc || 1) * 100) / 100;
+        nuevo.precioFijo = true;
+      } else if (typeof general === "number" && cat[p.ean].costoNeto > 0) {
         const nuevo = cat[p.ean];
         nuevo.precioUnit = Math.round(precioVenta(nuevo.costoNeto, margenDe(nuevo, general)) * 100) / 100;
         nuevo.precioBulto = Math.round(nuevo.precioUnit * (nuevo.uc || 1) * 100) / 100;
@@ -2893,6 +2919,7 @@ renderCatKPIs();
     const cat = leer();
     for (const ean of Object.keys(cat)) {
       const p = cat[ean];
+      if (p.precioFijo) continue;                       // precio comercial fijo: no lo toca un cambio de margen general
       p.precioUnit = Math.round(precioVenta(p.costoNeto, margenDe(p, margen)) * 100) / 100;
       p.precioBulto = Math.round(p.precioUnit * (p.uc || 1) * 100) / 100;
     }
@@ -4628,6 +4655,11 @@ renderCatKPIs();
   function articulosConPerfumeria() {
     return Catalogo.todos().filter(p => p.listas && p.listas.perfumeria).sort((a, b) => a.nombreCompleto.localeCompare(b.nombreCompleto));
   }
+  /* 17/11/2026 · Costo final POR UNIDAD con IVA (columna R de la lista). Sin costo válido → null: nunca un porcentaje inventado. */
+  const costoIvaDe = a => a.costoFinalIva > 0 ? a.costoFinalIva : (a.costoNeto > 0 ? a.costoNeto * 1.21 : null);
+  /* Margen sobre venta = (precio − costo) ÷ precio. Recargo sobre costo = (precio − costo) ÷ costo. Precio y costo, ambos con IVA. */
+  window.qrMargenes = (precio, costo) => (precio > 0 && costo > 0)
+    ? { dif: precio - costo, margen: (precio - costo) / precio, recargo: (precio - costo) / costo } : null;
 
   window.pintarEdicionLista = function () {
     const sel = $("listas-art-sel"); if (!sel || !sel.value) return;
@@ -4652,22 +4684,34 @@ renderCatKPIs();
   };
 
   window.renderListas = function () {
-    const arts = articulosConPerfumeria();
+    const conPerf = articulosConPerfumeria();
     const sel = $("listas-art-sel");
-    if (sel) { sel.innerHTML = arts.map(a => `<option value="${esc(a.ean)}">${esc(a.nombreCompleto)}</option>`).join(""); if (arts.length) pintarEdicionLista(); }
+    if (sel) { sel.innerHTML = conPerf.map(a => `<option value="${esc(a.ean)}">${esc(a.nombreCompleto)}</option>`).join(""); if (conPerf.length) pintarEdicionLista(); }
+    /* La tabla muestra TODOS los artículos activos (con o sin lista de perfumería), ordenados por lo que más se vende. */
+    const rk = window.qrRankingVentas ? window.qrRankingVentas() : new Map();
+    const arts = Catalogo.todos().filter(p => p.activo !== false).sort((a, b) => (rk.get(String(b.ean)) || 0) - (rk.get(String(a.ean)) || 0) || String(a.nombreCompleto).localeCompare(b.nombreCompleto));
     const tbody = $("listas-cat-tbody"), empty = $("listas-cat-empty");
     if (!arts.length) { if (tbody) tbody.innerHTML = ""; if (empty) empty.style.display = "block"; return; }
     if (empty) empty.style.display = "none";
     /* Utilidad igual que en la planilla: precio ÷ costo con IVA − 1. Se calcula
        con el costo de HOY (si cambia la lista del proveedor, se ve acá). */
-    const util = (precio, a) => a.costoNeto > 0 ? precio / (a.costoNeto * 1.21) - 1 : null;
-    const pct = u => u == null ? "—" : `<span style="color:${u < 0.12 ? "#b91c1c" : "#166534"};font-weight:700">${(u * 100).toFixed(1).replace(".", ",")}%</span>`;
+    const p1 = x => (x * 100).toFixed(1).replace(".", ",") + "%";
+    /* Una celda por lista: precio, diferencia en pesos y las DOS medidas, con nombre. Rojo bajo el piso de 11% de recargo. */
+    const celda = (precio, costo) => {
+      if (!(precio > 0)) return '<span style="color:#94a3b8">—</span>';
+      const m = window.qrMargenes(precio, costo);
+      if (!m) return `<b>${moneyF(precio)}</b><small style="display:block;color:#92400e;font-weight:700">Sin costo</small>`;
+      const col = m.recargo < 0.11 ? "#b91c1c" : m.recargo < 0.15 ? "#b45309" : "#166534";
+      return `<b>${moneyF(precio)}</b><small style="display:block;color:${col};font-weight:700">${m.dif >= 0 ? "+" : "−"}${moneyF(Math.abs(m.dif))} por unidad</small>` +
+        `<small style="display:block;color:#475569">margen s/venta <b>${p1(m.margen)}</b></small><small style="display:block;color:#475569">recargo s/costo <b>${p1(m.recargo)}</b></small>`;
+    };
     if (tbody) tbody.innerHTML = arts.map(a => `<tr>
         <td style="font-weight:600;font-size:12px">${esc(a.nombreCompleto)}${a.vendible === false ? ' <span style="background:#64748b;color:#fff;font-size:9px;font-weight:800;padding:1px 6px;border-radius:99px">PAUSADO</span>' : ""}</td>
         <td style="font-size:11px;font-family:monospace">${esc(a.ean)}</td>
-        <td>${moneyF(a.costoNeto ? a.costoNeto * 1.21 : null)}</td>
-        <td>${moneyF(a.precioUnit)}</td><td>${pct(util(a.precioUnit, a))}</td>
-        <td>${moneyF(a.listas.perfumeria.precioUnit)}</td><td>${pct(util(a.listas.perfumeria.precioUnit, a))}</td><td>${esc(a.listas.perfumeria.minCajas)}</td>
+        <td>${costoIvaDe(a) ? `<b>${moneyF(costoIvaDe(a))}</b><small style="display:block;color:#475569">caja x ${esc(a.uc)}: ${moneyF(costoIvaDe(a) * (a.uc || 1))}</small>` : '<span style="background:#fef3c7;color:#92400e;font-weight:800;font-size:11px;padding:2px 8px;border-radius:99px">Sin costo</span>'}</td>
+        <td>${celda(a.precioUnit, costoIvaDe(a))}</td>
+        <td>${celda(a.listas && a.listas.perfumeria ? a.listas.perfumeria.precioUnit : null, costoIvaDe(a))}</td>
+        <td>${a.listas && a.listas.perfumeria ? esc(a.listas.perfumeria.minCajas) : "—"}</td>
         <td style="font-size:11px">${fh(a.listaActualizada)}</td></tr>`).join("");
   };
 
@@ -4911,9 +4955,13 @@ renderCatKPIs();
     $("upload-resumen").innerHTML =
       `<span style="font-weight:800">${esc(archivo)}</span> · ` +
       `<span style="color:#0e6b3e">${nuevos.length} productos en la lista</span> · ` +
-      `<b>${dif.altas.length}</b> nuevos · <b>${dif.cambios.length}</b> con cambio de precio · ` +
+      `<b>${dif.altas.length}</b> nuevos · <b>${dif.cambios.length}</b> con cambio de costo · ` +
       `${dif.iguales.length} sin cambios` +
-      (dif.ausentes.length ? ` · <span style="color:#b45309">${dif.ausentes.length} ya no vienen en la lista</span>` : "");
+      (dif.ausentes.length ? ` · <span style="color:#b45309">${dif.ausentes.length} ya no vienen en la lista</span>` : "") +
+      (dif.sinCosto && dif.sinCosto.length ? ` · <span style="color:#b45309">${dif.sinCosto.length} vienen sin costo (se conservan, marcados «Sin costo»)</span>` : "") +
+      `<br><b style="color:#166534">Tus precios de venta (General y Perfumería) NO cambian:</b> subir la lista actualiza solo los costos. ` +
+      `Cada fila muestra cuánto cambia la utilidad de cada lista con el costo nuevo` +
+      (dif.cambios.filter(c => c.bajoPiso).length ? `; <b style="color:#b91c1c">${dif.cambios.filter(c => c.bajoPiso).length} quedarían por debajo del piso de 11 % sobre costo</b>` : "") + ".";
 
     const filaAlta = p => `<tr style="background:#f0fdf4">
         <td style="font-weight:600;font-size:12px">${esc(p.nombreCompleto.slice(0, 52))}
@@ -4924,13 +4972,16 @@ renderCatKPIs();
         <td style="color:#16a34a;font-weight:700">alta</td>
       </tr>`;
 
+    /* Utilidad = recargo sobre costo con IVA (precio ÷ costo − 1), con el precio de venta que NO cambia. */
+    const u1 = x => x == null ? "—" : (x * 100).toFixed(1).replace(".", ",") + "%";
+    const impactoUtil = c => c.utilAntes == null && c.utilDespues == null ? "" : `<small style="display:block;font-weight:600;color:${c.bajoPiso ? "#b91c1c" : "#475569"}">General ${u1(c.utilAntes)} → ${u1(c.utilDespues)}${c.perfDespues != null ? " · Perf. " + u1(c.perfAntes) + " → " + u1(c.perfDespues) : ""}${c.bajoPiso ? " ⚠ bajo el piso" : ""}</small>`;
     const filaCambio = c => `<tr>
         <td style="font-weight:600;font-size:12px">${esc(c.nombreCompleto.slice(0, 52))}
           ${c.ucAnterior !== c.uc ? `<span style="background:#d97706;color:#fff;font-size:9px;font-weight:800;padding:1px 6px;border-radius:99px;margin-left:6px">U/C ${c.ucAnterior}→${c.uc}</span>` : ""}</td>
         <td style="font-size:11px;font-family:monospace">${esc(c.ean)}</td>
         <td class="precio-viejo">${fmt(c.costoAnterior)}</td>
         <td class="precio-nuevo">${fmt(c.costoNeto)}</td>
-        <td class="${c.pct > 0 ? "trend-up" : "trend-dn"}">${pct(c.pct)}</td>
+        <td class="${c.pct > 0 ? "trend-up" : "trend-dn"}">${pct(c.pct)}${impactoUtil(c)}</td>
       </tr>`;
 
     /* Primero lo que sube más, que es lo que hay que mirar. */
@@ -4963,7 +5014,7 @@ renderCatKPIs();
 
     pintarEstado(publicado ? null : motivo);
     toast(publicado
-      ? `✅ ${n} altas, ${c} precios nuevos · ${r.total} productos publicados para todo el sistema`
+      ? `✅ ${n} altas, ${c} costos nuevos (los precios de venta no cambiaron) · ${r.total} productos publicados para todo el sistema`
       : `⚠️ Catálogo guardado acá, pero NO se pudo publicar. Los vendedores siguen con los precios viejos.`);
   };
 
@@ -6227,7 +6278,12 @@ renderCatKPIs();
     for (const ean of eansDe(p)) {
       const f = cat[ean];
       if (!f) continue;
+      const mo0 = f.margenOverride;
       cambio(f);
+      /* 17/11/2026 · precio comercial fijo: cambiar el COSTO a mano no mueve el precio; cambiar el MARGEN a propósito sí
+         (el artículo pasa a calcularse por margen). */
+      if (f.precioFijo && f.margenOverride === mo0) continue;
+      if (f.precioFijo) delete f.precioFijo;
       f.precioUnit = r2(Catalogo.precioVenta(f.costoNeto, Catalogo.margenDe(f, general())));
       f.precioBulto = r2(f.precioUnit * (f.uc || 1));
     }
@@ -6515,7 +6571,10 @@ renderCatKPIs();
       if (op.todo) { todo = true; continue; }
       for (const ean of op.eans) {
         const f = cat[ean]; if (!f) continue;
+        const mo0 = f.margenOverride;
         op.cambio(f);
+        if (!op.sinPrecio && f.precioFijo && f.margenOverride === mo0) continue;
+        if (!op.sinPrecio && f.precioFijo) delete f.precioFijo;
         if (!op.sinPrecio) {
           f.precioUnit = r2(Catalogo.precioVenta(f.costoNeto, Catalogo.margenDe(f, general())));
           f.precioBulto = r2(f.precioUnit * (f.uc || 1));
@@ -14648,5 +14707,295 @@ renderCatKPIs();
 })();
 </script>
 <!-- VENC-ADMIN:FIN -->
+<script>
+/* ═════════════════════════════════════════════════════════════════
+   ADMIN → COMISIONES Y PREMIOS (17/11/2026) — seguimiento y configuración (PC)
+
+   Complementa la pantalla OPERATIVA de Caja: acá NO se cierra ni se paga. Todo sale del mismo cálculo, ciclos y liquidaciones de Caja:
+     · qr_comisiones_abierto / qr_comision_abierta_de → ciclo en curso («Previsto»), con el premio (migración 041)
+     · qr_liquidaciones                               → «Cerrado pendiente de pago» y «Pagado» (lo que hace Laura se refleja acá)
+     · qr_premio_configs / qr_premio_configurar / qr_premio_reglamento → escalones con vigencia y reglamento para WhatsApp
+   Reglas: base = cobranza con recibo confirmado; 1 % + un único premio (el mayor objetivo alcanzado); cierre manual de Laura; el
+   ciclo siguiente abre al cerrar, sin esperar el pago. Se consulta una vez al abrir o al tocar «Actualizar»: nada constante.
+   ═════════════════════════════════════════════════════════════════ */
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const num = n => Number(n) || 0;
+  const m2 = n => { n = Math.round(num(n) * 100) / 100; return "$" + n.toLocaleString("es-AR", { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 }); };
+  const mM = n => { const x = num(n); return x >= 1e6 ? "$" + (x / 1e6).toLocaleString("es-AR", { maximumFractionDigits: 1 }) + " M" : m2(x); };
+  const TZ = "America/Argentina/Buenos_Aires";
+  const fd = f => { try { return new Date(f).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: TZ }); } catch (e) { return ""; } };
+  const fh = f => { try { return new Date(f).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: TZ }); } catch (e) { return ""; } };
+  const dia = f => { try { return new Date(f).toLocaleDateString("en-CA", { timeZone: TZ }); } catch (e) { return ""; } };
+  const pctTxt = n => (Math.round(num(n) * 100) / 100).toString().replace(".", ",") + " %";
+  const conBase = () => !!(window.QR_LOCAL && window.QRSrv);
+  const QUIEN = "ADMIN";
+
+  const S = { sel: null, cfg: null, ab: { vendedores: [] }, liqs: [], fVend: "", fCiclo: "", fEstado: "pagar", det: {}, msg: "", error: "", verTodos: false };
+  const premioDe = p => (p && p.activo) ? p : null;
+  const escalones = () => ((S.cfg && S.cfg.vigente && S.cfg.vigente.activo) ? S.cfg.vigente.escalones : []) || [];
+  const nObj = (p, desde) => { const i = ((p && p.escalones) || escalones()).findIndex(x => num(x.desde) === num(desde)); return i >= 0 ? i + 1 : null; };
+  const proxTxt = p => !p ? "" : p.maximo ? "Objetivo máximo alcanzado" : p.siguiente ? "Faltan " + m2(p.siguiente.faltan) + " para " + (p.alcanzado != null ? "el siguiente" : "el objetivo " + nObj(p, p.siguiente.desde)) : "";
+  const logroTxt = p => !p ? "" : p.alcanzado != null ? "Objetivo " + nObj(p, p.alcanzado) + " alcanzado" : "Sin premio todavía";
+
+  /* ── Datos: tres consultas al abrir o al tocar «Actualizar» ─────── */
+  function cargar() {
+    S.error = "";
+    try {
+      S.cfg = QRSrv.rpc("qr_premio_configs", {}) || { versiones: [], vigente: null, porcentajes: [] };
+      S.ab = QRSrv.rpc("qr_comisiones_abierto", {}) || { vendedores: [] };
+      S.liqs = (QRSrv.rpc("qr_liquidaciones", { o: {} }) || []).filter(l => l.base === "importe_cobrado");
+      S.det = {};
+    } catch (e) { S.error = "No se pudieron consultar las comisiones (sin conexión con el servidor). No significa que estén en cero. " + (e.message || ""); }
+  }
+  const abiertos = () => (S.ab.vendedores || []).filter(v => num(v.movimientos) > 0);
+  const detalleDe = v => { if (!(v.vendedor_id in S.det)) { try { S.det[v.vendedor_id] = QRSrv.rpc("qr_comision_abierta_de", { p_nombre: v.vendedor }); } catch (e) { S.det[v.vendedor_id] = null; } } return S.det[v.vendedor_id]; };
+
+  /* ── Textos para compartir (el mismo para WhatsApp y copiar) ───── */
+  function textoLiq(l) {
+    const det = l.detalle || [], conP = l.premio_cfg && l.premio_cfg.activo !== false;
+    let t = "*Comisiones Queruclor — " + l.vendedor + "*\nPeríodo: " + fd(l.desde) + " al " + fd(l.cerrado_en || l.hasta) + " · cerrada el " + fh(l.cerrado_en || l.hasta) + "\n\n";
+    det.forEach(d => { t += "• " + fd(d.confirmado_en) + " · " + d.cliente + " · recibo " + d.recibo + " · " + m2(d.importe) + "\n"; });
+    t += "\nCobranza computable: " + m2(conP ? l.base_premio : l.importe_cobrado) + "\nComisión base" + (det.length ? " (" + pctTxt(det[0].pct) + ")" : "") + ": " + m2(l.comision) + "\n";
+    if (conP) t += "Objetivo alcanzado: " + (l.premio_desde == null ? "ninguno todavía" : "desde " + m2(l.premio_desde)) + "\nPremio: " + m2(l.premio) + "\n";
+    t += "*Total a liquidar: " + m2(l.total) + "*" + (conP ? " (" + m2(l.comision) + " + " + m2(l.premio) + ")" : "") + "\nEstado: " + estadoTxt(l);
+    return t;
+  }
+  const estadoTxt = l => l.pagado_en ? "pagada el " + fd(l.pagado_en) + (l.forma_pago ? " por " + String(l.forma_pago).toLowerCase() : "") : "cerrado, pendiente de pago";
+  async function copiar(t, ok) { try { await navigator.clipboard.writeText(t); aviso(ok); } catch (e) { prompt("Copiá el texto:", t); } }
+  function aviso(t) { S.msg = t; const el = $("acomMsg"); if (el) { el.textContent = t; el.hidden = !t; } }
+  window.acomCopiarLiq = id => { const l = S.liqs.find(x => x.id === id); if (l) copiar(textoLiq(l), "Resumen copiado: revisalo y pegalo donde quieras."); };
+  window.acomWhatsLiq = id => { const l = S.liqs.find(x => x.id === id); if (l) window.open("https://wa.me/?text=" + encodeURIComponent(textoLiq(l)), "_blank"); };
+  const reglamento = () => { try { return QRSrv.rpc("qr_premio_reglamento", {}); } catch (e) { return null; } };
+  window.acomCopiarReglamento = () => { const t = reglamento(); if (!t) return aviso("No se pudo armar el reglamento (sin conexión)."); copiar(t, "Reglamento copiado: revisalo y pegalo donde quieras."); };
+  window.acomWhatsReglamento = () => { const t = reglamento(); if (!t) return aviso("No se pudo armar el reglamento (sin conexión)."); window.open("https://wa.me/?text=" + encodeURIComponent(t), "_blank"); };
+
+  /* ── Pantalla ─────────────────────────────────────────────────── */
+  const pendientes = () => S.liqs.filter(l => !l.pagado_en);
+  function kpis() {
+    const vs = abiertos(), ps = vs.map(v => premioDe(v.premio));
+    const cob = vs.reduce((a, v, i) => a + (ps[i] ? num(ps[i].base) : num(v.cobrado)), 0), com = vs.reduce((a, v) => a + num(v.comision), 0);
+    const pre = ps.reduce((a, p) => a + (p ? num(p.premio) : 0), 0), pend = pendientes();
+    const pcts = (S.cfg && S.cfg.porcentajes) || [], base = pcts.length === 1 ? pctTxt(pcts[0]).replace(" ", "") : "según vendedor";
+    const card = (t, v, extra) => `<div class="acom-k ${extra || ""}"><span>${t}</span><b>${m2(v)}</b></div>`;
+    return `<div class="acom-kpis">${card("Cobranza computable", cob)}${card("Comisión base · " + base, com)}${card("Premios previstos", pre)}${card("Total previsto", com + pre, "tot")}</div>
+      <div class="acom-kfoot"><span>Ciclo en curso · importes provisorios: se vuelven definitivos cuando Caja confirma el cierre.</span>
+      <span class="acom-chip pend">Cerrado pendiente de pago: <b>${m2(pend.reduce((a, l) => a + num(l.total), 0))}</b> · ${pend.length} ${pend.length === 1 ? "liquidación" : "liquidaciones"}</span></div>`;
+  }
+  function barras() {
+    const vs = abiertos(), esc3 = escalones(), maxObj = esc3.length ? Math.max(...esc3.map(e => num(e.desde))) : 0;
+    const filas = vs.map(v => { const p = premioDe(v.premio); return { v, p, cob: p ? num(p.base) : num(v.cobrado) }; });
+    /* Una sola escala para todos: hasta el último objetivo o, si alguien lo supera, hasta su importe real. */
+    const escala = Math.max(maxObj, ...filas.map(f => f.cob), 1);
+    const pos = n => Math.min(100, num(n) / escala * 100);
+    const eje = `<div class="acom-eje" aria-hidden="true"><span style="left:0">0</span>${esc3.map(e => `<span style="left:${pos(e.desde)}%">${mM(e.desde)}</span>`).join("")}${escala > maxObj ? `<span style="left:100%;transform:translateX(-100%)">${mM(escala)}</span>` : ""}</div>`;
+    const lista = filas.length ? filas.map(({ v, p, cob }) => `<button type="button" class="acom-fila ${S.sel === v.vendedor_id ? "on" : ""}" onclick="acomSel('${esc(v.vendedor_id)}')" aria-pressed="${S.sel === v.vendedor_id}">
+        <span class="acom-n"><b>${esc(v.vendedor)}</b><span>${m2(cob)}</span></span>
+        <span class="acom-c"><span class="acom-pista">${esc3.map(e => `<i class="acom-marca" style="left:${pos(e.desde)}%"></i>`).join("")}<span class="acom-rel" style="width:${pos(cob)}%"><em>${(Math.round(cob / escala * 1000) / 10).toLocaleString("es-AR")}%</em></span></span>
+          <small><b class="${p && p.alcanzado != null ? "ok" : ""}">${esc(logroTxt(p))}</b>${p && proxTxt(p) ? " · " + esc(proxTxt(p)) : ""}</small>
+          <small class="mut">Base ${m2(p ? p.comision : v.comision)} + Premio ${m2(p ? p.premio : 0)}</small></span>
+        <span class="acom-p"><b>${m2(p ? p.total_a_liquidar : v.comision)}</b><span>previsto</span></span></button>`).join("")
+      : `<p class="acom-vacio">No hay recibos confirmados en el ciclo en curso.</p>`;
+    return `<section class="acom-card"><h3>Avance por vendedor</h3><p class="acom-sub">Objetivos sobre cobranzas con recibo · misma escala para todos${escala > maxObj && maxObj ? " (se extendió porque alguien superó el objetivo máximo)" : ""}</p>
+      ${eje}<div class="acom-barras">${lista}</div>
+      ${proxCfg()}${esc3.length ? `<div class="acom-objs">${esc3.map((e, i) => `<span>Objetivo ${i + 1} · ${mM(e.desde)} → <b>${m2(e.premio)}</b></span>`).join("")}</div>` : ""}</section>`;
+  }
+  /* Una configuración con vigencia futura se ve acá: hasta esa fecha rige la actual. */
+  function proxCfg() {
+    const fut = ((S.cfg && S.cfg.versiones) || []).filter(x => new Date(x.vigente_desde).getTime() > Date.now()).sort((a, b) => String(a.vigente_desde).localeCompare(String(b.vigente_desde)))[0];
+    if (!fut) return "";
+    return `<div class="acom-nota">Configuración programada desde el ${fd(fut.vigente_desde)}: ${(fut.escalones || []).map(e => m2(e.desde) + " → " + m2(e.premio)).join(" · ")}${fut.activo === false ? " (premio desactivado)" : ""}. Hasta entonces rige la de arriba.</div>`;
+  }
+  const df = (a, b, cls) => `<div class="acom-df ${cls || ""}"><span>${a}</span><b>${b}</b></div>`;
+  function tablaRecibos(det, todos) {
+    if (!(det || []).length) return `<p class="acom-vacio">No hay recibos en este ciclo.</p>`;
+    const fil = todos ? det : det.slice(0, 5);
+    return `<div class="acom-tw"><table><thead><tr><th>Fecha</th><th>Recibo</th><th>Cliente</th><th class="n">Cobrado</th><th class="n">Comisión</th></tr></thead><tbody>${fil.map(d =>
+      `<tr><td>${fd(d.confirmado_en)}</td><td>${esc(d.recibo || d.recibo_numero || "")}</td><td>${esc(d.cliente || d.cliente_nombre || "")}</td><td class="n">${m2(d.importe)}</td><td class="n">${m2(d.comision)}</td></tr>`).join("")}</tbody></table></div>` +
+      (det.length > 5 && !todos ? `<button type="button" class="acom-link" onclick="acomTodos()">Ver recibos y ajustes (${det.length})</button>` : "");
+  }
+  function detalle() {
+    if (!S.sel) return `<section class="acom-card acom-lat"><div class="acom-vacio-g">Elegí un vendedor o una liquidación para ver sus recibos, el desglose y el estado.</div></section>`;
+    const v = abiertos().find(x => x.vendedor_id === S.sel);
+    if (v) {
+      const d = detalleDe(v), p = premioDe((d && d.premio) || v.premio), ajustes = (d && d.pendientes_resolucion) || [], fuera = (d && d.fuera) || [];
+      return `<section class="acom-card acom-lat"><div class="acom-dh"><h3>${esc(v.vendedor)}</h3><span class="acom-chip info">Previsto</span></div>
+        <div class="acom-grande">${m2(p ? p.total_a_liquidar : v.comision)}<span>Total previsto</span></div>
+        ${df("Cobranza computable", m2(p ? p.base : v.cobrado))}
+        ${p && num(p.fuera_de_vigencia) > 0 ? `<div class="acom-nota">${m2(p.fuera_de_vigencia)} confirmados antes del ${fd(p.vigente_desde)}: conservan su comisión del 1 % pero no suman para el premio.</div>` : ""}
+        ${df("Comisión base · " + pctTxt(v.pct), m2(p ? p.comision : v.comision))}
+        ${p ? df(p.alcanzado != null ? "Premio alcanzado · Objetivo " + nObj(p, p.alcanzado) : "Premio alcanzado", m2(p.premio), num(p.premio) > 0 ? "ok" : "") : ""}
+        ${df("Ajustes", ajustes.length ? ajustes.length + " para decidir (no se descuentan solos)" : "sin ajustes en este ciclo")}
+        ${p ? `<div class="acom-prox ${p.maximo ? "max" : ""}">${esc(logroTxt(p))} · ${esc(proxTxt(p))}</div>` : ""}
+        <h4>Recibos del ciclo</h4>${tablaRecibos(d && d.detalle, S.verTodos)}
+        ${ajustes.length ? `<h4>Ajustes identificados</h4>${tablaRecibos(ajustes.map(a => ({ confirmado_en: a.confirmado_en, recibo: a.recibo_numero || "", cliente: (a.cliente || "") + " — " + (a.motivo || ""), importe: a.importe, comision: a.comision })), true)}` : ""}
+        ${fuera.length ? `<div class="acom-nota">${fuera.length} cobro(s) sin recibo confirmado todavía (${m2(fuera.reduce((a, f) => a + num(f.importe), 0))}): entran al ciclo cuando se confirme el recibo.</div>` : ""}
+        <div class="acom-info">El importe queda definitivo cuando Caja confirma el cierre. Cerrar y pagar se hacen en Caja.</div></section>`;
+    }
+    const l = S.liqs.find(x => x.id === S.sel); if (!l) return "";
+    const conP = l.premio_cfg && l.premio_cfg.activo !== false, det = l.detalle || [], pagada = !!l.pagado_en;
+    return `<section class="acom-card acom-lat"><div class="acom-dh"><h3>${esc(l.vendedor)}</h3><span class="acom-chip ${pagada ? "ok" : "pend"}">${pagada ? "Pagado" : "Cerrado pendiente de pago"}</span></div>
+      <div class="acom-grande ${pagada ? "ok" : "pend"}">${m2(l.total)}<span>${pagada ? "Total pagado" : "Total definitivo, a pagar"}</span></div>
+      <p class="acom-sub">Período ${fd(l.desde)} al ${fd(l.cerrado_en || l.hasta)} · cerrada el ${fh(l.cerrado_en || l.hasta)} por ${esc(l.cerrado_por || "—")}</p>
+      ${df("Cobranza computable", m2(conP ? l.base_premio : l.importe_cobrado))}${df("Comisión base" + (det.length ? " · " + pctTxt(det[0].pct) : ""), m2(l.comision))}
+      ${conP ? df(l.premio_desde != null ? "Premio · objetivo desde " + m2(l.premio_desde) : "Premio · ningún objetivo", m2(l.premio), num(l.premio) > 0 ? "ok" : "") : ""}${df("Total a liquidar", m2(l.total), "tot")}
+      <h4>Recibos incluidos</h4>${tablaRecibos(det, true)}
+      ${pagada ? `<div class="acom-pago ok"><b>Pagado</b> el ${fh(l.pagado_en)} · medio: <b>${esc(l.forma_pago || "—")}</b> · por ${esc(l.pagado_por || "—")}<br><small>Movimiento de Caja asociado: <code>qrliq|${esc(l.id)}</code>${l.pago_op ? " · operación " + esc(l.pago_op) : ""}</small></div>`
+        : `<div class="acom-pago pend">El pago se registra en Caja (Haberes). Cuando Laura lo registre, acá pasa a «Pagado».</div>`}
+      <div class="acom-acc"><button type="button" class="acom-sec" onclick="acomWhatsLiq('${esc(l.id)}')">Compartir por WhatsApp</button><button type="button" class="acom-sec" onclick="acomCopiarLiq('${esc(l.id)}')">Copiar detalle</button></div></section>`;
+  }
+  function historial() {
+    const dias = [...new Set(S.liqs.map(l => dia(l.cerrado_en || l.hasta)).filter(Boolean))].sort().reverse();
+    const vend = [...new Set(S.liqs.map(l => l.vendedor).concat((S.ab.vendedores || []).map(v => v.vendedor)))].filter(Boolean).sort();
+    const ls = S.liqs.filter(l => (S.fEstado === "pagadas" ? !!l.pagado_en : !l.pagado_en) && (!S.fVend || l.vendedor === S.fVend) && (!S.fCiclo || dia(l.cerrado_en || l.hasta) === S.fCiclo));
+    const tab = (k, t) => `<button type="button" class="acom-tab ${S.fEstado === k ? "on" : ""}" onclick="acomEstado('${k}')" role="tab" aria-selected="${S.fEstado === k}">${t}</button>`;
+    return `<section class="acom-card" id="acomHist"><div class="acom-hh"><h3>Liquidaciones</h3><div class="acom-tabs" role="tablist">${tab("pagar", "Por pagar")}${tab("pagadas", "Pagadas")}</div>
+        <label class="acom-fl">Vendedor <select onchange="acomFiltro('v', this.value)"><option value="">Todos</option>${vend.map(v => `<option ${S.fVend === v ? "selected" : ""}>${esc(v)}</option>`).join("")}</select></label>
+        <label class="acom-fl">Ciclo <select onchange="acomFiltro('c', this.value)"><option value="">Todos los cierres</option>${dias.map(d => `<option value="${d}" ${S.fCiclo === d ? "selected" : ""}>Cerrado el ${d.split("-").reverse().join("/")}</option>`).join("")}</select></label></div>
+      ${ls.length ? `<div class="acom-tw alto"><table><thead><tr><th>Vendedor</th><th>Cierre</th><th>Período</th><th class="n">Cobranza</th><th class="n">Comisión</th><th class="n">Premio</th><th class="n">Total</th><th>Estado y pago</th><th></th></tr></thead><tbody>${ls.map(l => `<tr class="${S.sel === l.id ? "on" : ""}">
+          <td><b>${esc(l.vendedor)}</b></td><td>${fh(l.cerrado_en || l.hasta)}</td><td>${fd(l.desde)} – ${fd(l.cerrado_en || l.hasta)}</td><td class="n">${m2(l.importe_cobrado)}</td><td class="n">${m2(l.comision)}</td><td class="n">${m2(l.premio)}</td><td class="n"><b>${m2(l.total)}</b></td>
+          <td>${l.pagado_en ? `<span class="acom-chip ok">Pagado ${fd(l.pagado_en)} · ${esc(l.forma_pago || "—")}</span>` : `<span class="acom-chip pend">Cerrado, pendiente de pago</span>`}</td>
+          <td><button type="button" class="acom-sec chico" onclick="acomSel('${esc(l.id)}')">Ver detalle</button></td></tr>`).join("")}</tbody></table></div>`
+        : `<p class="acom-vacio-g">${S.fEstado === "pagar" ? "No hay <b>liquidaciones pendientes de pago</b>." : "Todavía no hay <b>liquidaciones pagadas</b>."}<br><small>Los cierres y pagos de Caja se reflejan acá.</small></p>`}</section>`;
+  }
+  function selectorCiclo() {
+    const ult = S.liqs.length ? S.liqs.map(l => l.cerrado_en || l.hasta).sort().pop() : null;
+    const dias = [...new Set(S.liqs.map(l => dia(l.cerrado_en || l.hasta)).filter(Boolean))].sort().reverse();
+    return `<label class="acom-selc">Ciclo <select onchange="acomCiclo(this.value)"><option value="">Ciclo actual · ${ult ? "desde el último cierre (" + fd(ult) + ")" : "desde el primer recibo"}</option>${dias.map(d => `<option value="${d}" ${S.fCiclo === d ? "selected" : ""}>Cierre del ${d.split("-").reverse().join("/")}</option>`).join("")}</select></label>`;
+  }
+  function pintar() {
+    const p = $("tab-comisiones"); if (!p) return;
+    p.innerHTML = `<div class="acom">
+      <div class="acom-top"><div><h2>Comisiones y premios</h2><p class="acom-sub">Seguimiento de cobranzas y objetivos · el cierre y el pago se hacen en Caja</p></div>
+        <div class="acom-btns"><button type="button" class="acom-sec" onclick="acomActualizar()">Actualizar</button><button type="button" class="acom-sec" onclick="acomCopiarReglamento()">Copiar reglamento para WhatsApp</button>
+          <button type="button" class="acom-sec" onclick="acomWhatsReglamento()">Abrir en WhatsApp</button><button type="button" class="acom-prim" onclick="acomConfig()">Configurar premios</button></div></div>
+      <div class="acom-fila2">${selectorCiclo()}<span class="acom-chip pend">Cierre manual</span><button type="button" class="acom-link" onclick="acomHistorial()">Ver históricos</button></div>
+      ${S.error ? `<div class="acom-err" role="alert">${esc(S.error)}</div>` : ""}<div id="acomMsg" class="acom-msg" role="status" ${S.msg ? "" : "hidden"}>${esc(S.msg)}</div>
+      ${kpis()}<div class="acom-grid">${barras()}${detalle()}</div>${historial()}
+      <p class="acom-pie">La configuración y las liquidaciones son las mismas que usa Caja. Los premios rigen desde ${S.cfg && S.cfg.vigente ? fd(S.cfg.vigente.vigente_desde) : "—"}.</p></div>`;
+  }
+  window.acomSel = k => { S.sel = k; S.verTodos = false; pintar(); };
+  window.acomTodos = () => { S.verTodos = true; pintar(); };
+  window.acomEstado = k => { S.fEstado = k; pintar(); };
+  window.acomFiltro = (t, v) => { if (t === "v") S.fVend = v; else S.fCiclo = v; pintar(); };
+  window.acomCiclo = v => { S.fCiclo = v; if (v) window.acomHistorial(); else pintar(); };
+  window.acomHistorial = () => { pintar(); const h = $("acomHist"); if (h) h.scrollIntoView({ block: "start" }); };
+  window.acomActualizar = () => { cargar(); pintar(); aviso("Datos actualizados."); };
+
+  /* ── Configurar premios: escalones con vigencia. Agrega una versión; los cierres anteriores conservan la suya ── */
+  const ocupar = (m, b, txt) => { m.dataset.ocupado = "1"; m.querySelectorAll("button").forEach(x => { x.disabled = true; }); if (b) b.textContent = txt; };
+  const liberar = (m, b, txt) => { delete m.dataset.ocupado; m.querySelectorAll("button").forEach(x => { x.disabled = false; }); if (b) b.textContent = txt; };
+  function modal(html, ancho) {
+    cerrarModal(); const m = document.createElement("div"); m.id = "acomDlg"; m.className = "acom-bg";
+    m.innerHTML = `<div class="acom-dlg" role="dialog" aria-modal="true" style="max-width:${ancho || 640}px">${html}</div>`;
+    m.addEventListener("click", e => { if (e.target === m && !m.dataset.ocupado) cerrarModal(); });
+    m.addEventListener("keydown", e => { if (e.key === "Escape" && !m.dataset.ocupado) cerrarModal(); });
+    document.body.appendChild(m); const b = m.querySelector("[data-foco]"); if (b) b.focus(); return m;
+  }
+  function cerrarModal() { const m = $("acomDlg"); if (m && !m.dataset.ocupado) m.remove(); }
+  window.acomCerrarModal = cerrarModal;
+  window.acomConfig = () => {
+    const v = (S.cfg && S.cfg.vigente) || { escalones: [], activo: true }; const e3 = (v.escalones || []).slice(); while (e3.length < 3) e3.push({ desde: "", premio: "" });
+    const ult = S.liqs.length ? dia(S.liqs.map(l => l.cerrado_en || l.hasta).sort().pop()) : "", hoyD = dia(new Date()), manana = dia(new Date(Date.now() + 864e5));
+    const hoy = ult && ult >= hoyD ? manana : hoyD;
+    const vers = ((S.cfg && S.cfg.versiones) || []).map(x => `<li>desde el <b>${fd(x.vigente_desde)}</b>: ${(x.escalones || []).map(e => m2(e.desde) + " → " + m2(e.premio)).join(" · ")}${x.activo === false ? " (desactivado)" : ""}</li>`).join("");
+    const m = modal(`<div class="acom-mh"><b>Configurar premios</b><button type="button" class="acom-x" aria-label="Cancelar" onclick="acomCerrarModal()">✕</button></div>
+      <div class="acom-mc"><p class="acom-sub">Comisión base: <b>${((S.cfg && S.cfg.porcentajes) || []).map(pctTxt).join(", ") || "1 %"}</b> (se define por vendedor; acá no cambia). Se paga un solo premio: el del mayor objetivo alcanzado, sobre lo cobrado del ciclo.</p>
+        <table class="acom-ed"><thead><tr><th>Objetivo (cobranza desde)</th><th>Premio</th></tr></thead><tbody>${e3.map((e, i) =>
+          `<tr><td><input type="number" min="0" step="1" inputmode="numeric" data-d="${i}" value="${esc(e.desde)}" aria-label="Objetivo ${i + 1}"></td><td><input type="number" min="0" step="1" inputmode="numeric" data-p="${i}" value="${esc(e.premio)}" aria-label="Premio ${i + 1}"></td></tr>`).join("")}</tbody></table>
+        <label class="acom-lab">Rige desde <input type="date" id="acomVig" value="${hoy}" min="${hoy}"></label>
+        <label class="acom-lab"><input type="checkbox" id="acomAct" ${v.activo === false ? "" : "checked"}> Premio activo</label>
+        <p class="acom-nota">La nueva escala rige desde esa fecha para los recibos confirmados desde entonces. Los cierres ya hechos conservan la configuración con la que se calcularon; la fecha no puede ser anterior al último cierre (${ult ? "último cierre: " + ult.split("-").reverse().join("/") : "todavía no hay cierres"}).</p>
+        <p class="acom-sub">Exclusión de artículos de bajo margen: <b>desactivada</b> (solo afectaría los objetivos, nunca el 1 % base).</p>
+        <details><summary>Versiones anteriores</summary><ul class="acom-vers">${vers}</ul></details><div class="acom-est" id="acomEst" role="status" aria-live="polite"></div></div>
+      <div class="acom-ma"><button type="button" class="acom-sec" onclick="acomCerrarModal()">Cancelar</button><button type="button" class="acom-prim" id="acomConf" data-foco="1">Guardar configuración</button></div>`, 620);
+    $("acomConf").onclick = () => {
+      if (m.dataset.ocupado) return;
+      const escal = [...m.querySelectorAll("[data-d]")].map(i => ({ desde: parseFloat(i.value), premio: parseFloat(m.querySelector('[data-p="' + i.dataset.d + '"]').value) })).filter(e => e.desde > 0 && e.premio >= 0);
+      const b = $("acomConf"), est = $("acomEst");
+      if (!escal.length) { est.textContent = "Cargá al menos un objetivo con su premio."; return; }
+      ocupar(m, b, "Guardando…"); const vig = $("acomVig").value, act = $("acomAct").checked;
+      setTimeout(() => {
+        let r; try { r = QRSrv.rpc("qr_premio_configurar", { p: { escalones: escal, vigente_desde: vig + "T00:00:00-03:00", activo: act, quien: QUIEN } }); } catch (e) { r = { ok: false, motivo: "Sin conexión con el servidor." }; }
+        if (!r || !r.ok) { liberar(m, b, "Guardar configuración"); est.textContent = (r && r.motivo) || "No se pudo guardar."; return; }
+        delete m.dataset.ocupado; m.remove(); cargar(); pintar(); aviso("Configuración guardada. Rige desde el " + vig.split("-").reverse().join("/") + "; los cierres anteriores no cambian.");
+      }, 30);
+    };
+  };
+
+  /* ── Montaje: pestaña propia, sin tocar las demás ──────────────── */
+  function montar() {
+    if ($("tab-comisiones")) return;
+    const nav = document.querySelector(".sb-nav"), mob = document.querySelector(".mobile-nav"), cont = document.querySelector(".content");
+    if (!nav || !cont || typeof window.goTab !== "function") return;
+    const it = document.createElement("div"); it.className = "sbnav-item"; it.id = "sbnav-comisiones"; it.onclick = () => goTab("comisiones");
+    it.innerHTML = '<span class="sbnav-icon">🏆</span> Comisiones y premios'; nav.appendChild(it);
+    if (mob) { const mm = document.createElement("div"); mm.className = "mnav-item"; mm.id = "mnav-comisiones"; mm.onclick = () => goTab("comisiones"); mm.innerHTML = '<span class="mnav-icon">🏆</span>Premios'; mob.appendChild(mm); }
+    const panel = document.createElement("div"); panel.className = "panel"; panel.id = "tab-comisiones"; cont.appendChild(panel);
+    const orig = window.goTab;
+    window.goTab = function (tab) {
+      if (tab !== "comisiones") { it.classList.remove("active"); if ($("mnav-comisiones")) $("mnav-comisiones").classList.remove("active"); return orig.apply(this, arguments); }
+      document.querySelectorAll(".panel").forEach(x => x.classList.remove("active")); document.querySelectorAll(".sbnav-item,.mnav-item").forEach(e => e.classList.remove("active"));
+      panel.classList.add("active"); it.classList.add("active"); if ($("mnav-comisiones")) $("mnav-comisiones").classList.add("active");
+      if ($("header-title")) $("header-title").textContent = "Comisiones y premios";
+      if (conBase()) cargar(); else S.error = "Sin conexión con la base: no se pueden mostrar las comisiones.";
+      pintar();
+    };
+    window.goTab.__qr = orig.__qr;
+  }
+  document.addEventListener("DOMContentLoaded", montar); setTimeout(montar, 700); setTimeout(montar, 1700);
+
+  const st = document.createElement("style");
+  st.textContent = `
+    #tab-comisiones .acom{ --vi:#6d28d9; --vi2:#ede9fe; --ve:#166534; --ve2:#dcfce7; --am:#92400e; --am2:#fef3c7; max-width:1600px }
+    .acom h2{ margin:0; font-size:28px } .acom h3{ margin:0; font-size:20px } .acom h4{ margin:14px 0 6px; font-size:14px } .acom-sub{ color:#475569; font-size:13px; margin:2px 0 6px }
+    .acom-top{ display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; align-items:flex-start } .acom-btns{ display:flex; flex-wrap:wrap; gap:8px }
+    .acom-prim,.acom-sec{ min-height:42px; padding:0 16px; border-radius:10px; font:inherit; font-weight:800; font-size:14px; cursor:pointer } .acom-prim{ background:var(--vi); color:#fff; border:2px solid var(--vi) }
+    .acom-sec{ background:#fff; color:#4c1d95; border:2px solid #c4b5fd } .acom-sec:hover{ border-color:var(--vi) } .acom-sec.chico{ min-height:34px; padding:0 12px; font-size:13px }
+    .acom-prim:disabled,.acom-sec:disabled{ opacity:.55; cursor:not-allowed } .acom-link{ background:none; border:0; color:#5b21b6; font:inherit; font-weight:700; text-decoration:underline; cursor:pointer; padding:6px 2px; min-height:34px }
+    .acom button:focus-visible,.acom select:focus-visible,.acom-dlg button:focus-visible,.acom-dlg input:focus-visible{ outline:3px solid #2563eb; outline-offset:2px }
+    .acom-fila2{ display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin:10px 0 }
+    .acom-selc select,.acom-fl select{ margin-left:6px; min-height:38px; border:1px solid #cbd5e1; border-radius:8px; font:inherit; padding:0 10px; background:#fff }
+    .acom-kpis{ display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px } .acom-k{ background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:12px 16px } .acom-k span{ display:block; color:#475569; font-size:14px }
+    .acom-k b{ display:block; font-size:30px; font-variant-numeric:tabular-nums } .acom-k.tot{ background:#f5f3ff; border-color:#c4b5fd } .acom-k.tot b{ color:#4c1d95 }
+    .acom-kfoot{ display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between; align-items:center; margin:6px 2px 12px; font-size:12.5px; color:#64748b }
+    .acom-grid{ display:grid; grid-template-columns:minmax(0,7fr) minmax(360px,4fr); gap:14px; align-items:start; margin-bottom:14px }
+    .acom-card{ background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:16px 18px; min-width:0 }
+    .acom-eje{ position:relative; height:22px; margin:10px 150px 2px 150px; font-size:12px; color:#475569; font-weight:700 } .acom-eje span{ position:absolute; top:0; transform:translateX(-50%); white-space:nowrap }
+    .acom-barras{ display:grid; gap:8px } .acom-fila{ display:grid; grid-template-columns:140px minmax(0,1fr) 140px; gap:10px; align-items:center; width:100%; text-align:left; background:#fff; border:2px solid transparent; border-bottom-color:#eef2f7; border-radius:12px; padding:10px 6px; font:inherit; cursor:pointer; color:#0f172a }
+    .acom-fila:hover{ background:#faf8ff } .acom-fila.on{ border-color:var(--vi); background:#faf8ff }
+    .acom-n b{ display:block; font-size:16px } .acom-n span{ font-size:14px; font-variant-numeric:tabular-nums }
+    .acom-c{ display:grid; gap:3px; min-width:0 } .acom-pista{ position:relative; display:block; height:24px; background:#e5e7eb; border-radius:99px; overflow:hidden }
+    .acom-rel{ position:absolute; left:0; top:0; bottom:0; background:#16a34a; border-radius:99px; min-width:2px; display:flex; align-items:center; justify-content:center } .acom-rel em{ font-style:normal; color:#fff; font-size:12px; font-weight:800; padding:0 6px; white-space:nowrap }
+    .acom-marca{ position:absolute; top:0; bottom:0; width:2px; background:#334155; z-index:2; opacity:.55 }
+    .acom-c small{ font-size:12.5px; color:#334155 } .acom-c small.mut{ color:#64748b } .acom-c small b.ok{ color:var(--ve) }
+    .acom-p{ text-align:right; border-left:1px solid #e2e8f0; padding-left:10px } .acom-p b{ display:block; font-size:20px; color:#4c1d95; font-variant-numeric:tabular-nums } .acom-p span{ font-size:12.5px; color:#64748b }
+    .acom-objs{ display:flex; flex-wrap:wrap; gap:8px 22px; justify-content:center; margin-top:12px; padding:9px 12px; background:#f5f3ff; border-radius:10px; font-size:13.5px } .acom-objs b{ color:var(--ve) }
+    .acom-dh{ display:flex; gap:10px; align-items:center } .acom-grande{ font-size:34px; font-weight:900; color:#4c1d95; font-variant-numeric:tabular-nums; margin:4px 0 8px } .acom-grande span{ display:block; font-size:13px; font-weight:600; color:#475569 }
+    .acom-grande.ok{ color:var(--ve) } .acom-grande.pend{ color:var(--am) }
+    .acom-df{ display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-bottom:1px solid #eef2f7; font-size:14px } .acom-df b{ font-variant-numeric:tabular-nums; text-align:right } .acom-df.ok b{ color:var(--ve) } .acom-df.tot{ font-size:16px; border-bottom:0 } .acom-df.tot b{ color:#4c1d95 }
+    .acom-chip{ display:inline-block; font-size:12px; font-weight:800; border-radius:99px; padding:4px 11px; width:max-content } .acom-chip.info{ background:var(--vi2); color:#4c1d95 } .acom-chip.ok{ background:var(--ve2); color:var(--ve) } .acom-chip.pend{ background:var(--am2); color:var(--am) }
+    .acom-tw{ max-height:300px; overflow:auto; border:1px solid #e2e8f0; border-radius:10px } .acom-tw.alto{ max-height:380px } .acom-tw table{ width:100%; border-collapse:collapse; font-size:13px }
+    .acom-tw th{ position:sticky; top:0; background:#f1f5f9; text-align:left; padding:8px 10px; font-size:12px; z-index:3 } .acom-tw td{ padding:8px 10px; border-top:1px solid #eef2f7 } .acom .n{ text-align:right; font-variant-numeric:tabular-nums } .acom-tw tr.on td{ background:#faf8ff }
+    .acom-nota{ margin:8px 0; padding:8px 10px; border-radius:9px; background:var(--am2); color:var(--am); font-size:12.5px } .acom-info{ margin-top:12px; padding:9px 12px; border-radius:10px; background:#eff6ff; color:#1e3a8a; font-size:13px }
+    .acom-prox{ margin:8px 0; padding:8px 10px; border-radius:9px; background:#fff7ed; color:var(--am); font-weight:800; font-size:13.5px } .acom-prox.max{ background:var(--ve2); color:var(--ve) }
+    .acom-pago{ margin-top:12px; padding:12px 14px; border-radius:12px; font-size:13.5px } .acom-pago.pend{ background:#fffbeb; border:1px solid #fcd34d; color:var(--am) } .acom-pago.ok{ background:var(--ve2); border:1px solid #86efac; color:#14532d }
+    .acom-acc{ display:flex; flex-wrap:wrap; gap:8px; margin-top:12px } .acom-pie{ color:#64748b; font-size:12.5px; margin:8px 2px }
+    .acom-hh{ display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-bottom:10px } .acom-tabs{ display:flex; gap:4px; border:1px solid #cbd5e1; border-radius:10px; overflow:hidden }
+    .acom-tab{ background:#fff; border:0; padding:9px 18px; font:inherit; font-weight:700; color:#475569; cursor:pointer } .acom-tab.on{ background:var(--vi); color:#fff }
+    .acom-vacio{ color:#64748b; font-size:14px; padding:14px 6px; margin:0 } .acom-vacio-g{ color:#64748b; font-size:15px; padding:40px 10px; text-align:center }
+    .acom-msg{ padding:9px 12px; border-radius:9px; background:var(--ve2); color:var(--ve); font-weight:700; font-size:13.5px; margin-bottom:10px } .acom-err{ padding:10px 12px; border-radius:9px; background:#fef2f2; color:#991b1b; font-weight:700; font-size:13.5px; margin-bottom:10px }
+    .acom-bg{ position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:9000; display:flex; align-items:flex-start; justify-content:center; padding:24px 14px; overflow-y:auto }
+    .acom-dlg{ background:#fff; width:100%; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,.35); color:#0f172a } .acom-mh{ display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid #e2e8f0; font-size:18px }
+    .acom-mc{ padding:14px 18px } .acom-ma{ display:flex; gap:10px; justify-content:flex-end; padding:12px 18px; border-top:1px solid #e2e8f0; flex-wrap:wrap } .acom-x{ width:40px; height:40px; border:0; background:#f1f5f9; border-radius:50%; font-size:18px; cursor:pointer }
+    .acom-est{ min-height:20px; margin-top:8px; font-size:13px; font-weight:700; color:var(--am) } .acom-ed{ width:100%; border-collapse:collapse; margin:8px 0 } .acom-ed th{ text-align:left; font-size:12px; color:#64748b; padding:4px }
+    .acom-ed input{ width:100%; min-height:40px; border:1px solid #cbd5e1; border-radius:8px; padding:0 10px; font:inherit } .acom-lab{ display:flex; gap:8px; align-items:center; margin:8px 0; font-size:14px } .acom-vers{ margin:6px 0 0; padding-left:18px; font-size:13px; color:#475569 }
+    @media (max-width:1100px){ .acom-grid{ grid-template-columns:1fr } .acom-kpis{ grid-template-columns:repeat(2, minmax(0,1fr)) } .acom-fila{ grid-template-columns:110px minmax(0,1fr) 110px } .acom-eje{ margin-left:120px; margin-right:120px } }
+  `;
+  document.head.appendChild(st);
+})();
+
+</script>
 </body>
 </html>
