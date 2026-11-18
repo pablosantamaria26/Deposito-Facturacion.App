@@ -14828,7 +14828,10 @@ renderCatKPIs();
   const escalones = () => ((S.cfg && S.cfg.vigente && S.cfg.vigente.activo) ? S.cfg.vigente.escalones : []) || [];
   const nObj = (p, desde) => { const i = ((p && p.escalones) || escalones()).findIndex(x => num(x.desde) === num(desde)); return i >= 0 ? i + 1 : null; };
   const proxTxt = p => !p ? "" : p.maximo ? "Objetivo máximo alcanzado" : p.siguiente ? "Faltan " + m2(p.siguiente.faltan) + " para " + (p.alcanzado != null ? "el siguiente" : "el objetivo " + nObj(p, p.siguiente.desde)) : "";
-  const logroTxt = p => !p ? "" : p.alcanzado != null ? "Objetivo " + nObj(p, p.alcanzado) + " alcanzado" : "Sin premio todavía";
+  const logroTxt = p => !p ? "" : p.alcanzado != null ? (p.con_tolerancia ? "Premio alcanzado con tolerancia · Objetivo " + nObj(p, p.alcanzado) : "Objetivo " + nObj(p, p.alcanzado) + " alcanzado") : "Sin premio todavía";
+  /* Tolerancia (%): el mínimo que habilita un objetivo, igual que en el servidor (al centavo, hacia arriba). */
+  const minTol = (desde, tol) => Math.ceil(Math.round(num(desde) * (100 - Math.max(num(tol), 0)) * 1e6) / 1e6) / 100;
+  const tolTxt = t => String(num(t)).replace(".", ",") + " %";
 
   /* ── Datos: tres consultas al abrir o al tocar «Actualizar» ─────── */
   function cargar() {
@@ -14849,7 +14852,7 @@ renderCatKPIs();
     let t = "*Comisiones Queruclor — " + l.vendedor + "*\nPeríodo: " + fd(l.desde) + " al " + fd(l.cerrado_en || l.hasta) + " · cerrada el " + fh(l.cerrado_en || l.hasta) + "\n\n";
     det.forEach(d => { t += "• " + fd(d.confirmado_en) + " · " + d.cliente + " · recibo " + d.recibo + " · " + m2(d.importe) + "\n"; });
     t += "\nCobranza computable: " + m2(conP ? l.base_premio : l.importe_cobrado) + "\nComisión base" + (det.length ? " (" + pctTxt(det[0].pct) + ")" : "") + ": " + m2(l.comision) + "\n";
-    if (conP) t += "Objetivo alcanzado: " + (l.premio_desde == null ? "ninguno todavía" : "desde " + m2(l.premio_desde)) + "\nPremio: " + m2(l.premio) + "\n";
+    if (conP) t += "Objetivo alcanzado: " + (l.premio_desde == null ? "ninguno todavía" : "desde " + m2(l.premio_desde) + (l.premio_cfg.calculo && l.premio_cfg.calculo.con_tolerancia ? " (premio alcanzado con tolerancia)" : "")) + "\nPremio: " + m2(l.premio) + "\n";
     t += "*Total a liquidar: " + m2(l.total) + "*" + (conP ? " (" + m2(l.comision) + " + " + m2(l.premio) + ")" : "") + "\nEstado: " + estadoTxt(l);
     return t;
   }
@@ -14896,7 +14899,7 @@ renderCatKPIs();
   function proxCfg() {
     const fut = ((S.cfg && S.cfg.versiones) || []).filter(x => new Date(x.vigente_desde).getTime() > Date.now()).sort((a, b) => String(a.vigente_desde).localeCompare(String(b.vigente_desde)))[0];
     if (!fut) return "";
-    return `<div class="acom-nota">Configuración programada desde el ${fd(fut.vigente_desde)}: ${(fut.escalones || []).map(e => m2(e.desde) + " → " + m2(e.premio)).join(" · ")}${fut.activo === false ? " (premio desactivado)" : ""}. Hasta entonces rige la de arriba.</div>`;
+    return `<div class="acom-nota">Configuración programada desde el ${fd(fut.vigente_desde)}: ${(fut.escalones || []).map(e => m2(e.desde) + " → " + m2(e.premio)).join(" · ")}${num(fut.tolerancia) > 0 ? " · tolerancia " + tolTxt(fut.tolerancia) : ""}${fut.activo === false ? " (premio desactivado)" : ""}. Hasta entonces rige la de arriba.</div>`;
   }
   const df = (a, b, cls) => `<div class="acom-df ${cls || ""}"><span>${a}</span><b>${b}</b></div>`;
   function tablaRecibos(det, todos) {
@@ -14916,7 +14919,8 @@ renderCatKPIs();
         ${df("Cobranza computable", m2(p ? p.base : v.cobrado))}
         ${p && num(p.fuera_de_vigencia) > 0 ? `<div class="acom-nota">${m2(p.fuera_de_vigencia)} confirmados antes del ${fd(p.vigente_desde)}: conservan su comisión del 1 % pero no suman para el premio.</div>` : ""}
         ${df("Comisión base · " + pctTxt(v.pct), m2(p ? p.comision : v.comision))}
-        ${p ? df(p.alcanzado != null ? "Premio alcanzado · Objetivo " + nObj(p, p.alcanzado) : "Premio alcanzado", m2(p.premio), num(p.premio) > 0 ? "ok" : "") : ""}
+        ${p ? df(p.alcanzado != null ? (p.con_tolerancia ? "Premio alcanzado con tolerancia · Objetivo " : "Premio alcanzado · Objetivo ") + nObj(p, p.alcanzado) : "Premio alcanzado", m2(p.premio), num(p.premio) > 0 ? "ok" : "") : ""}
+        ${p && p.con_tolerancia ? `<div class="acom-nota">Cobrado real: ${m2(p.base)}. El objetivo es ${m2(p.alcanzado)} y con la tolerancia de ${tolTxt(p.tolerancia)} se habilita desde ${m2(p.alcanzado_minimo)}: el premio se paga completo y el 1 % sigue sobre lo cobrado.</div>` : ""}
         ${df("Ajustes", ajustes.length ? ajustes.length + " para decidir (no se descuentan solos)" : "sin ajustes en este ciclo")}
         ${p ? `<div class="acom-prox ${p.maximo ? "max" : ""}">${esc(logroTxt(p))} · ${esc(proxTxt(p))}</div>` : ""}
         <h4>Recibos del ciclo</h4>${tablaRecibos(d && d.detalle, S.verTodos)}
@@ -14960,11 +14964,11 @@ renderCatKPIs();
     p.innerHTML = `<div class="acom">
       <div class="acom-top"><div><h2>Comisiones y premios</h2><p class="acom-sub">Seguimiento de cobranzas y objetivos · el cierre y el pago se hacen en Caja</p></div>
         <div class="acom-btns"><button type="button" class="acom-sec" onclick="acomActualizar()">Actualizar</button><button type="button" class="acom-sec" onclick="acomCopiarReglamento()">Copiar reglamento para WhatsApp</button>
-          <button type="button" class="acom-sec" onclick="acomWhatsReglamento()">Abrir en WhatsApp</button><button type="button" class="acom-prim" onclick="acomConfig()">Configurar premios</button></div></div>
+          <button type="button" class="acom-sec" onclick="acomWhatsReglamento()">Compartir por WhatsApp</button><button type="button" class="acom-prim" onclick="acomConfig()">Configurar premios</button></div></div>
       <div class="acom-fila2">${selectorCiclo()}<span class="acom-chip pend">Cierre manual</span><button type="button" class="acom-link" onclick="acomHistorial()">Ver históricos</button></div>
       ${S.error ? `<div class="acom-err" role="alert">${esc(S.error)}</div>` : ""}<div id="acomMsg" class="acom-msg" role="status" ${S.msg ? "" : "hidden"}>${esc(S.msg)}</div>
       ${kpis()}<div class="acom-grid">${barras()}${detalle()}</div>${historial()}
-      <p class="acom-pie">La configuración y las liquidaciones son las mismas que usa Caja. Los premios rigen desde ${S.cfg && S.cfg.vigente ? fd(S.cfg.vigente.vigente_desde) : "—"}.</p></div>`;
+      <p class="acom-pie">La configuración y las liquidaciones son las mismas que usa Caja. Los premios rigen desde ${S.cfg && S.cfg.vigente ? fd(S.cfg.vigente.elegible_desde || S.cfg.vigente.vigente_desde) : "—"}${S.cfg && S.cfg.vigente && num(S.cfg.vigente.tolerancia) > 0 ? " · tolerancia " + tolTxt(S.cfg.vigente.tolerancia) : ""}.</p></div>`;
   }
   window.acomSel = k => { S.sel = k; S.verTodos = false; pintar(); };
   window.acomTodos = () => { S.verTodos = true; pintar(); };
@@ -14972,7 +14976,9 @@ renderCatKPIs();
   window.acomFiltro = (t, v) => { if (t === "v") S.fVend = v; else S.fCiclo = v; pintar(); };
   window.acomCiclo = v => { S.fCiclo = v; if (v) window.acomHistorial(); else pintar(); };
   window.acomHistorial = () => { pintar(); const h = $("acomHist"); if (h) h.scrollIntoView({ block: "start" }); };
-  window.acomActualizar = () => { cargar(); pintar(); aviso("Datos actualizados."); };
+  /* Al guardar la configuración se descartan los valores guardados temporalmente en esta pantalla (detalle por vendedor, memoria de lecturas). */
+  function descartarTemporales() { S.det = {}; S.verTodos = false; try { if (window.QRSrv && QRSrv.olvidar) QRSrv.olvidar(); } catch (e) {} }
+  window.acomActualizar =() => { cargar(); pintar(); aviso("Datos actualizados."); };
 
   /* ── Configurar premios: escalones con vigencia. Agrega una versión; los cierres anteriores conservan la suya ── */
   const ocupar = (m, b, txt) => { m.dataset.ocupado = "1"; m.querySelectorAll("button").forEach(x => { x.disabled = true; }); if (b) b.textContent = txt; };
@@ -14990,27 +14996,32 @@ renderCatKPIs();
     const v = (S.cfg && S.cfg.vigente) || { escalones: [], activo: true }; const e3 = (v.escalones || []).slice(); while (e3.length < 3) e3.push({ desde: "", premio: "" });
     const ult = S.liqs.length ? dia(S.liqs.map(l => l.cerrado_en || l.hasta).sort().pop()) : "", hoyD = dia(new Date()), manana = dia(new Date(Date.now() + 864e5));
     const hoy = ult && ult >= hoyD ? manana : hoyD;
-    const vers = ((S.cfg && S.cfg.versiones) || []).map(x => `<li>desde el <b>${fd(x.vigente_desde)}</b>: ${(x.escalones || []).map(e => m2(e.desde) + " → " + m2(e.premio)).join(" · ")}${x.activo === false ? " (desactivado)" : ""}</li>`).join("");
+    const vers = ((S.cfg && S.cfg.versiones) || []).map(x => `<li>desde el <b>${fd(x.vigente_desde)}</b>: ${(x.escalones || []).map(e => m2(e.desde) + " → " + m2(e.premio)).join(" · ")}${num(x.tolerancia) > 0 ? " · tolerancia " + tolTxt(x.tolerancia) : ""}${x.activo === false ? " (desactivado)" : ""}</li>`).join("");
     const m = modal(`<div class="acom-mh"><b>Configurar premios</b><button type="button" class="acom-x" aria-label="Cancelar" onclick="acomCerrarModal()">✕</button></div>
       <div class="acom-mc"><p class="acom-sub">Comisión base: <b>${((S.cfg && S.cfg.porcentajes) || []).map(pctTxt).join(", ") || "1 %"}</b> (se define por vendedor; acá no cambia). Se paga un solo premio: el del mayor objetivo alcanzado, sobre lo cobrado del ciclo.</p>
-        <table class="acom-ed"><thead><tr><th>Objetivo (cobranza desde)</th><th>Premio</th></tr></thead><tbody>${e3.map((e, i) =>
-          `<tr><td><input type="number" min="0" step="1" inputmode="numeric" data-d="${i}" value="${esc(e.desde)}" aria-label="Objetivo ${i + 1}"></td><td><input type="number" min="0" step="1" inputmode="numeric" data-p="${i}" value="${esc(e.premio)}" aria-label="Premio ${i + 1}"></td></tr>`).join("")}</tbody></table>
+        <table class="acom-ed"><thead><tr><th>Objetivo (cobranza desde)</th><th>Premio</th><th>Se habilita desde</th></tr></thead><tbody>${e3.map((e, i) =>
+          `<tr><td><input type="number" min="0" step="1" inputmode="numeric" data-d="${i}" value="${esc(e.desde)}" aria-label="Objetivo ${i + 1}"></td><td><input type="number" min="0" step="1" inputmode="numeric" data-p="${i}" value="${esc(e.premio)}" aria-label="Premio ${i + 1}"></td><td class="n" data-m="${i}">—</td></tr>`).join("")}</tbody></table>
+        <label class="acom-lab">Tolerancia (%) <input type="number" min="0" max="50" step="0.5" inputmode="decimal" id="acomTol" value="${v.tolerancia != null ? esc(v.tolerancia) : 3}" aria-label="Tolerancia en porcentaje" style="max-width:90px"></label>
+        <p class="acom-sub">Un objetivo se alcanza con lo cobrado ≥ objetivo × (1 − tolerancia). Es común a todos los vendedores y objetivos; con 0 % se desactiva. El premio se paga completo y el 1 % sigue sobre lo realmente cobrado.</p>
         <label class="acom-lab">Rige desde <input type="date" id="acomVig" value="${hoy}" min="${hoy}"></label>
         <label class="acom-lab"><input type="checkbox" id="acomAct" ${v.activo === false ? "" : "checked"}> Premio activo</label>
         <p class="acom-nota">La nueva escala rige desde esa fecha para los recibos confirmados desde entonces. Los cierres ya hechos conservan la configuración con la que se calcularon; la fecha no puede ser anterior al último cierre (${ult ? "último cierre: " + ult.split("-").reverse().join("/") : "todavía no hay cierres"}).</p>
         <p class="acom-sub">Exclusión de artículos de bajo margen: <b>desactivada</b> (solo afectaría los objetivos, nunca el 1 % base).</p>
         <details><summary>Versiones anteriores</summary><ul class="acom-vers">${vers}</ul></details><div class="acom-est" id="acomEst" role="status" aria-live="polite"></div></div>
       <div class="acom-ma"><button type="button" class="acom-sec" onclick="acomCerrarModal()">Cancelar</button><button type="button" class="acom-prim" id="acomConf" data-foco="1">Guardar configuración</button></div>`, 620);
+    const recalcMin = () => m.querySelectorAll("[data-d]").forEach(i => { const c = m.querySelector('[data-m="' + i.dataset.d + '"]'), d = parseFloat(i.value); c.textContent = d > 0 ? m2(minTol(d, parseFloat($("acomTol").value))) : "—"; });
+    m.addEventListener("input", recalcMin); recalcMin();
     $("acomConf").onclick = () => {
       if (m.dataset.ocupado) return;
       const escal = [...m.querySelectorAll("[data-d]")].map(i => ({ desde: parseFloat(i.value), premio: parseFloat(m.querySelector('[data-p="' + i.dataset.d + '"]').value) })).filter(e => e.desde > 0 && e.premio >= 0);
       const b = $("acomConf"), est = $("acomEst");
       if (!escal.length) { est.textContent = "Cargá al menos un objetivo con su premio."; return; }
+      const tol = parseFloat($("acomTol").value); if (!(tol >= 0 && tol <= 50)) { est.textContent = "La tolerancia tiene que estar entre 0 % y 50 %."; return; }
       ocupar(m, b, "Guardando…"); const vig = $("acomVig").value, act = $("acomAct").checked;
       setTimeout(() => {
-        let r; try { r = QRSrv.rpc("qr_premio_configurar", { p: { escalones: escal, vigente_desde: vig + "T00:00:00-03:00", activo: act, quien: QUIEN } }); } catch (e) { r = { ok: false, motivo: "Sin conexión con el servidor." }; }
+        let r; try { r = QRSrv.rpc("qr_premio_configurar", { p: { escalones: escal, vigente_desde: vig + "T00:00:00-03:00", activo: act, tolerancia: tol, quien: QUIEN } }); } catch (e) { r = { ok: false, motivo: "Sin conexión con el servidor." }; }
         if (!r || !r.ok) { liberar(m, b, "Guardar configuración"); est.textContent = (r && r.motivo) || "No se pudo guardar."; return; }
-        delete m.dataset.ocupado; m.remove(); cargar(); pintar(); aviso("Configuración guardada. Rige desde el " + vig.split("-").reverse().join("/") + "; los cierres anteriores no cambian.");
+        delete m.dataset.ocupado; m.remove(); descartarTemporales(); cargar(); pintar(); aviso("Configuración guardada. Rige desde el " + vig.split("-").reverse().join("/") + "; los cierres anteriores no cambian.");
       }, 30);
     };
   };
