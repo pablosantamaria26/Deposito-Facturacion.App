@@ -5806,6 +5806,21 @@ var qrcode = function() {
     return porClave;
   }
 
+  /* 20/11/2026: lo mismo, sin trabar la pantalla (QRSrv.rpcAsync). Devuelve una promesa con la misma forma. */
+  async function prepararBultosAsync(pedido, arts, quien, imprimiendo) {
+    if (!(global.QR_LOCAL && global.QRSrv && global.QRSrv.rpcAsync)) return prepararBultos(pedido, arts, quien, imprimiendo);
+    const lista = await global.QRSrv.rpcAsync("qr_bultos_preparar", {
+      p_pedido: String(pedido.id), p_arts: arts.map(a => a.tipo
+        ? { clave: a.clave, tipo: a.tipo, ean: a.ean, nombre: a.articulo, cajas: a.cajas, uc: a.uc, variantes: a.variantes, composicion: a.composicion }
+        : { ean: a.ean, nombre: a.articulo, cajas: a.cajas }),
+      p_cliente_id: String(pedido.cliente_id || ""), p_cliente_nombre: pedido.cliente_nombre || "",
+      p_quien: quien || "", p_imprimir: !!imprimiendo, p_codigo_corto: pedido.codigo_corto || null });
+    const porClave = {};
+    Object.defineProperty(porClave, "__info", { value: {}, enumerable: false });
+    (lista || []).forEach(b => { const k = b.clave || b.ean; (porClave[k] = porClave[k] || []).push(b.codigo); porClave.__info[b.codigo] = b; });
+    return porClave;
+  }
+
   function htmlTira(porArticulo, pedido, totalPedido, bultos) {
     const w = cfg.ancho, h = cfg.alto;
     /* Sin base compartida (QR_LOCAL apagado) no hay `qr_bultos_preparar` que
@@ -5906,7 +5921,7 @@ var qrcode = function() {
   }
 
   global.Etiquetas = {
-    articulosDe, contarCajasQueruclor, htmlTira, imprimir, prepararBultos, cajasDeSueltas,
+    articulosDe, contarCajasQueruclor, htmlTira, imprimir, prepararBultos, prepararBultosAsync, cajasDeSueltas,
     reimprimirArticulo, claveDe, cfg, guardarCfg,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = global.Etiquetas;
@@ -7443,7 +7458,7 @@ var qrcode = function() {
   }
 
   /* impresión remota 11/11/2026 */
-  const IMP_EN_CURSO = ["solicitada", "tomada", "enviada", "impresa", "incierta"];
+  const IMP_EN_CURSO = ["autorizacion", "solicitada", "tomada", "enviada", "detenida", "impresa", "incierta"];
   const impEstado = { pid: null, datos: null, t: 0, firma: "", pidiendo: false, error: null, pendiente: null };
   /* 16/11/2026: el pedido de impresión sin confirmar sobrevive a un corte o a cerrar la app (se reintenta con la MISMA identidad). */
   try { impEstado.pendiente = JSON.parse(localStorage.getItem("qr_imp_pend_v1") || "null"); } catch (x) {}
@@ -7468,7 +7483,7 @@ var qrcode = function() {
     catch (x) { impEstado.error = "Sin conexión: no se puede ver cómo va la impresión."; }
     impEstado.t = Date.now();
     const t = tiraActual(), ag = impEstado.datos && impEstado.datos.agente;
-    const firma = JSON.stringify([t && t.id, t && t.estado, ag && (ag.segundos > 90), ag && ag.estado_impresora, impEstado.error]);
+    const firma = JSON.stringify([t && t.id, t && t.estado, t && t.orden, t && t.detalle, t && t.confirmada_at, ag && (ag.segundos > 90), ag && ag.estado_impresora, impEstado.error, (impEstado.datos || {}).pausa, (impEstado.datos || {}).en_windows, ((impEstado.datos || {}).huerfanos || []).length]);
     /* Confirmada en otro equipo: las cajas ya cuentan como impresas, se relee la preparación. */
     if (t && t.estado === "confirmada" && (!antes || antes.estado !== "confirmada")) leerEstado(true);
     if (firma !== impEstado.firma) { impEstado.firma = firma; if ($("qrLector")) pintar(); }
@@ -7481,51 +7496,94 @@ var qrcode = function() {
     if (Date.now() - impEstado.t >= cada) leerImp();
   }, 1000);
 
+  /* ═══ Impresión segura (20/11/2026 · incidente «Pizzurno») ═══════════════════════════════════════════════════
+     Reemplaza el bloque del 11/11–16/11. Reglas:
+       · Lo que muestra la pantalla sale SIEMPRE del servidor (qr_imp_estado): estado del trabajo, cola de Windows de la PC, pausa.
+       · «Falta rollo» solo si la PC informa sin papel (código sin_papel); cualquier otra traba es «Revisar impresora».
+       · Con la tira detenida o retenida en Windows no se puede pedir otra ni dar por «salió»: primero Continuar o Cancelar en la PC.
+       · «Salieron algunas»: se confirman solo las cajas marcadas; el resto queda sin imprimir y sale después como «las que faltan».
+       · Reponer una etiqueta ya impresa pide autorización de oficina (Laura o Pablo). «Reimprimir todas» no existe más.
+       · Nada se pregunta con confirm()/prompt(): hojas propias, grandes, para el S9. */
+  const IMP_CODIGO_TXT = { sin_papel: "La impresora avisa que no tiene papel", fuera_de_linea: "La impresora está fuera de línea (apagada o desconectada)", tapa_abierta: "La tapa de la impresora está abierta",
+    atascada: "Hay una etiqueta atascada", pausada: "La cola de Windows está en pausa", atencion: "La impresora pide atención", error: "La impresora dio error", bandeja_llena: "La bandeja de salida está llena",
+    borrando: "Windows la está borrando", imprimiendo: "Está imprimiendo" };
+  const detDe = t => (t && t.detalle) || {};
+  const progreso = t => { const d = detDe(t); return d.paginas ? `${Number(d.paginas_impresas) || 0} de ${d.paginas} etiquetas salieron según Windows.` : ""; };
+  const tituloDetenida = t => detDe(t).codigo === "sin_papel" ? "🧻 Falta rollo de etiquetas" : "⚠️ Revisar impresora";
+  function textoDetenida(t) {
+    const d = detDe(t), base = IMP_CODIGO_TXT[d.codigo] || (d.estado_windows ? "Windows dice: " + d.estado_windows : "No avanza en la PC de Depósito");
+    return base + ". " + progreso(t) + (d.pausada_por_agente ? " La PC la dejó EN PAUSA para que no salga sola ni repetida: elegí qué hacer." : "");
+  }
+  const ordenTxt = t => t && t.orden ? (t.orden === "cancelar" ? "⏳ Orden enviada a la PC: cancelar en Windows…" : "⏳ Orden enviada a la PC: continuar…") : "";
+
   function htmlImpRemota(e, impresa) {
-    /* 16/11/2026: UN botón, siempre por la PC de Depósito. «Directo en esta PC» solo en una PC y solo si la de Depósito falla. */
     const b = e.bloque || {}, bloqueado = !!(b.listo || e.remito);
     const t = tiraActual(), d = impEstado.datos || {}, ag = d.agente, celu = dispImp() === "celular";
+    const pausa = d.pausa && d.pausa.activa ? d.pausa : null;
+    const enWin = Array.isArray(d.en_windows) ? d.en_windows : [];
+    const huerf = Array.isArray(d.huerfanos) ? d.huerfanos : [];
     const pcMal = !ag ? "La PC de impresión todavía no se conectó." : ag.segundos > 90 ? "La PC de impresión no responde desde las " + hhmm(ag.latido) + "." : null;
-    const impMal = ag && ag.segundos <= 90 && ag.estado_impresora && !/^lista/.test(ag.estado_impresora) ? "Impresora: " + ag.estado_impresora + "." : null;
-    const local = celu ? "" : `<button type="button" class="lq-lnk" id="lqTira" ${bloqueado ? "disabled" : ""}>Imprimir directo en esta PC</button>`;
-    const reimp = `<button type="button" class="lq-b" id="lqImpReimp">Reimprimir…</button>`;
+    const impMal = ag && ag.segundos <= 90 && ag.estado_impresora && !/^lista/.test(ag.estado_impresora) && !/^(imprimiendo|preparando)/i.test(ag.estado_impresora) ? "Impresora: " + ag.estado_impresora + "." : null;
+    const local = celu ? "" : `<button type="button" class="lq-lnk" id="lqTira" ${bloqueado || pausa || enWin.length ? "disabled" : ""}>Imprimir directo en esta PC</button>`;
     const caja = (clase, titulo, texto, acciones) => `<div class="lq-imp ${clase}" role="status"><b>${titulo}</b>${texto ? `<p>${esc(texto)}</p>` : ""}${acciones ? `<div class="lq-acc">${acciones}</div>` : ""}</div>`;
     const activas = (e.cajas || []).filter(c => c.estado === "activo");
     const sinImp = activas.filter(c => !(c.impresiones > 0));
     const algunaImp = impresa || activas.some(c => c.impresiones > 0) || !!(t && t.estado === "confirmada");
-    let html;
-    if (!t || ["cancelada", "vencida", "descartada"].includes(t.estado) || t.estado === "confirmada") {
+    const bVer = `<button type="button" class="lq-b" id="lqImpVer">Verificar impresora</button>`;
+    const bAlg = `<button type="button" class="lq-b" id="lqImpAlg">Salieron algunas…</button>`;
+    const reimp = `<button type="button" class="lq-b" id="lqImpReimp">Reimprimir…</button>`;
+    const terminada = !t || ["cancelada", "vencida", "descartada", "rechazada", "confirmada", "no_salio"].includes(t.estado);
+    const cancelSinResolver = t && t.estado === "cancelada" && t.enviada_at && !t.confirmada_at;   // la PC la borró de Windows: ¿qué salió?
+    let html = "";
+    if (pausa) html += caja("aviso", "⏸ Impresión pausada por oficina" + (pausa.quien ? " · " + esc(pausa.quien) : ""), (pausa.motivo || "") + " No se pueden pedir impresiones hasta que oficina la levante.", "");
+    if (cancelSinResolver) {
+      html += caja("duda", "Se canceló en la PC · ¿qué salió?", progreso(t) + " Mirá la impresora y marcá lo que tenés en la mano: lo que no salió se imprime después, sin repetir.",
+        `<button type="button" class="lq-b prim" id="lqImpAlg">Salieron algunas…</button><button type="button" class="lq-b" id="lqImpSi">Salieron todas</button><button type="button" class="lq-b" id="lqImpNo">No salió nada</button>`);
+    } else if (terminada && t && t.estado === "no_salio" && !algunaImp) {
+      html += caja("mal", "Marcaste que no salió", enWin.length ? "Todavía hay una impresión de este pedido retenida en la PC: oficina la tiene que borrar antes." : "Para volver a imprimirla hace falta autorización de oficina.", enWin.length || pausa ? "" : `${reimp}${local}`);
+    } else if (terminada) {
       const faltaAlgo = !algunaImp || sinImp.length > 0;
       const txt = impEstado.pidiendo ? "⏳ Pidiendo…"
         : !algunaImp ? "🖨️ Imprimir etiquetas" + (activas.length ? " (" + activas.length + ")" : "")
         : sinImp.length === 1 ? "🖨️ Imprimir la que falta · " + sinImp[0].etiqueta
         : sinImp.length ? "🖨️ Imprimir las " + sinImp.length + " que faltan"
-        : "🖨️ Reimprimir…";
-      html = `<div class="lq-imp-bar"><button type="button" class="lq-b ${faltaAlgo ? "prim" : ""}" id="lqImpPedir" ${bloqueado || impEstado.pidiendo ? "disabled" : ""}>${esc(txt)}</button>${pcMal || impMal ? local : ""}</div>`;
-      if (algunaImp && sinImp.length) html += caja("aviso", "🖨️ Falta imprimir " + (sinImp.length === 1 ? "la etiqueta " + esc(sinImp[0].etiqueta) : sinImp.length + " etiquetas"),
-        sinImp.map(c => c.etiqueta + " · " + c.nombre).join(" — ") + ". Se agregó después de la tira: con el botón sale solo eso.", "");
-      else if (t && t.estado === "confirmada") html += caja("ok", "✓ Etiquetas confirmadas", "Las tiene " + (t.confirmada_por || "") + " desde las " + hhmm(t.confirmada_at) + ".", "");
+        : "🖨️ Reponer una etiqueta…";
+      const sinBoton = !!(pausa || enWin.length);
+      html += `<div class="lq-imp-bar"><button type="button" class="lq-b ${faltaAlgo ? "prim" : ""}" id="lqImpPedir" ${bloqueado || impEstado.pidiendo || sinBoton ? "disabled" : ""}>${esc(txt)}</button>${(pcMal || impMal) && !sinBoton ? local : ""}</div>`;
+      if (enWin.length) html += caja("aviso", "⚠️ Hay una impresión vieja de este pedido retenida en la PC de Depósito",
+        enWin.map(x => (x.etiquetas || "?") + " etiquetas · " + (x.paginas_impresas != null ? x.paginas_impresas + " salieron según Windows · " : "") + "Windows: " + (x.estado_windows || "?")).join(" — ") + ". No sale nada nuevo de este pedido hasta que oficina la borre o la haga continuar (desde Caja o Admin).", bVer);
+      else if (algunaImp && sinImp.length) html += caja("aviso", "🖨️ Falta imprimir " + (sinImp.length === 1 ? "la etiqueta " + esc(sinImp[0].etiqueta) : sinImp.length + " etiquetas"),
+        sinImp.map(c => c.etiqueta + " · " + c.nombre).join(" — ") + ". Con el botón sale solo eso, sin repetir las que ya están.", "");
+      else if (t && t.estado === "confirmada") html += caja("ok", "✓ Etiquetas confirmadas", "Las tiene " + (t.confirmada_por || "") + " desde las " + hhmm(t.confirmada_at) + (t.salieron ? " (" + t.salieron.length + " de " + (t.codigos || []).length + ")" : "") + ".", "");
       else if (t && t.estado === "vencida") html += caja("info", "La última impresión pedida venció", "Nadie la imprimió en 8 horas: no va a salir sola.", "");
+      else if (t && t.estado === "rechazada") html += caja("info", "Oficina no autorizó la reposición", (t.autorizada_por ? t.autorizada_por + ". " : "") + "Si hace falta igual, pedila de nuevo y hablá con Laura o Pablo.", "");
       else if (t && t.estado === "cancelada") html += caja("info", "La última impresión pedida se canceló", "", "");
-      if ((pcMal || impMal) && faltaAlgo) html += caja("aviso", "⚠️ " + (pcMal || impMal), "Si pedís ahora, queda en la cola y sale cuando la PC y la impresora estén listas.", "");
+      if ((pcMal || impMal) && faltaAlgo && !sinBoton) html += caja("aviso", "⚠️ " + (pcMal || impMal), "Si pedís ahora, queda en la cola y sale cuando la PC y la impresora estén listas.", "");
+    } else if (t.estado === "autorizacion") {
+      html += caja("curso", "⏳ Esperando autorización de oficina · " + hhmm(t.solicitada_at), (t.tipo === "reimpresion" ? "Reposición de " + (t.etiquetas === 1 ? "1 etiqueta" : t.etiquetas + " etiquetas") : "Volver a imprimir la tira") + (t.motivo ? " · motivo: " + t.motivo : "") + ". Laura o Pablo la aprueban desde Caja o Admin; cuando lo hagan, sale sola por la PC de Depósito.",
+        `<button type="button" class="lq-b" id="lqImpCancelar">Cancelar</button>`);
     } else if (t.estado === "solicitada") {
-      html = caja(pcMal || impMal ? "aviso" : "curso", "⏳ Pedida a la PC de Depósito · " + hhmm(t.solicitada_at),
+      html += caja(pcMal || impMal ? "aviso" : "curso", "⏳ Pedida a la PC de Depósito · " + hhmm(t.solicitada_at),
         pcMal || impMal ? (pcMal || impMal) + " Queda en la cola y sale cuando vuelva." : "Esperando que la PC la tome.",
         `<button type="button" class="lq-b" id="lqImpCancelar">Cancelar</button>${pcMal || impMal ? local : ""}`);
     } else if (t.estado === "tomada") {
-      html = caja("curso", "🖨️ La PC de Depósito la está preparando…", impMal, "");
+      html += caja("curso", "🖨️ La PC de Depósito la está preparando…", (ag && /preparando/i.test(ag.estado_impresora || "") ? ag.estado_impresora + ". " : "") + (t.etiquetas > 20 ? "Una tira larga tarda varios minutos." : ""), "");
     } else if (t.estado === "enviada") {
-      html = caja("curso", "🖨️ Enviada a la impresora…", impMal || "Esperando que la impresora termine.", "");
+      html += caja("curso", "🖨️ Imprimiendo…", progreso(t) || (impMal || "Esperando que la impresora termine."), ordenTxt(t) ? `<span class="lq-ord">${esc(ordenTxt(t))}</span>` : "");
+    } else if (t.estado === "detenida") {
+      html += caja("duda", tituloDetenida(t), textoDetenida(t),
+        t.orden ? `<span class="lq-ord">${esc(ordenTxt(t))}</span>${bVer}`
+          : `<button type="button" class="lq-b prim" id="lqImpCont">${detDe(t).codigo === "sin_papel" ? "Ya puse rollo: continuar" : "Ya está lista: continuar"}</button><button type="button" class="lq-b" id="lqImpCancPC">No sigue: cancelar en la PC</button>${bVer}`);
     } else if (t.estado === "impresa") {
       const una = t.etiquetas === 1;
-      html = caja("listo", "✅ La impresora la recibió · " + hhmm(t.impresa_at), "Buscá " + (una ? "la etiqueta" : "las " + (t.etiquetas || "") + " etiquetas") + " en la térmica. ¿" + (una ? "La tenés" : "Las tenés") + " en la mano?",
-        `<button type="button" class="lq-b prim" id="lqImpSi">Sí, ya ${una ? "la" : "las"} tengo</button><button type="button" class="lq-b" id="lqImpNo">No salió</button>`);
+      html += caja("listo", "✅ La impresora la recibió · " + hhmm(t.impresa_at), "Buscá " + (una ? "la etiqueta" : "las " + (t.etiquetas || "") + " etiquetas") + " en la térmica. ¿" + (una ? "La tenés" : "Las tenés") + " en la mano?",
+        `<button type="button" class="lq-b prim" id="lqImpSi">Sí, ya ${una ? "la" : "las"} tengo</button>${una ? "" : bAlg}<button type="button" class="lq-b" id="lqImpNo">No salió</button>`);
     } else if (t.estado === "incierta") {
-      html = caja("duda", "⚠️ No se sabe si salió", (t.error ? t.error + " " : "") + "Mirá la impresora antes de hacer nada: no se reimprime sola.",
-        `<button type="button" class="lq-b prim" id="lqImpSi">Salió</button><button type="button" class="lq-b" id="lqImpNo">No salió</button>${reimp}`);
+      html += caja("duda", "⚠️ No se sabe si salió", (t.error ? t.error + " " : "") + progreso(t) + " Mirá la impresora antes de hacer nada: no se reimprime sola.",
+        `<button type="button" class="lq-b prim" id="lqImpSi">Salió</button>${t.etiquetas > 1 ? bAlg : ""}<button type="button" class="lq-b" id="lqImpNo">No salió</button>${bVer}`);
     }
-    if (t && t.estado === "fallida") html = caja("mal", "✗ No se pudo imprimir", t.error || "", `${reimp}<button type="button" class="lq-b" id="lqImpSi">Salió igual</button>${local}`);
-    if (t && t.estado === "no_salio") html = caja("mal", "Marcaste que no salió", "", `${reimp}${local}`);
+    if (t && t.estado === "fallida") html += caja("mal", "✗ No se pudo imprimir", t.error || "", `${reimp}<button type="button" class="lq-b" id="lqImpSi">Salió igual</button>${local}`);
+    if (!t && huerf.length && !enWin.length) html += caja("info", "ℹ️ La PC de Depósito tiene " + huerf.length + (huerf.length === 1 ? " impresión vieja retenida" : " impresiones viejas retenidas") + " en Windows", "No son de este pedido. Oficina las revisa desde Caja o Admin.", "");
     { const pv = impEstado.pendiente; if (pv && String(pv.pid) === String((pedido() || {}).id) && !impEstado.pidiendo) html += caja("aviso", "⚠️ Se cortó la conexión al pedir la impresión", "No se sabe si llegó a la PC de Depósito. Tocá el botón: se reintenta el MISMO pedido y no sale dos veces.", ""); }
     if (impEstado.error) html += caja("aviso", impEstado.error, "", "");
     return `<div class="lq-impw${celu ? " celu" : ""}">${html}</div>`;
@@ -7541,6 +7599,8 @@ var qrcode = function() {
       return { codigo: cod, n: x.n, nombre: c.nombre || nombreArt(x.clave) || x.ean || "", etiqueta: c.etiqueta || "N° " + String(x.n).padStart(3, "0"), impresa: (c.impresiones || 0) > 0 };
     }).sort((a, b) => a.n - b.n);
   }
+  /* Las cajas del pedido tal como las conoce la pantalla (sin pedirle nada al servidor): para «Salieron algunas». */
+  const cajasDeEstado = () => ((st.estado || {}).cajas || []).filter(c => c.estado === "activo").map(c => ({ codigo: c.codigo, n: c.n, nombre: c.nombre || "", etiqueta: c.etiqueta || "N° " + String(c.n).padStart(3, "0"), impresa: (c.impresiones || 0) > 0 }));
   /* La tira de SOLO esas cajas (misma etiqueta de siempre, mismo código de cada caja). */
   function htmlDeCodigos(p, arts, bultos, codigos) {
     const total = arts.reduce((s, a) => s + a.cajas, 0);
@@ -7555,19 +7615,24 @@ var qrcode = function() {
     return { html: Etiquetas.htmlTira(sel, p, total, bultos), n: sel.reduce((s, a) => s + a.soloIdx.length, 0) };
   }
 
-  /* El botón. Primera vez: la tira completa, sin preguntar. Si ya se imprimió algo: qué imprimir (la que falta primero). */
-  function pedirImpresion() {
+  /* El botón. Primera vez: la tira completa, sin preguntar. Si ya se imprimió algo: qué imprimir (la que falta primero).
+     20/11/2026: ASINCRÓNICO. Los códigos de caja los da el servidor sin trabar la pantalla; «Pidiendo…» aparece al toque. */
+  async function pedirImpresion() {
     const p = pedido(); if (!p || impEstado.pidiendo) return;
     if (!quien()) return aviso("Primero poné tu nombre", "error");
     { const pv = impEstado.pendiente; if (pv && String(pv.pid) === String(p.id)) return enviarImp(p, null, null, pv.p.tipo, pv.p.codigos, pv.p.motivo); }
     const arts = Etiquetas.articulosDe(p, items());
     if (!arts.length) return aviso("Este pedido no tiene cajas de Queruclor para etiquetar", "error");
+    impEstado.pidiendo = true; pintar();
     let bultos;
-    try { bultos = Etiquetas.prepararBultos(p, arts, quien(), false); }
-    catch (x) { return aviso("Sin conexión: los códigos de las cajas los da el servidor. No se pidió nada.", "error"); }
+    try { bultos = await Etiquetas.prepararBultosAsync(p, arts, quien(), false); }
+    catch (x) { impEstado.pidiendo = false; pintar(); return aviso("Sin conexión: los códigos de las cajas los da el servidor. No se pidió nada.", "error"); }
+    if ((pedido() || {}).id !== p.id) { impEstado.pidiendo = false; return; }
     const cajas = cajasImp(bultos, arts), faltan = cajas.filter(c => !c.impresa);
     if (!cajas.length) return enviarImp(p, arts, bultos, "tira", [], null);
-    if (faltan.length === cajas.length) return enviarImp(p, arts, bultos, "tira", cajas.map(c => c.codigo), null);
+    /* Lo que falta imprimir sale directo (el botón ya dice qué va a salir); la hoja queda para reponer una etiqueta ya impresa. */
+    if (faltan.length) return enviarImp(p, arts, bultos, "tira", faltan.map(c => c.codigo), null);
+    impEstado.pidiendo = false; pintar();
     hojaImp({ p, arts, bultos, cajas, faltan });
   }
   /* Manda a la cola de la PC de Depósito. Si se corta, el próximo toque reintenta el MISMO pedido: no se duplica. */
@@ -7586,30 +7651,53 @@ var qrcode = function() {
       catch (x) { aviso("No se pudo confirmar el pedido de impresión (" + x.message + "). Tocá de nuevo: no se duplica.", "error"); return; }
       impEstado.pendiente = null; guardarPendImp();
       if (!r.ok) aviso(r.motivo || "No se pudo pedir la impresión", r.razon === "en_curso" ? undefined : "error");
+      else if (r.trabajo && r.trabajo.estado === "autorizacion") aviso("Reposición pedida: espera la autorización de oficina (Laura o Pablo)");
       else aviso(r.repetida ? "Ya estaba pedida a Depósito" : (tipo === "reimpresion" ? "Reimpresión pedida" : "Pedida") + " a la PC de Depósito · " + pend.n + (pend.n === 1 ? " etiqueta" : " etiquetas"));
     } finally { impEstado.pidiendo = false; await leerImp(); pintar(); }
   }
-  /* Hoja grande (pensada para el Galaxy S9): qué imprimir y, si es reimpresión, por qué. */
-  const MOTIVOS_IMP = ["Se rompió o se mojó", "Salió mal impresa", "Se perdió", "No se pegó"];
+  /* Hoja grande (pensada para el Galaxy S9). Base de todas las preguntas: nunca confirm()/prompt(). */
   const cerrarHojaImp = () => { const v = $("lqImpHoja"); if (v) v.remove(); };
-  function hojaImp(ctx) {
+  function abrirHoja(pinta0) {
     cerrarHojaImp();
     const ov = document.createElement("div"); ov.id = "lqImpHoja"; ov.className = "lqh-ov";
-    const pinta = h => { ov.innerHTML = `<div class="lqh" role="dialog" aria-modal="true" aria-label="Imprimir etiquetas">${h}</div>`; };
-    const linea = c => esc(c.etiqueta) + " · " + esc(c.nombre);
+    const pinta = h => { ov.innerHTML = `<div class="lqh" role="dialog" aria-modal="true">${h}</div>`; };
+    document.body.appendChild(ov); pinta0(pinta, ov);
+    return { ov, pinta };
+  }
+  /* Pregunta con dos salidas (y un campo opcional). Devuelve el texto del campo (o true) / null si cancela. */
+  function hojaPregunta(o) {
+    return new Promise(res => {
+      const h = abrirHoja((pinta, ov) => {
+        pinta(`<b class="lqh-t">${esc(o.titulo)}</b>${o.texto ? `<p class="lqh-s">${esc(o.texto)}</p>` : ""}
+          ${o.campo ? `<input id="lqhCampo" class="lqh-in" maxlength="120" autocomplete="off" placeholder="${esc(o.campo)}">` : ""}
+          <button type="button" class="lqh-op ${o.peligro ? "mal" : "prim"} lqh-env" data-a="ok"><span>${esc(o.ok || "Sí")}</span>${o.okTexto ? `<small>${esc(o.okTexto)}</small>` : ""}</button>
+          <button type="button" class="lqh-x" data-a="cerrar">${esc(o.cancelar || "Volver")}</button>`);
+        ov.onclick = ev => {
+          if (ev.target === ov) { cerrarHojaImp(); return res(null); }
+          const x = ev.target.closest("button"); if (!x) return;
+          if (x.dataset.a === "cerrar") { cerrarHojaImp(); return res(null); }
+          if (x.dataset.a === "ok") { const inp = $("lqhCampo"); const v = inp ? inp.value.trim() : true; if (inp && !v) { inp.focus(); return; } cerrarHojaImp(); return res(v); }
+        };
+        const inp = $("lqhCampo"); if (inp) setTimeout(() => inp.focus(), 50);
+      });
+    });
+  }
+  const MOTIVOS_IMP = ["Se rompió o se mojó", "Salió mal impresa", "Se perdió", "No se pegó"];
+  function hojaImp(ctx) {
     let sel = null;
+    const { ov, pinta } = abrirHoja(() => {});
+    const linea = c => esc(c.etiqueta) + " · " + esc(c.nombre);
     const inicio = () => pinta(`<b class="lqh-t">¿Qué imprimís?</b>
       ${ctx.faltan.length ? `<button type="button" class="lqh-op prim" data-a="faltan"><span>${ctx.faltan.length === 1 ? "La que falta" : "Las " + ctx.faltan.length + " que faltan"}</span><small>${ctx.faltan.map(linea).join("<br>")}</small></button>` : ""}
-      <button type="button" class="lqh-op" data-a="una"><span>Reimprimir una sola</span><small>Elegís la caja (se rompió o se perdió su etiqueta)</small></button>
-      <button type="button" class="lqh-op" data-a="todas"><span>Reimprimir todas (${ctx.cajas.length})</span><small>Sale la tira completa otra vez</small></button>
+      <button type="button" class="lqh-op" data-a="una"><span>Reponer una etiqueta</span><small>Se rompió, se mojó o se perdió la de UNA caja. Pide autorización de oficina (Laura o Pablo).</small></button>
       <button type="button" class="lqh-x" data-a="cerrar">Cancelar</button>`);
     const una = () => pinta(`<b class="lqh-t">¿Qué caja?</b><p class="lqh-s">El número está debajo de las barras de la etiqueta.</p>
       <div class="lqh-lista">${ctx.cajas.map(c => `<button type="button" class="lqh-op" data-cod="${esc(c.codigo)}"><span>${esc(c.etiqueta)}</span><small>${esc(c.nombre)}${c.impresa ? "" : " · todavía no se imprimió"}</small></button>`).join("")}</div>
       <button type="button" class="lqh-x" data-a="volver">Volver</button>`);
-    const motivo = () => pinta(`<b class="lqh-t">¿Por qué se reimprime?</b><p class="lqh-s">${sel.length === 1 ? "1 etiqueta" : sel.length + " etiquetas"} · queda registrado.</p>
+    const motivo = () => pinta(`<b class="lqh-t">¿Por qué se repone?</b><p class="lqh-s">1 etiqueta · queda registrado y lo autoriza oficina.</p>
       <div class="lqh-chips">${MOTIVOS_IMP.map(m => `<button type="button" class="lqh-chip" data-m="${esc(m)}">${esc(m)}</button>`).join("")}</div>
       <input id="lqhOtro" class="lqh-in" maxlength="120" autocomplete="off" placeholder="Otro motivo…">
-      <button type="button" class="lqh-op prim lqh-env" data-a="otro"><span>Reimprimir con este motivo</span></button>
+      <button type="button" class="lqh-op prim lqh-env" data-a="otro"><span>Pedir la reposición</span></button>
       <button type="button" class="lqh-x" data-a="volver">Volver</button>`);
     const mandar = (tipo, codigos, mot) => { cerrarHojaImp(); enviarImp(ctx.p, ctx.arts, ctx.bultos, tipo, codigos, mot); };
     ov.onclick = ev => {
@@ -7620,10 +7708,9 @@ var qrcode = function() {
       if (a === "volver") return inicio();
       if (a === "faltan") return mandar("tira", ctx.faltan.map(c => c.codigo), null);
       if (a === "una") return una();
-      if (a === "todas") { sel = ctx.cajas.map(c => c.codigo); return motivo(); }
       if (x.dataset.cod) {
         const c = ctx.cajas.find(y => y.codigo === x.dataset.cod);
-        if (c && !c.impresa) return mandar("tira", [c.codigo], null); // nunca se imprimió: no es reimpresión
+        if (c && !c.impresa) return mandar("tira", [c.codigo], null); // nunca se imprimió: no es reposición
         sel = [x.dataset.cod]; return motivo();
       }
       if (x.dataset.m || a === "otro") {
@@ -7632,37 +7719,72 @@ var qrcode = function() {
         return mandar("reimpresion", sel, m);
       }
     };
-    document.body.appendChild(ov); inicio();
+    inicio();
   }
-  async function confirmarImp(salio) {
+  /* «Salieron algunas»: se marcan las cajas de ESA impresión que están en la mano. */
+  function hojaSalieron(t) {
+    const porCod = {}; cajasDeEstado().forEach(c => { porCod[c.codigo] = c; });
+    const cods = (t.codigos || []).slice();
+    const { ov, pinta } = abrirHoja(() => {});
+    const marcadas = new Set();
+    const dib = () => pinta(`<b class="lqh-t">¿Cuáles salieron?</b><p class="lqh-s">Tocá las etiquetas que tenés en la mano. Las que no marques quedan como «sin imprimir» y salen después, sin repetir.</p>
+      <div class="lqh-lista">${cods.map(cod => { const c = porCod[cod] || { etiqueta: cod, nombre: "" }; const on = marcadas.has(cod); return `<button type="button" class="lqh-op lqh-chk ${on ? "on" : ""}" data-cod="${esc(cod)}" aria-pressed="${on}"><span>${on ? "☑" : "☐"} ${esc(c.etiqueta)}</span><small>${esc(c.nombre)}</small></button>`; }).join("")}</div>
+      <button type="button" class="lqh-op prim lqh-env" data-a="ok" ${marcadas.size ? "" : "disabled"}><span>Confirmar ${marcadas.size ? "estas " + marcadas.size : "las marcadas"}</span><small>${cods.length - marcadas.size} quedan sin imprimir</small></button>
+      <button type="button" class="lqh-x" data-a="cerrar">Volver</button>`);
+    ov.onclick = async ev => {
+      if (ev.target === ov) return cerrarHojaImp();
+      const x = ev.target.closest("button"); if (!x) return;
+      if (x.dataset.a === "cerrar") return cerrarHojaImp();
+      if (x.dataset.cod) { if (marcadas.has(x.dataset.cod)) marcadas.delete(x.dataset.cod); else marcadas.add(x.dataset.cod); return dib(); }
+      if (x.dataset.a === "ok" && marcadas.size) { cerrarHojaImp(); return confirmarImp(true, [...marcadas]); }
+    };
+    dib();
+  }
+  async function confirmarImp(salio, codigos) {
     const t = tiraActual(); if (!t) return;
-    if (!salio && !confirm("¿Confirmás que las etiquetas NO salieron?\nDespués vas a poder reimprimir.")) return;
+    if (!salio && !(await hojaPregunta({ titulo: "¿Confirmás que NO salió ninguna etiqueta?", texto: "Mirá la impresora antes. Si salieron algunas, volvé y elegí «Salieron algunas».", ok: "No salió ninguna", peligro: true, cancelar: "Volver" }))) return;
     try {
-      const r = await rpcImp("qr_imp_confirmar", { id: t.id, quien: quien(), salio });
+      const p = { id: t.id, quien: quien(), salio }; if (codigos) p.codigos = codigos;
+      const r = await rpcImp("qr_imp_confirmar", p);
       if (!r.ok) aviso(r.motivo || "No se pudo guardar", "error");
+      else if (salio && codigos) aviso("Listo: " + codigos.length + " confirmadas; las demás quedan para imprimir");
       else if (salio) aviso("Listo: ya podés leer las cajas");
     } catch (x) { aviso("Sin conexión: no se guardó. Volvé a tocar cuando haya señal.", "error"); return; }
     leerEstado(true); await leerImp(); pintar();
   }
   async function cancelarImp() {
     const t = tiraActual(); if (!t) return;
-    if (!confirm("¿Cancelar el pedido de impresión a Depósito?")) return;
+    if (!(await hojaPregunta({ titulo: t.estado === "autorizacion" ? "¿Cancelar el pedido de reposición?" : "¿Cancelar el pedido de impresión a Depósito?", ok: "Sí, cancelar", peligro: true, cancelar: "Volver" }))) return;
     try { const r = await rpcImp("qr_imp_cancelar", { id: t.id, quien: quien(), motivo: "cancelada desde Depósito" }); if (!r.ok) aviso(r.motivo, "error"); }
     catch (x) { aviso("Sin conexión: no se canceló.", "error"); }
-    await leerImp();
+    await leerImp(); pintar();
+  }
+  /* Órdenes a la PC: continuar / cancelar en Windows. La PC las ejecuta y avisa; la pantalla solo refleja. */
+  async function ordenImp(orden) {
+    const t = tiraActual(); if (!t) return;
+    const d = detDe(t), salieron = Number(d.paginas_impresas) || 0;
+    const pregunta = orden === "reanudar"
+      ? { titulo: d.codigo === "sin_papel" ? "¿Ya pusiste el rollo?" : "¿La impresora ya está lista?", texto: "La PC le dice a Windows que siga. Algunas impresoras vuelven a empezar la tira: si salen etiquetas repetidas, tiralas y confirmá solo una por caja.", ok: "Sí, continuar" }
+      : { titulo: "¿Cancelar esta impresión en la PC?", texto: (salieron ? salieron + " etiquetas habían salido según Windows. " : "") + "Windows la borra de la cola; después marcás cuáles tenés en la mano y el resto se imprime aparte, sin repetir.", ok: "Sí, cancelar en la PC", peligro: true };
+    if (!(await hojaPregunta(Object.assign({ cancelar: "Volver" }, pregunta)))) return;
+    try { const r = await rpcImp("qr_imp_orden", { id: t.id, orden, quien: quien() }); if (!r.ok) aviso(r.motivo || "No se pudo mandar la orden", "error"); else aviso("Orden enviada a la PC de Depósito"); }
+    catch (x) { aviso("Sin conexión: la orden no llegó. Tocá de nuevo.", "error"); }
+    await leerImp(); pintar();
   }
   async function reimprimirImp() {
     const t = tiraActual(); if (!t) return;
-    const motivo = (prompt("¿Por qué se reimprime? (queda registrado)") || "").trim();
+    const motivo = await hojaPregunta({ titulo: "¿Por qué se vuelve a imprimir?", texto: "Queda registrado. Como ya se mandó una vez a la impresora, oficina (Laura o Pablo) la autoriza antes de que salga.", campo: "Motivo…", ok: "Pedir la reimpresión", cancelar: "Volver" });
     if (!motivo) return;
     const pend = impEstado.reimp && impEstado.reimp.anterior === t.id ? impEstado.reimp : (impEstado.reimp = { anterior: t.id, op: opNuevo() });
     try {
       const r = await rpcImp("qr_imp_reimprimir", { op: pend.op, anterior: t.id, quien: quien(), motivo, dispositivo: dispImp() });
       impEstado.reimp = null;
-      if (!r.ok) aviso(r.motivo || "No se pudo reimprimir", "error"); else aviso("Reimpresión pedida a Depósito");
+      if (!r.ok) aviso(r.motivo || "No se pudo reimprimir", "error"); else aviso(r.trabajo && r.trabajo.estado === "autorizacion" ? "Pedida: espera la autorización de oficina" : "Reimpresión pedida a Depósito");
     } catch (x) { aviso("Sin conexión: no se pidió. Tocá de nuevo: no se duplica.", "error"); }
-    await leerImp();
+    await leerImp(); pintar();
   }
+  /* «Verificar impresora»: solo relee el estado del servidor. Nunca crea una impresión. */
+  async function verificarImp() { impEstado.t = 0; aviso("Consultando a la PC de Depósito…"); await leerImp(); pintar(); }
   (function () {
     const s = document.createElement("style");
     s.textContent = ".lq-impw{margin:8px 0 10px}.lq-imp-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}" +
@@ -7683,7 +7805,10 @@ var qrcode = function() {
       ".lqh-op.prim{background:#1d4ed8;border-color:#1d4ed8;color:#fff}.lqh-op.prim small{color:#dbeafe}.lqh-op:focus-visible,.lqh-chip:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}" +
       ".lqh-chips{display:flex;flex-wrap:wrap;gap:8px}.lqh-chip{min-height:46px;padding:8px 14px;border-radius:999px;border:1.5px solid #94a3b8;background:#fff;color:#0f172a;font:inherit;font-weight:700;cursor:pointer}" +
       ".lqh-in{width:100%;box-sizing:border-box;min-height:48px;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:10px;font-size:16px}" +
-      ".lqh-env{min-height:50px;align-items:center}.lqh-x{min-height:48px;border:0;background:none;color:#334155;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}";
+      ".lqh-env{min-height:50px;align-items:center}.lqh-x{min-height:48px;border:0;background:none;color:#334155;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}" +
+      /* 20/11/2026: impresión segura */
+      ".lqh-op.mal{background:#b91c1c;border-color:#b91c1c;color:#fff}.lqh-op.mal small{color:#fecaca}.lqh-chk.on{border-color:#1d4ed8;background:#eff6ff}.lqh-op[disabled]{opacity:.5;cursor:default}" +
+      ".lq-ord{font-size:13.5px;font-weight:700;color:#1e3a8a}.lq-imp .lq-b[disabled]{opacity:.5}";
     (document.head || document.documentElement).appendChild(s);
   })();
 
@@ -7818,11 +7943,13 @@ var qrcode = function() {
   function enganchar(e) {
     const on = (id, f) => { const x = $(id); if (x) x.onclick = f; };
     on("lqTira", async () => {
-      const t = tiraActual();
+      const t = tiraActual(), d = impEstado.datos || {};
+      if (Array.isArray(d.en_windows) && d.en_windows.length) return aviso("Hay una impresión de este pedido retenida en la PC de Depósito: primero se resuelve esa.", "error");
+      if (d.pausa && d.pausa.activa) return aviso("La impresión está pausada por oficina.", "error");
       if (t && t.estado === "solicitada") {
-        try { const c = await rpcImp("qr_imp_cancelar", { id: t.id, quien: quien(), motivo: "se imprimió desde este equipo" }); if (!c.ok && !confirm((c.motivo || "La PC de Depósito ya la tomó.") + "\n\n¿Imprimir también desde este equipo?")) return; }
-        catch (x) { if (!confirm("No se pudo cancelar el pedido a Depósito (sin conexión): podría salir dos veces.\n\n¿Imprimir igual desde este equipo?")) return; }
-      } else if (t && ["tomada", "enviada"].includes(t.estado) && !confirm("La PC de Depósito ya la está imprimiendo.\n\n¿Imprimir también desde este equipo?")) return;
+        try { const c = await rpcImp("qr_imp_cancelar", { id: t.id, quien: quien(), motivo: "se imprimió desde este equipo" }); if (!c.ok && !(await hojaPregunta({ titulo: c.motivo || "La PC de Depósito ya la tomó.", texto: "¿Imprimir también desde este equipo? Puede salir dos veces.", ok: "Imprimir igual", peligro: true, cancelar: "No" }))) return; }
+        catch (x) { if (!(await hojaPregunta({ titulo: "No se pudo cancelar el pedido a Depósito (sin conexión)", texto: "Podría salir dos veces. ¿Imprimir igual desde este equipo?", ok: "Imprimir igual", peligro: true, cancelar: "No" }))) return; }
+      } else if (t && ["tomada", "enviada", "detenida"].includes(t.estado) && !(await hojaPregunta({ titulo: "La PC de Depósito ya la está imprimiendo", texto: "¿Imprimir también desde este equipo? Puede salir dos veces.", ok: "Imprimir igual", peligro: true, cancelar: "No" }))) return;
       window.qrImprimirEtiquetas(); setTimeout(() => { leerEstado(true); leerImp(); pintar(); }, 700);
     });
     on("lqImpPedir", () => pedirImpresion());
@@ -7830,6 +7957,10 @@ var qrcode = function() {
     on("lqImpNo", () => confirmarImp(false));
     on("lqImpCancelar", () => cancelarImp());
     on("lqImpReimp", () => reimprimirImp());
+    on("lqImpAlg", () => { const t = tiraActual(); if (t) hojaSalieron(t); });
+    on("lqImpCont", () => ordenImp("reanudar"));
+    on("lqImpCancPC", () => ordenImp("cancelar"));
+    on("lqImpVer", () => verificarImp());
     on("lqReimp", () => window.qrReimprimirUna());
     on("lqAyuda", () => { st.ayuda = st.ayuda || 1; pintar(); });
     on("lqAyudaCerrar", () => { st.ayuda = null; pintar(); });
