@@ -5700,6 +5700,11 @@ var qrcode = function() {
   function contarCajasQueruclor(items) {
     return articulosDe({}, items).reduce((s, a) => s + a.cajas, 0);
   }
+  /* Bultos (cajas enteras + packs) de un renglón de sueltas: la misma regla que qr_sueltas_bultos en la base (046). */
+  function cajasDeSueltas(ean, unidades, uc) {
+    const pk = packsDe({ ean: ean, uc: uc }, unidades);
+    return pk ? pk.cajas + pk.packs : 0;
+  }
 
   /* ── HTML de UNA etiqueta de caja ─────────────────────────────────
      Encabezado, cliente, datos, códigos y pie son de `EtiquetaComun`
@@ -5901,7 +5906,7 @@ var qrcode = function() {
   }
 
   global.Etiquetas = {
-    articulosDe, contarCajasQueruclor, htmlTira, imprimir, prepararBultos,
+    articulosDe, contarCajasQueruclor, htmlTira, imprimir, prepararBultos, cajasDeSueltas,
     reimprimirArticulo, claveDe, cfg, guardarCfg,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = global.Etiquetas;

@@ -7664,13 +7664,45 @@ var qrcode = function() {
      Si el pedido lleva 9 cajas del mismo artículo, hay un solo renglón
      con `cajas: 9` — todas las copias son la misma identificación
      repetida, no 9 papeles distintos que había que numerar. */
+
+  /* 16/11/2026 — Packs con etiqueta para artículos que se venden por unidad (Pablo): tamaño del pack por EAN del envase. */
+  const PACKS_QR = { "7791905002390": 6, "7791905023265": 6, "7791905002376": 6, "7791905023258": 6,   // insecticidas aerosol (caja 12)
+                     "7791905002383": 12, "7791905002338": 12,                                          // espirales Mata Mosquitos (caja 48)
+                     "7791905002413": 12 };                                                            // cebo Mata Cucaracha (caja 24)
+  /* Reparte un renglón de sueltas en cajas enteras + packs. Lo que no cierra un pack queda suelto (sin etiqueta). */
+  function packsDe(qr, unidades) {
+    const tam = PACKS_QR[String(qr && qr.ean)] || 0, uc = Number(qr && qr.uc) || 0, u = Number(unidades) || 0;
+    if (!tam || !u) return null;
+    const cajas = uc > 0 ? Math.floor(u / uc) : 0, resto = u - cajas * uc, packs = Math.floor(resto / tam);
+    return { tam: tam, cajas: cajas, packs: packs, sueltas: resto - packs * tam };
+  }
   function articulosDe(pedido, items) {
     if (!global.QRParse) return [];
     const porEan = new Map(), surtidas = [];
 
     (items || []).forEach((it, idx) => {
       const qr = QRParse.parseQueruclor(it.descripcion);
-      if (!qr || qr.modo === "sueltas") return;
+      if (!qr) return;
+      if (qr.modo === "sueltas") {
+        /* Packs (16/11/2026): cajas enteras → caja cerrada; packs → bulto propio con etiqueta «MEDIA CAJA / PACK». */
+        if (it.es_faltante) return;
+        const pk = packsDe(qr, it.cantidad_real != null ? it.cantidad_real : it.cantidad);
+        if (!pk) return;
+        const marcaP = global.EtiquetaComun ? global.EtiquetaComun.marcaDe(qr.marca, qr.ean) : (qr.marca || "");
+        if (pk.cajas > 0) {
+          const kc = qr.ean || qr.nombre, pc = porEan.get(kc);
+          if (pc) pc.cajas += pk.cajas; else porEan.set(kc, { articulo: qr.nombre, ean: qr.ean || "", uc: qr.uc || "", cajas: pk.cajas, marca: marcaP });
+        }
+        if (pk.packs > 0) {
+          const uno = [{ ean: qr.ean, unidades: pk.tam }];
+          surtidas.push({ articulo: qr.nombre, ean: qr.ean || "", uc: pk.tam, cajas: pk.packs, tipo: "surtida", pack: pk.tam, ucCaja: qr.uc || "",
+            clave: "P|" + (it.id != null ? it.id : idx), marca: marcaP,
+            variantes: [{ ean: qr.ean, nombre: qr.nombre, unidades: pk.packs * pk.tam }],
+            porCaja: Array.from({ length: pk.packs }, () => uno.map(u => ({ ean: u.ean, que: qr.nombre, unidades: u.unidades }))), falta: null,
+            composicion: Array.from({ length: pk.packs }, () => uno.map(u => ({ ean: u.ean, unidades: u.unidades }))) });
+        }
+        return;
+      }
       const cajas = Number(it.cantidad_real != null ? it.cantidad_real : it.cantidad) || 0;
       if (!cajas) return;
 
@@ -7706,6 +7738,11 @@ var qrcode = function() {
   function contarCajasQueruclor(items) {
     return articulosDe({}, items).reduce((s, a) => s + a.cajas, 0);
   }
+  /* Bultos (cajas enteras + packs) de un renglón de sueltas: la misma regla que qr_sueltas_bultos en la base (046). */
+  function cajasDeSueltas(ean, unidades, uc) {
+    const pk = packsDe({ ean: ean, uc: uc }, unidades);
+    return pk ? pk.cajas + pk.packs : 0;
+  }
 
   /* ── HTML de UNA etiqueta de caja ─────────────────────────────────
      Encabezado, cliente, datos, códigos y pie son de `EtiquetaComun`
@@ -7721,7 +7758,8 @@ var qrcode = function() {
     const ic = global.Iconos ? global.Iconos.icon("caja", "8mm") : "";
     const surtida = !!art.tipo;
     const linea = l => l.map(u => (u.sueltas != null ? u.sueltas : u.unidades) + " " + esc(u.nombre || u.que || u.ean)).join(" + ");
-    const detalle = !surtida ? `Cód. ${esc(art.ean)} &nbsp;|&nbsp; Caja x ${esc(art.uc)}`
+    const detalle = art.pack ? `Cód. ${esc(art.ean)} &nbsp;|&nbsp; ${esc(art.pack)} envases (la caja trae ${esc(art.ucCaja)})`
+      : !surtida ? `Cód. ${esc(art.ean)} &nbsp;|&nbsp; Caja x ${esc(art.uc)}`
       : contenido && contenido.length ? `<b>Lleva:</b> ${linea(contenido)}`
       : `Sin detalle por caja · el pedido lleva ${linea(art.variantes || [])} en ${art.cajas} caja${art.cajas === 1 ? "" : "s"}`;
     return `
@@ -7732,7 +7770,7 @@ var qrcode = function() {
 
         <div class="fila-caja">
           <div class="bultoband">
-            <div class="bb-tit">${marca}${surtida ? "CAJA SURTIDA" : "CAJA CERRADA"}</div>
+            <div class="bb-tit">${marca}${art.pack ? (Number(art.ucCaja) === 2 * Number(art.pack) ? "MEDIA CAJA · " + esc(art.pack) + " u." : "PACK · " + esc(art.pack) + " u.") : surtida ? "CAJA SURTIDA" : "CAJA CERRADA"}</div>
             <div class="bb-art">
               <div class="bb-art-n${String(art.articulo).length > 60 ? " muylargo" : String(art.articulo).length > 34 ? " largo" : ""}">${esc(art.articulo)}</div>
               <div class="bb-art-c">${detalle}</div>
@@ -7882,7 +7920,7 @@ var qrcode = function() {
   }
 
   global.Etiquetas = {
-    articulosDe, contarCajasQueruclor, htmlTira, imprimir, prepararBultos,
+    articulosDe, contarCajasQueruclor, htmlTira, imprimir, prepararBultos, cajasDeSueltas,
     reimprimirArticulo, claveDe, cfg, guardarCfg,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = global.Etiquetas;
@@ -7918,7 +7956,8 @@ var qrcode = function() {
       if (r.modo === "surtida" || r.modo === "mixta") {
         const k = r.item_id || r.familia || r.nombre;
         if (!vistos.has(k)) { vistos.add(k); n += Number(r.cajas_familia) || 0; }
-      } else n += Number(r.cajas) || 0;
+      } else if (r.modo === "sueltas") n += (global.Etiquetas && Etiquetas.cajasDeSueltas) ? Etiquetas.cajasDeSueltas(r.ean, r.unidades, r.uc) : 0;
+      else n += Number(r.cajas) || 0;
     }
     return n;
   }
