@@ -1389,6 +1389,9 @@ td[align=right]{text-align:right; font-variant-numeric:tabular-nums}
   .qio-m{ font-size:.82rem; color:var(--qr-tx2,#475569) } .qio-pie{ display:flex; gap:10px; justify-content:flex-end }
   .qio-ov{ position:fixed; inset:0; z-index:2147483000; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; padding:16px }
   .qio-dlg{ background:#fff; border-radius:14px; padding:18px; width:100%; max-width:460px; display:grid; gap:12px } .qio-dlg b{ font-size:1rem }
+  .qio-t{ width:100%; border-collapse:collapse; font-size:.82rem } .qio-t th,.qio-t td{ text-align:left; padding:6px 8px; border-bottom:1px solid var(--qr-ln,#e2e8f0); vertical-align:top } .qio-t th{ font-size:.72rem; text-transform:uppercase; letter-spacing:.4px; color:var(--qr-tx2,#475569) }
+  .qio-tw{ overflow-x:auto; max-width:100% } .qio{ min-width:0; max-width:100% } .qio-sec, .qio-sec p, .qio-sec h4{ min-width:0; overflow-wrap:anywhere } .qio-t td,.qio-t th{ overflow-wrap:anywhere }
+  @media (max-width:520px){ .qio{ margin-left:8px; margin-right:8px; padding:12px } .qio-acc{ flex-direction:column; align-items:stretch } .qio-in{ flex-basis:auto } }
 </style>
 </head>
 <body>
@@ -15252,15 +15255,32 @@ renderCatKPIs();
     catch (e) { st.error = "Sin conexión con el servidor: no se puede ver la impresora de Depósito."; }
     st.t = Date.now(); pintar();
   }
-  /* Dónde se monta: en la Caja, debajo del título de Cuentas Queruclor; en el Admin (21/11/2026), debajo de la barra superior, en todas las pestañas. */
-  const EN_ADMIN = window.QR_PUESTO === "admin";
+  /* Dónde se monta: en la Caja, debajo del título de Cuentas Queruclor; en el Admin (21/11/2026), debajo de la barra superior, en todas las
+     pestañas; en la PÁGINA propia impresora.html (Facturación, la PC donde está enchufada la térmica), en #qrImpOfHost, siempre desplegado. */
+  const EN_ADMIN = window.QR_PUESTO === "admin", EN_PAGINA = !!window.QR_IMP_PAGINA;
+  if (EN_PAGINA) st.abierto = true;
   function host() {
     let h = $("qrImpOf");
     if (!h) {
+      if (EN_PAGINA) { const c = $("qrImpOfHost"); if (!c) return null; h = document.createElement("div"); h.id = "qrImpOf"; c.appendChild(h); return h; }
       const s = $("screen-queruclor"); const ancla = (s && s.querySelector(".qr-hd")) || (EN_ADMIN ? document.querySelector(".main .top-header") : null);
       if (!ancla) return null; h = document.createElement("div"); h.id = "qrImpOf"; ancla.insertAdjacentElement("afterend", h);
     }
     return h;
+  }
+  const ESTADO_CORTO = { autorizacion: "espera autorización", solicitada: "pedida", tomada: "preparando", enviada: "imprimiendo", detenida: "detenida", impresa: "impresa, sin confirmar", confirmada: "confirmada", no_salio: "no salió", incierta: "incierta", fallida: "falló", cancelada: "cancelada", vencida: "vencida", descartada: "descartada", rechazada: "rechazada" };
+  /* Secciones extra de la página propia: la PC y su cola de Windows, y las últimas impresiones. */
+  function htmlPagina(d) {
+    const ag = d.agente, esp = d.agente_esperado || {};
+    let h = `<div class="qio-sec"><h4>PC de Depósito</h4>`;
+    if (!ag) h += `<p>Nunca se conectó.</p>`;
+    else h += `<p><b>${esc(ag.agente || "")}</b> · impresora «${esc(ag.impresora || "?")}» · ${esc(ag.estado_impresora || "")}<br>Último latido: ${esc(ddhm(ag.latido))} (${ag.segundos > 90 ? "<b>sin respuesta</b>" : "respondiendo"}) · agente instalado <b>${esc(ag.version || "?")}</b>${esp.version ? " · esperado " + esc(esp.version) : ""}</p>` +
+      `<p><b>Cola de Windows:</b> ${(ag.cola || []).length ? (ag.cola || []).map(c => esc(c.documento) + " · " + esc(c.estado_windows || "") + (c.paginas != null ? " · " + (c.paginas_impresas || 0) + "/" + c.paginas + " págs." : "")).join("<br>") : "vacía"}</p>`;
+    h += `</div><div class="qio-sec"><h4>Últimas impresiones</h4>`;
+    const ul = d.ultimas || [];
+    h += ul.length ? `<div class="qio-tw"><table class="qio-t"><thead><tr><th>Hora</th><th>Tipo</th><th>Etiq.</th><th>Estado</th><th>Pidió</th><th>Detalle</th></tr></thead><tbody>` +
+      ul.map(t => `<tr><td>${esc(ddhm(t.solicitada_at))}</td><td>${esc(t.tipo)}</td><td>${t.etiquetas}</td><td><b>${esc(ESTADO_CORTO[t.estado] || t.estado)}</b></td><td>${esc(t.solicitada_por || "")}</td><td>${esc(t.error || t.motivo || "")}${t.detalle && t.detalle.paginas ? " · " + (t.detalle.paginas_impresas || 0) + "/" + t.detalle.paginas : ""}</td></tr>`).join("") + `</tbody></table></div>` : `<p>Todavía no hay impresiones.</p>`;
+    return h + `</div>`;
   }
   const cajaTxt = a => (a.cajas || []).map(c => "N° " + String(c.n).padStart(3, "0") + " · " + (c.nombre || "") + " (impresa " + (c.impresiones || 0) + (c.reimpresiones ? ", repuesta " + c.reimpresiones : "") + ")").join(" — ");
   function pintar() {
@@ -15271,7 +15291,7 @@ renderCatKPIs();
     const pcMal = !ag ? "La PC de Depósito nunca se conectó." : ag.segundos > 90 ? "La PC de Depósito no responde desde las " + hhmm(ag.latido) + "." : null;
     /* 21/11/2026: la copia instalada del agente se compara con la versión que fijó oficina (publicar la web no actualiza el PowerShell de la PC). */
     const versionMal = ag && esp.version && ag.version !== esp.version ? "El agente instalado en la PC es la versión " + (ag.version || "?") + " y se espera la " + esp.version + (ag.segundos <= 90 ? ": se actualiza solo cuando esté en reposo; si no lo hace en unos minutos, hay que correr el instalador en esa PC." : ".") : null;
-    const nada = !aut.length && !at.length && !hu.length && !pausa.activa && !st.abierto && !versionMal;
+    const nada = !EN_PAGINA && !aut.length && !at.length && !hu.length && !pausa.activa && !st.abierto && !versionMal;
     if (nada) { h.innerHTML = `<div class="qio qio-min"><span>🖨️ Impresora de Depósito: ${esc(pcMal || (ag.estado_impresora || "lista"))} · agente ${esc(ag.version || "?")}</span><button type="button" class="qio-l" id="qioAbrir">Pausar / ver</button></div>`; enganchar(); return; }
     let html = `<div class="qio"><div class="qio-h"><b>🖨️ Impresora de Depósito</b><span>${esc(pcMal || ("PC " + (ag.agente || "") + " · " + (ag.estado_impresora || "") + " · agente " + (ag.version || "?")))}</span></div>`;
     if (versionMal) html += `<div class="qio-sec qio-warn"><h4>⚠️ Versión del agente</h4><p>${esc(versionMal)}</p></div>`;
@@ -15284,6 +15304,7 @@ renderCatKPIs();
     for (const o of hu) html += `<div class="qio-sec qio-warn"><h4>Trabajo viejo retenido en la PC: ${esc(o.documento)}${o.codigo_corto ? " · pedido " + esc(o.codigo_corto) : ""}${o.cliente ? " · " + esc(o.cliente) : ""}</h4>
         <p>${o.trabajo ? "En el sistema figura «" + esc(o.estado) + "» (" + esc(ddhm(o.solicitada_at)) + ")" : "No es del sistema (lo mandó otro programa)"} · Windows: ${esc(o.estado_windows || "?")} · ${o.paginas_impresas != null ? o.paginas_impresas + " de " + (o.paginas || "?") + " págs." : ""} Mientras esté ahí puede volver a salir y frena las impresiones de ese pedido.</p>
         ${o.trabajo ? `<div class="qio-acc">${o.orden ? `<span class="qio-m">⏳ Orden de borrar enviada a la PC…</span>` : `<button type="button" class="qio-b mal" data-a="borrar" data-id="${esc(o.trabajo)}">Borrar de la PC</button>`}</div>` : `<p class="qio-m">Se borra desde la PC de Depósito (cola de Windows).</p>`}</div>`;
+    if (EN_PAGINA) html += htmlPagina(d);
     if (!pausa.activa) html += `<div class="qio-sec"><h4>Pausar la impresión</h4><p>Nadie puede pedir impresiones ni reimpresiones y la PC no toma nada hasta levantarla. Lo que ya está en la impresora sigue su curso.</p>
         <div class="qio-acc"><input id="qioMotivo" class="qio-in" maxlength="120" placeholder="Motivo (obligatorio)" value="${esc(st.motivo)}"><button type="button" class="qio-b" data-a="pausar">Pausar</button></div></div>`;
     html += `<div class="qio-pie"><button type="button" class="qio-l" data-a="refrescar">Actualizar</button>${nada || !st.abierto ? "" : `<button type="button" class="qio-l" data-a="cerrar">Ocultar</button>`}</div></div>`;
@@ -15324,7 +15345,7 @@ renderCatKPIs();
     });
   }
   window.qrImpOficina = { leer: () => leer(true), estado: () => st };
-  const visible = () => { if (document.hidden) return false; if (EN_ADMIN) return true; const s = $("screen-queruclor"); return !!(s && s.classList.contains("active")); };
+  const visible = () => { if (document.hidden) return false; if (EN_ADMIN || EN_PAGINA) return true; const s = $("screen-queruclor"); return !!(s && s.classList.contains("active")); };
   setInterval(() => { if (visible()) leer(false); }, 5000);
   setInterval(() => { if (visible() && !$("qrImpOf")) pintar(); }, 1500);
 })();

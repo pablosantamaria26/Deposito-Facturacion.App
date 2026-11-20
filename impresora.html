@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<script>window.QR_IMP_PAGINA = true;</script>
+<script>window.QR_PROD_API="https://queruclor-api.santamariapablodaniel.workers.dev";window.QR_API_BASE="https://queruclor-api.santamariapablodaniel.workers.dev";window.QR_PUESTO="facturacion";window.QR_URL_REGISTRO="https://frosty-term-20ea.santamariapablodaniel.workers.dev/";window.QR_FOTOS_BASE="https://gjeyvbidomxzofcdycya.supabase.co/storage/v1/object/public/qr-fotos/";</script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   CONEXIÓN AL SERVIDOR COMPARTIDO DE PRUEBAS — va PRIMERO en cada pantalla
+
+   Hace que las siete pantallas trabajen sobre LOS MISMOS datos (los del
+   servidor local, prototipo/servidor-compartido.js) sin tocar su código:
+
+   1. Lo que iba a Supabase (/rest/v1/…) va al servidor local, igual formato.
+   2. El pedido que iba al Worker va a /local/pedido (que guarda el pedido y
+      reserva el stock de Queruclor). Google Forms se contesta acá.
+      Cualquier otra escritura hacia afuera se frena: nada sale a producción.
+   3. El «tiempo real» de depósito y facturación se imita consultando los
+      cambios del servidor cada 1,5 s.
+   4. Unas pocas claves que tienen que verse entre pantallas (rendición de
+      habituales, sello de despacho, datos de la empresa, configuración de
+      precios…) se guardan en el servidor en vez de en el navegador.
+   5. QRSrv: llamadas a las funciones de la base para los módulos de
+      Queruclor (stock, cuentas, remitos…).
+
+   Si el servidor no responde, aparece arriba un aviso rojo y las
+   operaciones que no se pudieron guardar dan error (no se fingen hechas).
+
+   6. GENERACIÓN DEL ENTORNO (29/10/2026): cada escritura lleva la
+      generación que esta pantalla conoce (cabecera X-QR-Gen) y el servidor
+      rechaza la de otra. Al abrir, si el equipo guardaba colas de otra
+      generación (pedidos sin enviar, recibos, rendiciones, lecturas del
+      armado…), se APARTAN sin enviarlas ni borrarlas, con aviso. Recargar
+      no basta para limpiar una cola: por eso se aparta acá, explícito.
+   ═══════════════════════════════════════════════════════════════════ */
+(function () {
+  "use strict";
+  if (window.QR_LOCAL) return;
+  window.QR_LOCAL = true;
+  /* En producción (build-produccion.js) lo mismo va al Worker queruclor-api, con el token del puesto. */
+  var PROD = !!window.QR_PROD_API;
+  var ORIGEN = PROD ? window.QR_PROD_API : location.origin;
+  var CADA = PROD ? 10000 : 1500;
+  /* Una pestaña del contenedor Cartera/Pedidos sigue abierta en un iframe sin mostrarse, y
+     document.hidden no se entera: tampoco cuenta como visible. */
+  function oculta() {
+    if (document.hidden) return true;
+    try { var f = window.frameElement; return !!(f && f.getClientRects().length === 0); } catch (e) { return false; }
+  }
+  window.qrOculta = oculta;
+  if (PROD) window.qrFotoUrl = function (e) { return window.QR_FOTOS_BASE + e + ".jpg"; };
+  /* Una clave por puesto: todas las apps comparten dominio, y una misma PC puede tener Caja y Facturación. */
+  var CLAVE_TOKEN = window.QR_PUESTO === "admin" ? "qr_admin_token_v1" : "qr_token_" + window.QR_PUESTO + "_v1";
+  var yaPregunto = false;
+  /* El token se pide y se corrige en un panel de la propia pantalla, que no la bloquea, y solo se guarda
+     después de comprobarlo. Una falla de conexión no se confunde con un token malo: ni pregunta ni borra nada.
+     Reemplaza al cuadro nativo del navegador (window.prompt): en algunos equipos no se veía, o quedaba
+     bloqueado tras cancelarlo una vez, sin ningún aviso (03/11/2026 — Depósito y Stock Queruclor, mismo
+     puesto "deposito"). */
+  var NOMBRE_PUESTO = { caja: "Caja", facturacion: "Facturación", deposito: "Depósito", reparto: "Reparto", admin: "Admin" };
+  var PANEL_TOKEN = PROD && window.QR_PUESTO !== "vendedor" && !!NOMBRE_PUESTO[window.QR_PUESTO];
+  var panelDejado = false;
+  function comprobarToken(t) {
+    return _fetch(ORIGEN + "/local/puesto", { cache: "no-store", headers: { "X-QR-Token": t } }).then(function (r) {
+      if (r.status === 401) return { estado: "incorrecto" };
+      if (!r.ok) return { estado: "sin_conexion" };
+      return r.json().then(function (j) { return j.puesto === window.QR_PUESTO ? { estado: "ok" } : { estado: "otro", puesto: j.puesto }; });
+    }).catch(function () { return { estado: "sin_conexion" }; });
+  }
+  function nombreMiPuesto() { return NOMBRE_PUESTO[window.QR_PUESTO] || window.QR_PUESTO; }
+  function textoToken(c, guardado) {
+    if (c.estado === "otro") return (guardado ? "El token guardado en este equipo es de " : "Ese token es de ") + (NOMBRE_PUESTO[c.puesto] || c.puesto) + ", no de " + nombreMiPuesto() + ".";
+    if (c.estado === "incorrecto") return guardado ? "El token guardado en este equipo no es correcto." : "Ese token no es correcto. Copialo de nuevo, completo y sin espacios.";
+    return "Falta el token de " + nombreMiPuesto() + " en este equipo.";
+  }
+  function panelToken(c) {
+    if (!document.body) { document.addEventListener("DOMContentLoaded", function () { panelToken(c); }); return; }
+    if (panelDejado || document.getElementById("qrPanelToken")) return;
+    var p = document.createElement("div");
+    p.id = "qrPanelToken"; p.setAttribute("role", "alert");
+    p.style.cssText = "position:fixed;left:50%;top:12px;transform:translateX(-50%);width:min(560px,calc(100vw - 24px));box-sizing:border-box;z-index:2147483647;background:#fff;color:#1f2937;border:2px solid #b45309;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.25);font:14px/1.4 system-ui,sans-serif;padding:12px 14px";
+    p.innerHTML = '<b id="qrPanelTxt" style="display:block;margin-bottom:2px"></b><div style="margin-bottom:8px">Lo de Queruclor no funciona hasta cargarlo. El resto de ' + nombreMiPuesto() + ' sigue andando.</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap"><input id="qrPanelIn" type="text" autocomplete="off" spellcheck="false" placeholder="Pegá el token de ' + nombreMiPuesto() + '" aria-label="Token de ' + nombreMiPuesto() + '" style="flex:1;min-width:180px;font:inherit;padding:7px 9px;border:1px solid #9ca3af;border-radius:8px">' +
+      '<button id="qrPanelOk" type="button" style="font:inherit;font-weight:700;padding:7px 12px;border:0;border-radius:8px;background:#b45309;color:#fff;cursor:pointer">Guardar</button>' +
+      '<button id="qrPanelNo" type="button" style="font:inherit;padding:7px 10px;border:1px solid #9ca3af;border-radius:8px;background:#fff;cursor:pointer">Ahora no</button></div>' +
+      '<div id="qrPanelMsg" style="margin-top:6px;color:#b91c1c;font-weight:600"></div>';
+    document.body.appendChild(p);
+    p.querySelector("#qrPanelTxt").textContent = textoToken(c, true);
+    var entrada = p.querySelector("#qrPanelIn"), msg = p.querySelector("#qrPanelMsg"), ok = p.querySelector("#qrPanelOk");
+    p.querySelector("#qrPanelNo").onclick = function () { panelDejado = true; p.remove(); };
+    var guardar = function () {
+      var t = entrada.value.trim();
+      if (!t) { msg.textContent = "Pegá el token de Caja."; return; }
+      ok.disabled = true; msg.textContent = "Comprobando…";
+      comprobarToken(t).then(function (r) {
+        ok.disabled = false;
+        if (r.estado === "sin_conexion") { msg.textContent = "No hay conexión para comprobarlo. No se cambió nada: probá de nuevo cuando vuelva."; return; }
+        if (r.estado !== "ok") { msg.textContent = textoToken(r, false); entrada.select(); return; }
+        try { localStorage.setItem(CLAVE_TOKEN, t); } catch (e) {}
+        cache = {};
+        p.remove();
+      });
+    };
+    ok.onclick = guardar;
+    entrada.addEventListener("keydown", function (e) { if (e.key === "Enter") guardar(); });
+  }
+  if (PANEL_TOKEN) document.addEventListener("DOMContentLoaded", function () {
+    var t = null; try { t = localStorage.getItem(CLAVE_TOKEN); } catch (e) {}
+    if (!t) return panelToken({ estado: "falta" });
+    comprobarToken(t).then(function (c) { if (c.estado === "otro" || c.estado === "incorrecto") panelToken(c); });
+  });
+  function tokenPuesto() {
+    if (!PROD || window.QR_PUESTO === "vendedor") return null;
+    var t = null; try { t = localStorage.getItem(CLAVE_TOKEN); } catch (e) {}
+    if (PANEL_TOKEN && !t && !/[#&]puesto=/.test(location.hash)) { panelToken({ estado: "falta" }); return null; }
+    /* El enlace de instalación del puesto lo trae en #puesto=…: no viaja al servidor y se saca de la barra. */
+    var m = /[#&]puesto=([^&]+)/.exec(location.hash);
+    if (m) {
+      t = decodeURIComponent(m[1]);
+      try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+    } else if (!t && !yaPregunto) {
+      /* Una sola vez por apertura: si se cancela, la app sigue andando con lo que no pide token. */
+      yaPregunto = true;
+      t = (window.prompt("Token de este puesto (" + window.QR_PUESTO + "). Se pide una sola vez en este equipo:") || "").trim();
+    }
+    if (t) try { localStorage.setItem(CLAVE_TOKEN, t); } catch (e) {}
+    return t || null;
+  }
+  /* El enlace del puesto se guarda al abrir: hay pantallas que casi no consultan al arrancar. */
+  if (PROD && window.QR_PUESTO !== "vendedor" && /[#&]puesto=/.test(location.hash)) tokenPuesto();
+  function conToken(h) { var t = tokenPuesto(); if (t) h["X-QR-Token"] = t; return h; }
+  function vigilarToken(status) {
+    if (!PROD || status !== 401) return;
+    if (PANEL_TOKEN) return panelToken({ estado: "incorrecto" });
+    yaPregunto = false; try { localStorage.removeItem(CLAVE_TOKEN); } catch (e) {}
+  }
+  var _fetch = window.fetch.bind(window);
+  var GEN = null;
+
+  /* ── Aviso de conexión ─────────────────────────────────────────── */
+  var caido = false, aviso = null;
+  function pintarAviso() {
+    if (!document.body) return;
+    if (caido && !aviso) {
+      aviso = document.createElement("div");
+      aviso.id = "qrAvisoServidor";
+      aviso.setAttribute("role", "alert");
+      aviso.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:2147483647;background:#b91c1c;color:#fff;" +
+        "font:700 14px/1.35 system-ui,sans-serif;padding:10px 14px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.3)";
+      aviso.textContent = "⚠️ Sin conexión con el servidor. Lo que hagas ahora NO se guarda (los pedidos del vendedor quedan en su cola y salen solos al volver). Revisá tu conexión a Internet.";
+      document.body.appendChild(aviso);
+    } else if (!caido && aviso) { aviso.remove(); aviso = null; }
+  }
+  function marcar(estado) { if (caido !== estado) { caido = estado; pintarAviso(); } }
+  function ping() {
+    /* En producción: oculta no consulta, y si la pantalla ya pregunta por cambios, eso mismo dice si hay conexión. */
+    if (PROD && (oculta() || (oyentesCambios && oyentesCambios.length))) return;
+    _fetch(ORIGEN + "/local/salud", { cache: "no-store" }).then(function (r) {
+      marcar(!r.ok);
+      return r.ok ? r.json().then(function (j) {
+        if (j && j.generacion && GEN && j.generacion !== GEN) avisoGeneracion();
+        else if (j && j.generacion && !GEN) revisarGeneracion(j.generacion);
+      }) : null;
+    }).catch(function () { marcar(true); });
+  }
+  setInterval(ping, PROD ? 30000 : 4000);
+  document.addEventListener("DOMContentLoaded", function () { pintarAviso(); ping(); });
+
+  /* ── Llamadas síncronas al servidor (módulos de Queruclor) ────────
+     Los módulos de Queruclor tienen una interfaz síncrona (Stock.disponible,
+     Cuentas.saldo…). Con el servidor en la misma PC o el mismo Wi-Fi la
+     respuesta tarda milisegundos, así que se llama de forma síncrona y las
+     pantallas no cambian. */
+  function xhr(metodo, url, cuerpo) {
+    var x = new XMLHttpRequest();
+    try {
+      x.open(metodo, ORIGEN + url, false);
+      x.setRequestHeader("Content-Type", "application/json");
+      if (GEN) x.setRequestHeader("X-QR-Gen", GEN);
+      var h0 = conToken({}); for (var k0 in h0) x.setRequestHeader(k0, h0[k0]);
+      x.send(cuerpo === undefined ? null : JSON.stringify(cuerpo));
+    } catch (e) {
+      marcar(true);
+      throw new Error("Sin conexión con el servidor: no se guardó.");
+    }
+    vigilarToken(x.status);
+    if (x.status === 0 || x.status >= 500) { marcar(true); throw new Error("El servidor no respondió (" + x.status + "): no se guardó."); }
+    marcar(false);
+    var datos = null;
+    try { datos = x.responseText ? JSON.parse(x.responseText) : null; } catch (e) {}
+    if (x.status === 409 && datos && datos.generacion_vieja) avisoGeneracion();
+    if (x.status >= 400) throw new Error((datos && (datos.message || datos.error)) || ("error " + x.status));
+    return datos;
+  }
+  var cache = {};
+  window.QRSrv = {
+    rpc: function (fn, args) { var r = xhr("POST", "/rest/v1/rpc/" + fn, args || {}); cache = {}; return r; },
+    /* Lecturas con memoria corta: una pantalla pregunta el stock de cada
+       tarjeta varias veces por dibujo; con esto es una sola consulta. */
+    get: function (tabla, qs, ttl) {
+      var k = tabla + "?" + (qs || ""), ahora = Date.now();
+      if (cache[k] && ahora - cache[k].t < (ttl == null ? 1500 : ttl)) return cache[k].v;
+      var v = xhr("GET", "/rest/v1/" + tabla + (qs ? "?" + qs : ""));
+      cache[k] = { t: ahora, v: v };
+      return v;
+    },
+    olvidar: function () { cache = {}; },
+    generacion: function () { return GEN; },
+    caido: function () { return caido; },
+    /* Aviso de cambios para las pantallas que no usan el cliente de
+       Supabase (admin, vendedor). En producción es un canal de Realtime;
+       acá lee el mismo registro que reparte el «tiempo real» local, y
+       solo con la pestaña a la vista. fn(tablasQueCambiaron). */
+    escuchar: function (tablas, fn) { oyentesCambios.push({ tablas: tablas, fn: fn }); arrancarCambios(); },
+  };
+  var oyentesCambios = [], desdeCambios = -1, timerCambios = null;
+  function arrancarCambios() {
+    if (timerCambios) return;
+    timerCambios = setTimeout(function tick() {
+      if (oculta()) { timerCambios = setTimeout(tick, CADA); return; }
+      _fetch(ORIGEN + "/local/cambios?desde=" + desdeCambios, { cache: "no-store", headers: conToken({}) }).then(function (r) { return r.json(); }).then(function (j) {
+        marcar(false);
+        if (desdeCambios >= 0 && j.cambios && j.cambios.length) {
+          var hubo = {};
+          j.cambios.forEach(function (c) { hubo[c.tabla] = true; });
+          cache = {};
+          oyentesCambios.forEach(function (o) {
+            var t = o.tablas.filter(function (x) { return hubo[x]; });
+            if (t.length) try { o.fn(t); } catch (e) { console.warn("[cambios]", e); }
+          });
+        }
+        desdeCambios = j.ultimo;
+      }).catch(function () { marcar(true); }).then(function () { timerCambios = setTimeout(tick, CADA); });
+    }, 50);
+  }
+
+  /* ── Claves compartidas entre pantallas ─────────────────────────── */
+  var COMPARTIDAS = /^(qr_rend_ml_v1|qr_despacho_v1|qr_empresa_v1|qr_logo_v1|qr_papelera_v1|qr_pin_ajustes_v1|qr_precio_config_v1|qr_margen_rubros_v1|qr_historial_precios_v1|qr_compras_cfg_v1|qr_demanda_v1|qr_demanda_rubros_v1|qr_demanda_crit_v1|qr_etq_impresas_v1|etiquetas_total_impresa_v1|etiquetas_habituales_v1|etiquetas_cabos_v1)$/;
+  var S = Storage.prototype, g0 = S.getItem, s0 = S.setItem, r0 = S.removeItem;
+  var kvCache = {};
+  S.getItem = function (k) {
+    if (this !== window.localStorage || !COMPARTIDAS.test(k)) return g0.call(this, k);
+    var c = kvCache[k];
+    if (c && Date.now() - c.t < 800) return c.v;
+    try { var v = xhr("GET", "/local/kv/" + k).valor; kvCache[k] = { t: Date.now(), v: v }; return v; }
+    catch (e) { return c ? c.v : null; }
+  };
+  S.setItem = function (k, v) {
+    if (this !== window.localStorage || !COMPARTIDAS.test(k)) return s0.call(this, k, v);
+    var x = new XMLHttpRequest();
+    x.open("PUT", ORIGEN + "/local/kv/" + k, false);
+    if (GEN) x.setRequestHeader("X-QR-Gen", GEN);
+    var hk = conToken({}); for (var kk in hk) x.setRequestHeader(kk, hk[kk]);
+    try { x.send(String(v)); } catch (e) { marcar(true); throw new Error("Sin conexión con el servidor: no se guardó."); }
+    if (x.status === 409) { avisoGeneracion(); throw new Error("Esta pantalla es de antes de renovar el entorno: no se guardó. Recargala."); }
+    if (x.status !== 200) { marcar(true); throw new Error("El servidor no guardó " + k); }
+    kvCache[k] = { t: Date.now(), v: String(v) };
+  };
+  S.removeItem = function (k) {
+    if (this !== window.localStorage || !COMPARTIDAS.test(k)) return r0.call(this, k);
+    xhr("DELETE", "/local/kv/" + k); delete kvCache[k];
+  };
+
+  /* ── fetch: Supabase, Worker y Forms van al servidor local ──────── */
+  function esPedido(cuerpo) { return cuerpo && (cuerpo.fechaEntrega || cuerpo.numeroCliente) && cuerpo.productos !== undefined; }
+  window.fetch = function (input, opts) {
+    var url = String((input && input.url) || input || "");
+    var metodo = String((opts && opts.method) || (input && input.method) || "GET").toUpperCase();
+    if (PROD) {
+      /* Lo de Queruclor va al Worker con el token del puesto; un pedido con Queruclor también.
+         Lo demás (Supabase de las apps actuales, Forms, otros Workers) sigue yendo adonde iba. */
+      var propio = /^\/(local|api|rest)\//.test(url) ? ORIGEN + url : (url.indexOf(ORIGEN) === 0 ? url : null);
+      if (propio) {
+        var o = Object.assign({}, opts || {}), hs = {};
+        if (o.headers && typeof o.headers.forEach === "function") o.headers.forEach(function (v, k) { hs[k] = v; }); else Object.assign(hs, o.headers || {});
+        o.headers = conToken(hs);
+        return _fetch(propio, o).then(function (r) { vigilarToken(r.status); marcar(r.status >= 500); return r; }, function (e) { marcar(true); throw e; });
+      }
+      if (/frosty-term/.test(url) && metodo === "POST") {
+        var cp = null; try { cp = JSON.parse((opts && opts.body) || "null"); } catch (e) {}
+        if (esPedido(cp) && /—\s*QUERUCLOR/iu.test(String(cp.productos))) return enviarPedido(opts);
+      }
+      return _fetch(input, opts);
+    }
+    var m = /^https:\/\/[a-z0-9]+\.supabase\.co(\/rest\/v1\/.*)$/.exec(url);
+    if (m) return _fetch(ORIGEN + m[1], conGen(opts)).then(function (r) { marcar(false); vigilar(r); return r; }, function (e) { marcar(true); throw e; });
+
+    if (/workers\.dev/.test(url) && metodo === "POST") {
+      var cuerpo = null; try { cuerpo = JSON.parse((opts && opts.body) || "null"); } catch (e) {}
+      if (esPedido(cuerpo)) return enviarPedido(opts);
+      return Promise.resolve(new Response('{"status":"ok","prueba":true}', { status: 200, headers: { "Content-Type": "application/json" } }));
+    }
+    if (/docs\.google\.com\/forms/.test(url)) return _fetch(ORIGEN + "/local/forms", conGen({ method: "POST", body: "{}" })).catch(function (e) { marcar(true); throw e; });
+
+    /* Nada más sale hacia afuera escribiendo: ni Apps Script, ni otros Workers. */
+    if (metodo !== "GET" && metodo !== "HEAD" && /^https?:\/\//.test(url) && url.indexOf(ORIGEN) !== 0) {
+      return Promise.resolve(new Response('{"status":"ok","success":true,"ok":true,"prueba":true}', { status: 200, headers: { "Content-Type": "application/json" } }));
+    }
+    /* Lo que va al mismo servidor también lleva la generación. */
+    if (metodo !== "GET" && metodo !== "HEAD" && (url.indexOf(ORIGEN) === 0 || /^\/(?!\/)/.test(url))) {
+      if (input && typeof input !== "string" && input.headers && GEN) { try { input.headers.set("X-QR-Gen", GEN); } catch (e) {} }
+      return _fetch(input, conGen(opts)).then(function (r) { vigilar(r); return r; });
+    }
+    return _fetch(input, opts);
+  };
+  function enviarPedido(opts) {
+    return _fetch(ORIGEN + "/local/pedido", conGen({ method: "POST", headers: { "Content-Type": "application/json" }, body: opts.body }))
+      .then(function (r) {
+        marcar(false);
+        return r.clone().json().then(function (j) {
+          /* El stock se reservó al LLEGAR el pedido. Si faltó algo, se le
+             avisa al vendedor como antes. */
+          if (j && j.reserva && j.reserva.faltantes && j.reserva.faltantes.length && window.qrAvisarFaltantes) {
+            try { window.qrAvisarFaltantes(j.reserva); } catch (e) {}
+          }
+          /* Un artículo pausado que llegó igual (pedido cargado antes de
+             la pausa, guardado sin señal) no se vende: queda como faltante. */
+          var pz = j && j.validacion && j.validacion.pausados;
+          if (pz && pz.length && window.showToast) {
+            try { window.showToast("No se vendió (artículo pausado): " + pz.map(function (x) { return x.nombre || x.ean; }).join(", "), "error"); } catch (e) {}
+          }
+          return r;
+        }, function () { return r; });
+      }, function (e) { marcar(true); throw e; });
+  }
+  function conGen(opts) {
+    if (!GEN) return opts;
+    var o = Object.assign({}, opts || {});
+    var h = o.headers;
+    if (h && typeof h.set === "function") { h = new Headers(h); h.set("X-QR-Gen", GEN); }
+    else h = Object.assign({}, h || {}, { "X-QR-Gen": GEN });
+    o.headers = h;
+    return o;
+  }
+  function vigilar(r) { try { if (r && r.status === 409 && r.headers.get("X-QR-Generacion-Vieja")) avisoGeneracion(); } catch (e) {} }
+
+  /* ── Generación del entorno y colas viejas ───────────────────────── */
+  var GEN_KEY = "qr_entorno_gen_v1";
+  var COLAS = ["pedidosPendientes", "qr_recibos_pendientes_v1", "qr_reparto_cola_v1", "qr_rend_pendiente_v1", "rendicion_pending", "qr_prep_cola_v1"];
+  var vacia = function (v) { return v == null || v === "" || v === "[]" || v === "{}" || v === "null"; };
+  var avisoGen = null, avisoApartadas = null;
+  function avisoGeneracion() {
+    if (avisoGen || !document.body) return;
+    avisoGen = document.createElement("div");
+    avisoGen.id = "qrAvisoGeneracion"; avisoGen.setAttribute("role", "alert");
+    avisoGen.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:2147483647;background:#7c2d12;color:#fff;font:700 14px/1.35 system-ui,sans-serif;padding:10px 14px;text-align:center";
+    avisoGen.innerHTML = "⚠️ Esta pantalla quedó desactualizada: lo que hagas no se guarda. " +
+      "<button type=\"button\" style=\"margin-left:8px;font:inherit;padding:4px 10px;border-radius:8px;border:0;cursor:pointer\" onclick=\"location.reload()\">Recargar</button>";
+    document.body.appendChild(avisoGen);
+  }
+  function revisarGeneracion(gen) {
+    var ls = window.localStorage, antes = null, apartadas = [];
+    try { antes = g0.call(ls, GEN_KEY); } catch (e) { return; }
+    if (antes !== gen) {
+      COLAS.forEach(function (k) {
+        var v = null; try { v = g0.call(ls, k); } catch (e) {}
+        if (vacia(v)) return;
+        try { s0.call(ls, "qr_apartado|" + (antes || "sin-generacion") + "|" + k, JSON.stringify({ valor: v, apartado: new Date().toISOString(), generacion_nueva: gen })); r0.call(ls, k); apartadas.push(k); } catch (e) {}
+      });
+      try { s0.call(ls, GEN_KEY, gen); } catch (e) {}
+    }
+    GEN = gen;
+    if (apartadas.length) {
+      window.QR_APARTADAS = apartadas;
+      var pintar = function () {
+        if (avisoApartadas || !document.body) return;
+        avisoApartadas = document.createElement("div");
+        avisoApartadas.id = "qrAvisoApartadas"; avisoApartadas.setAttribute("role", "status");
+        avisoApartadas.style.cssText = "position:fixed;left:12px;right:12px;bottom:12px;z-index:2147483646;background:#fef3c7;color:#78350f;border:2px solid #f59e0b;border-radius:12px;font:600 13.5px/1.4 system-ui,sans-serif;padding:10px 14px";
+        avisoApartadas.innerHTML = "Este equipo tenía operaciones guardadas sin enviar de una versión anterior (" + apartadas.length + "). <b>No se enviaron</b>: quedaron apartadas en el equipo. " +
+          "<button type=\"button\" style=\"margin-left:6px;font:inherit;padding:3px 10px;border-radius:8px;border:1px solid #b45309;background:#fff;cursor:pointer\" onclick=\"this.parentNode.remove()\">Entendido</button>";
+        document.body.appendChild(avisoApartadas);
+      };
+      if (document.body) pintar(); else document.addEventListener("DOMContentLoaded", pintar);
+    }
+  }
+
+  /* ── Sin service workers en el sistema ──────────────────
+     Guardarían copias de las páginas y, al rearmarlas, se seguiría viendo
+     la versión vieja. Se contesta un registro de mentira para que las
+     pantallas que lo esperan no fallen. */
+  if (navigator.serviceWorker && !PROD) {
+    try {
+      var regFalso = { scope: location.href, installing: null, waiting: null, active: null,
+        update: function () { return Promise.resolve(); }, unregister: function () { return Promise.resolve(true); },
+        addEventListener: function () {}, removeEventListener: function () {} };
+      navigator.serviceWorker.register = function () { return Promise.resolve(regFalso); };
+      if (navigator.serviceWorker.getRegistrations) navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { r.unregister(); }); });
+    } catch (e) {}
+  }
+
+  /* ── Tiempo real de Supabase, imitado ───────────────────────────── */
+  var WS0 = window.WebSocket;
+  function RealtimeLocal(url) {
+    var ws = this, desde = -1, timer = null, cerrado = false;
+    ws.url = url; ws.readyState = 0; ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+    var oyentes = { open: [], message: [], close: [], error: [] };
+    ws.addEventListener = function (t, f) { (oyentes[t] = oyentes[t] || []).push(f); };
+    ws.removeEventListener = function (t, f) { oyentes[t] = (oyentes[t] || []).filter(function (x) { return x !== f; }); };
+    function emitir(t, ev) { if (typeof ws["on" + t] === "function") ws["on" + t](ev); (oyentes[t] || []).forEach(function (f) { f(ev); }); }
+    ws.send = function () {};
+    ws.close = function () { cerrado = true; clearTimeout(timer); ws.readyState = 3; };
+    function tick() {
+      if (cerrado) return;
+      _fetch(ORIGEN + "/local/cambios?desde=" + desde, { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (j) {
+        if (desde >= 0) (j.cambios || []).forEach(function (c) {
+          emitir("message", { data: JSON.stringify({ topic: "realtime:public:" + c.tabla, event: "postgres_changes",
+            payload: { data: { table: c.tabla, type: c.tipo, record: c.fila, old_record: c.fila, schema: "public" } } }) });
+        });
+        desde = j.ultimo;
+      }).catch(function () {}).then(function () { timer = setTimeout(tick, 1500); });
+    }
+    setTimeout(function () { ws.readyState = 1; emitir("open", {}); tick(); }, 30);
+  }
+  if (!PROD) {
+    window.WebSocket = function (url, p) {
+      if (/supabase\.co/.test(String(url))) return new RealtimeLocal(url);
+      return p === undefined ? new WS0(url) : new WS0(url, p);
+    };
+    window.WebSocket.prototype = WS0.prototype;
+    ["CONNECTING", "OPEN", "CLOSING", "CLOSED"].forEach(function (k, i) { window.WebSocket[k] = i; });
+  }
+
+  /* Generación: se pregunta al abrir (al final de este archivo, que va
+     PRIMERO en la página), ANTES de que cualquier cola intente salir. */
+  (function () {
+    if (PROD) return;
+    try {
+      var x = new XMLHttpRequest();
+      x.open("GET", ORIGEN + "/local/salud", false); x.send(null);
+      var j = x.status === 200 ? JSON.parse(x.responseText) : null;
+      if (j && j.generacion) revisarGeneracion(j.generacion);
+    } catch (e) {}
+  })();
+})();
+
+</script>
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Impresora de Depósito</title>
+  <meta name="theme-color" content="#1d4ed8" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{ --qr-ln:#e2e8f0; --qr-tx:#0f172a; --qr-tx2:#475569; --qr-vio:#1d4ed8; --qr-warn-l:#fef3c7; --qr-mal-l:#fee2e2; --qr-sh:0 2px 12px rgba(0,0,0,.08) }
+  *{ box-sizing:border-box } html,body{ margin:0; background:#f8fafc; color:var(--qr-tx); font-family:'Roboto',system-ui,sans-serif }
+  header{ display:flex; align-items:center; gap:14px; padding:14px 18px; background:#fff; border-bottom:1px solid var(--qr-ln); position:sticky; top:0; z-index:2 }
+  header h1{ margin:0; font-size:1.15rem } header p{ margin:2px 0 0; font-size:.82rem; color:var(--qr-tx2) }
+  header a{ margin-left:auto; color:var(--qr-vio); font-weight:700; text-decoration:none; font-size:.9rem }
+  main{ max-width:1100px; margin:16px auto; padding:0 8px }
+  #qrImpOfHost .qio{ margin:0 8px 12px }
+  .ayuda{ margin:0 16px 24px; font-size:.84rem; color:var(--qr-tx2); line-height:1.5 }
+  /* ── Impresora de Depósito desde oficina (20/11/2026) ─────────────────────────────────────────────────── */
+  .qio{ font-family:inherit; background:#fff; border:1px solid var(--qr-ln,#e2e8f0); border-radius:16px; padding:14px 16px; margin:0 16px 12px; box-shadow:var(--qr-sh,0 2px 12px rgba(0,0,0,.08)); display:grid; gap:10px }
+  .qio-min{ display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 14px; font-size:.86rem; color:var(--qr-tx2,#475569) }
+  .qio-mal{ background:var(--qr-mal-l,#fee2e2); color:#9f1d1d }
+  .qio-h{ display:flex; justify-content:space-between; gap:12px; align-items:baseline; flex-wrap:wrap } .qio-h b{ font-size:1.05rem } .qio-h span{ font-size:.8rem; color:var(--qr-tx2,#475569) }
+  .qio-sec{ border:1px solid var(--qr-ln,#e2e8f0); border-radius:12px; padding:10px 12px } .qio-sec h4{ margin:0 0 4px; font-size:.92rem } .qio-sec p{ margin:0; font-size:.84rem; color:var(--qr-tx2,#475569); line-height:1.4 }
+  .qio-warn{ background:var(--qr-warn-l,#fef3c7); border-color:#f3d28a } .qio-aut{ background:#eef4ff; border-color:#bfd0ff }
+  .qio-acc{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; align-items:center }
+  .qio-b{ padding:8px 14px; border:1px solid var(--qr-ln,#e2e8f0); background:#fff; border-radius:10px; font:inherit; font-weight:700; cursor:pointer; min-height:40px; color:var(--qr-tx,#0f172a) }
+  .qio-b.prim{ background:var(--qr-vio,#1d4ed8); border-color:var(--qr-vio,#1d4ed8); color:#fff } .qio-b.mal{ background:#b91c1c; border-color:#b91c1c; color:#fff }
+  .qio-in{ flex:1 1 220px; padding:9px 12px; border:1px solid var(--qr-ln,#e2e8f0); border-radius:10px; font:inherit; min-height:40px }
+  .qio-l{ background:none; border:0; color:var(--qr-vio,#1d4ed8); font:inherit; font-weight:700; cursor:pointer; text-decoration:underline; padding:4px 6px }
+  .qio-m{ font-size:.82rem; color:var(--qr-tx2,#475569) } .qio-pie{ display:flex; gap:10px; justify-content:flex-end }
+  .qio-ov{ position:fixed; inset:0; z-index:2147483000; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; padding:16px }
+  .qio-dlg{ background:#fff; border-radius:14px; padding:18px; width:100%; max-width:460px; display:grid; gap:12px } .qio-dlg b{ font-size:1rem }
+  .qio-t{ width:100%; border-collapse:collapse; font-size:.82rem } .qio-t th,.qio-t td{ text-align:left; padding:6px 8px; border-bottom:1px solid var(--qr-ln,#e2e8f0); vertical-align:top } .qio-t th{ font-size:.72rem; text-transform:uppercase; letter-spacing:.4px; color:var(--qr-tx2,#475569) }
+  .qio-tw{ overflow-x:auto; max-width:100% } .qio{ min-width:0; max-width:100% } .qio-sec, .qio-sec p, .qio-sec h4{ min-width:0; overflow-wrap:anywhere } .qio-t td,.qio-t th{ overflow-wrap:anywhere }
+  @media (max-width:520px){ .qio{ margin-left:8px; margin-right:8px; padding:12px } .qio-acc{ flex-direction:column; align-items:stretch } .qio-in{ flex-basis:auto } }
+
+</style>
+</head>
+<body>
+<header>
+  <div><h1>🖨️ Impresora de Depósito</h1><p>La térmica 4BARCODE y la PC que la maneja, en vivo: reposiciones por autorizar, impresiones detenidas, trabajos retenidos en Windows, pausa.</p></div>
+  <a href="./facturacion.html">← Facturación</a>
+</header>
+<main>
+  <div id="qrImpOfHost"></div>
+  <p class="ayuda">Se actualiza solo cada 30 segundos con la pestaña a la vista. <b>Autorizar</b> aprueba la reposición de UNA etiqueta que pidió el armador (sale por la PC de Depósito). <b>Borrar de la PC</b> le ordena a la PC quitar un trabajo viejo retenido en Windows. <b>Pausar</b> frena toda impresión nueva hasta levantarla. Lo que ya está dentro de la impresora sigue su curso: para eso, apagarla.</p>
+</main>
+<script id="qrImpOficinaMod">
+/* ═══════════════════════════════════════════════════════════════════
+   IMPRESORA DE DEPÓSITO desde oficina (Caja · Queruclor) — 20/11/2026, incidente «Pizzurno»
+
+   Un solo panel arriba de «Cuentas Queruclor» que solo aparece cuando hay algo que hacer o saber:
+     · Reposiciones de etiquetas que esperan autorización (Rodri pidió reponer una etiqueta ya impresa): Autorizar / Rechazar.
+     · Impresiones detenidas, inciertas o sin confirmar en Depósito (solo aviso: las resuelve el celular).
+     · Trabajos viejos retenidos en la cola de Windows de la PC de Depósito (huérfanos): «Borrar de la PC» (la PC lo ejecuta).
+     · La pausa general de la impresión: pausar con motivo / levantar.
+   Todo va por las funciones del servidor (qr_imp_oficina, qr_imp_autorizar, qr_imp_orden, qr_imp_pausar) con el token del puesto;
+   la Caja no toca la impresora ni las cajas. Se relee cada 30 s con la pantalla Queruclor a la vista.
+   ═══════════════════════════════════════════════════════════════════ */
+(function () {
+  "use strict";
+  if (window.qrImpOficina) return;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const quien = () => (typeof USUARIO_APP !== "undefined" && USUARIO_APP) || "Laura";
+  const aviso = (t, ok) => { if (window.showToast) showToast(t, ok !== false); };
+  const hhmm = iso => { try { return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+  const ddhm = iso => { try { return new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+  const enBase = () => !!(window.QR_LOCAL && window.QRSrv);
+  /* 21/11/2026: SIEMPRE asincrónico. fetch relativo a /rest/v1/: el adaptador de cada pantalla lo manda al Worker con el token del
+     puesto (en producción) o al servidor local (en pruebas). Nunca QRSrv.rpc (XMLHttpRequest síncrono): con red lenta congelaba la Caja. */
+  async function rpc(fn, p) {
+    const r = await fetch("/rest/v1/rpc/" + fn, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ p }), cache: "no-store" });
+    let j = null; try { j = await r.json(); } catch (e) {}
+    if (!r.ok) throw new Error((j && (j.message || j.motivo)) || ("error " + r.status));
+    return j;
+  }
+  const st = { datos: null, t: 0, error: null, ocupado: false, abierto: false, motivo: "" };
+  const ESTADO_TXT = { detenida: "Detenida en la impresora", incierta: "No se sabe si salió", impresa: "Impresa, sin confirmar en Depósito", tomada: "Hace más de 15 min que la PC la prepara", enviada: "Hace más de 15 min que está en la impresora" };
+
+  async function leer(forzar) {
+    if (!enBase()) return;
+    if (!forzar && Date.now() - st.t < 30000) return;
+    try { st.datos = await rpc("qr_imp_oficina", { ultimas: 5 }); st.error = null; }
+    catch (e) { st.error = "Sin conexión con el servidor: no se puede ver la impresora de Depósito."; }
+    st.t = Date.now(); pintar();
+  }
+  /* Dónde se monta: en la Caja, debajo del título de Cuentas Queruclor; en el Admin (21/11/2026), debajo de la barra superior, en todas las
+     pestañas; en la PÁGINA propia impresora.html (Facturación, la PC donde está enchufada la térmica), en #qrImpOfHost, siempre desplegado. */
+  const EN_ADMIN = window.QR_PUESTO === "admin", EN_PAGINA = !!window.QR_IMP_PAGINA;
+  if (EN_PAGINA) st.abierto = true;
+  function host() {
+    let h = $("qrImpOf");
+    if (!h) {
+      if (EN_PAGINA) { const c = $("qrImpOfHost"); if (!c) return null; h = document.createElement("div"); h.id = "qrImpOf"; c.appendChild(h); return h; }
+      const s = $("screen-queruclor"); const ancla = (s && s.querySelector(".qr-hd")) || (EN_ADMIN ? document.querySelector(".main .top-header") : null);
+      if (!ancla) return null; h = document.createElement("div"); h.id = "qrImpOf"; ancla.insertAdjacentElement("afterend", h);
+    }
+    return h;
+  }
+  const ESTADO_CORTO = { autorizacion: "espera autorización", solicitada: "pedida", tomada: "preparando", enviada: "imprimiendo", detenida: "detenida", impresa: "impresa, sin confirmar", confirmada: "confirmada", no_salio: "no salió", incierta: "incierta", fallida: "falló", cancelada: "cancelada", vencida: "vencida", descartada: "descartada", rechazada: "rechazada" };
+  /* Secciones extra de la página propia: la PC y su cola de Windows, y las últimas impresiones. */
+  function htmlPagina(d) {
+    const ag = d.agente, esp = d.agente_esperado || {};
+    let h = `<div class="qio-sec"><h4>PC de Depósito</h4>`;
+    if (!ag) h += `<p>Nunca se conectó.</p>`;
+    else h += `<p><b>${esc(ag.agente || "")}</b> · impresora «${esc(ag.impresora || "?")}» · ${esc(ag.estado_impresora || "")}<br>Último latido: ${esc(ddhm(ag.latido))} (${ag.segundos > 90 ? "<b>sin respuesta</b>" : "respondiendo"}) · agente instalado <b>${esc(ag.version || "?")}</b>${esp.version ? " · esperado " + esc(esp.version) : ""}</p>` +
+      `<p><b>Cola de Windows:</b> ${(ag.cola || []).length ? (ag.cola || []).map(c => esc(c.documento) + " · " + esc(c.estado_windows || "") + (c.paginas != null ? " · " + (c.paginas_impresas || 0) + "/" + c.paginas + " págs." : "")).join("<br>") : "vacía"}</p>`;
+    h += `</div><div class="qio-sec"><h4>Últimas impresiones</h4>`;
+    const ul = d.ultimas || [];
+    h += ul.length ? `<div class="qio-tw"><table class="qio-t"><thead><tr><th>Hora</th><th>Tipo</th><th>Etiq.</th><th>Estado</th><th>Pidió</th><th>Detalle</th></tr></thead><tbody>` +
+      ul.map(t => `<tr><td>${esc(ddhm(t.solicitada_at))}</td><td>${esc(t.tipo)}</td><td>${t.etiquetas}</td><td><b>${esc(ESTADO_CORTO[t.estado] || t.estado)}</b></td><td>${esc(t.solicitada_por || "")}</td><td>${esc(t.error || t.motivo || "")}${t.detalle && t.detalle.paginas ? " · " + (t.detalle.paginas_impresas || 0) + "/" + t.detalle.paginas : ""}</td></tr>`).join("") + `</tbody></table></div>` : `<p>Todavía no hay impresiones.</p>`;
+    return h + `</div>`;
+  }
+  const cajaTxt = a => (a.cajas || []).map(c => "N° " + String(c.n).padStart(3, "0") + " · " + (c.nombre || "") + " (impresa " + (c.impresiones || 0) + (c.reimpresiones ? ", repuesta " + c.reimpresiones : "") + ")").join(" — ");
+  function pintar() {
+    const h = host(); if (!h) return;
+    const d = st.datos;
+    if (!d) { h.innerHTML = st.error ? `<div class="qio qio-mal">${esc(st.error)}</div>` : ""; return; }
+    const aut = d.autorizaciones || [], at = d.atencion || [], hu = d.huerfanos || [], ag = d.agente, pausa = d.pausa || {}, esp = d.agente_esperado || {};
+    const pcMal = !ag ? "La PC de Depósito nunca se conectó." : ag.segundos > 90 ? "La PC de Depósito no responde desde las " + hhmm(ag.latido) + "." : null;
+    /* 21/11/2026: la copia instalada del agente se compara con la versión que fijó oficina (publicar la web no actualiza el PowerShell de la PC). */
+    const versionMal = ag && esp.version && ag.version !== esp.version ? "El agente instalado en la PC es la versión " + (ag.version || "?") + " y se espera la " + esp.version + (ag.segundos <= 90 ? ": se actualiza solo cuando esté en reposo; si no lo hace en unos minutos, hay que correr el instalador en esa PC." : ".") : null;
+    const nada = !EN_PAGINA && !aut.length && !at.length && !hu.length && !pausa.activa && !st.abierto && !versionMal;
+    if (nada) { h.innerHTML = `<div class="qio qio-min"><span>🖨️ Impresora de Depósito: ${esc(pcMal || (ag.estado_impresora || "lista"))} · agente ${esc(ag.version || "?")}</span><button type="button" class="qio-l" id="qioAbrir">Pausar / ver</button></div>`; enganchar(); return; }
+    let html = `<div class="qio"><div class="qio-h"><b>🖨️ Impresora de Depósito</b><span>${esc(pcMal || ("PC " + (ag.agente || "") + " · " + (ag.estado_impresora || "") + " · agente " + (ag.version || "?")))}</span></div>`;
+    if (versionMal) html += `<div class="qio-sec qio-warn"><h4>⚠️ Versión del agente</h4><p>${esc(versionMal)}</p></div>`;
+    if (pausa.activa) html += `<div class="qio-sec qio-warn"><h4>⏸ Impresión pausada${pausa.quien ? " por " + esc(pausa.quien) : ""} · ${esc(ddhm(pausa.desde))}</h4><p>${esc(pausa.motivo || "")}</p><div class="qio-acc"><button type="button" class="qio-b prim" data-a="despausar">Levantar la pausa</button></div></div>`;
+    for (const a of aut) html += `<div class="qio-sec qio-aut" data-id="${esc(a.id)}"><h4>Reposición de ${a.etiquetas === 1 ? "1 etiqueta" : a.etiquetas + " etiquetas"} · pedido ${esc(a.codigo_corto || "")} · ${esc(a.cliente || "")}</h4>
+        <p>Pidió <b>${esc(a.solicitada_por || "")}</b> a las ${esc(hhmm(a.solicitada_at))} · motivo: <b>${esc(a.motivo || "")}</b><br>${esc(cajaTxt(a))}</p>
+        <div class="qio-acc"><button type="button" class="qio-b prim" data-a="autorizar" data-id="${esc(a.id)}">Autorizar</button><button type="button" class="qio-b" data-a="rechazar" data-id="${esc(a.id)}">Rechazar…</button></div></div>`;
+    for (const x of at) html += `<div class="qio-sec"><h4>${esc(ESTADO_TXT[x.estado] || x.estado)} · pedido ${esc(x.codigo_corto || "")} · ${esc(x.cliente || "")} · ${x.etiquetas} etiq.</h4>
+        <p>${esc(x.error || "")}${x.detalle && x.detalle.paginas ? " · " + (x.detalle.paginas_impresas || 0) + " de " + x.detalle.paginas + " salieron según Windows" : ""}${x.orden ? " · orden pendiente: " + esc(x.orden) : ""}. Se resuelve desde el celular de Depósito (Continuar / Cancelar en la PC / qué salió).</p></div>`;
+    for (const o of hu) html += `<div class="qio-sec qio-warn"><h4>Trabajo viejo retenido en la PC: ${esc(o.documento)}${o.codigo_corto ? " · pedido " + esc(o.codigo_corto) : ""}${o.cliente ? " · " + esc(o.cliente) : ""}</h4>
+        <p>${o.trabajo ? "En el sistema figura «" + esc(o.estado) + "» (" + esc(ddhm(o.solicitada_at)) + ")" : "No es del sistema (lo mandó otro programa)"} · Windows: ${esc(o.estado_windows || "?")} · ${o.paginas_impresas != null ? o.paginas_impresas + " de " + (o.paginas || "?") + " págs." : ""} Mientras esté ahí puede volver a salir y frena las impresiones de ese pedido.</p>
+        ${o.trabajo ? `<div class="qio-acc">${o.orden ? `<span class="qio-m">⏳ Orden de borrar enviada a la PC…</span>` : `<button type="button" class="qio-b mal" data-a="borrar" data-id="${esc(o.trabajo)}">Borrar de la PC</button>`}</div>` : `<p class="qio-m">Se borra desde la PC de Depósito (cola de Windows).</p>`}</div>`;
+    if (EN_PAGINA) html += htmlPagina(d);
+    if (!pausa.activa) html += `<div class="qio-sec"><h4>Pausar la impresión</h4><p>Nadie puede pedir impresiones ni reimpresiones y la PC no toma nada hasta levantarla. Lo que ya está en la impresora sigue su curso.</p>
+        <div class="qio-acc"><input id="qioMotivo" class="qio-in" maxlength="120" placeholder="Motivo (obligatorio)" value="${esc(st.motivo)}"><button type="button" class="qio-b" data-a="pausar">Pausar</button></div></div>`;
+    html += `<div class="qio-pie"><button type="button" class="qio-l" data-a="refrescar">Actualizar</button>${nada || !st.abierto ? "" : `<button type="button" class="qio-l" data-a="cerrar">Ocultar</button>`}</div></div>`;
+    h.innerHTML = html; enganchar();
+  }
+  function enganchar() {
+    const h = $("qrImpOf"); if (!h) return;
+    const ab = $("qioAbrir"); if (ab) ab.onclick = () => { st.abierto = true; pintar(); };
+    h.querySelectorAll("[data-a]").forEach(b => { b.onclick = () => accion(b.dataset.a, b.dataset.id); });
+    const m = $("qioMotivo"); if (m) m.oninput = () => { st.motivo = m.value; };
+  }
+  async function accion(a, id) {
+    if (st.ocupado) return; st.ocupado = true;
+    try {
+      let r;
+      if (a === "refrescar") { await leer(true); return; }
+      if (a === "cerrar") { st.abierto = false; pintar(); return; }
+      if (a === "autorizar") { r = await rpc("qr_imp_autorizar", { id, quien: quien(), aprobar: true }); aviso(r.ok ? "Autorizada: sale por la PC de Depósito" : (r.motivo || "No se pudo autorizar"), r.ok); }
+      if (a === "rechazar") { const mot = await preguntar("¿Por qué se rechaza la reposición?", "Motivo (queda registrado)"); if (mot == null) return; r = await rpc("qr_imp_autorizar", { id, quien: quien(), aprobar: false, motivo: mot }); aviso(r.ok ? "Rechazada" : (r.motivo || "No se pudo"), r.ok); }
+      if (a === "borrar") { if (!(await preguntar("¿Borrar ese trabajo de la cola de Windows de la PC de Depósito?", null, "Sí, borrar"))) return; r = await rpc("qr_imp_orden", { id, orden: "cancelar", quien: quien() }); aviso(r.ok ? "Orden enviada a la PC" : (r.motivo || "No se pudo"), r.ok); }
+      if (a === "pausar") { const mot = (st.motivo || "").trim(); if (!mot) { aviso("Escribí el motivo de la pausa", false); const i = $("qioMotivo"); if (i) i.focus(); return; } r = await rpc("qr_imp_pausar", { activa: true, quien: quien(), motivo: mot }); aviso(r.ok ? "Impresión pausada" : (r.motivo || "No se pudo"), r.ok); if (r.ok) st.motivo = ""; }
+      if (a === "despausar") { r = await rpc("qr_imp_pausar", { activa: false, quien: quien() }); aviso(r.ok ? "Pausa levantada" : (r.motivo || "No se pudo"), r.ok); }
+      await leer(true);
+    } catch (e) { aviso("Sin conexión: no se hizo. " + e.message, false); }
+    finally { st.ocupado = false; }
+  }
+  /* Pregunta propia (sin confirm/prompt). Devuelve el texto (o true) / null si cancela. */
+  function preguntar(titulo, campo, ok) {
+    return new Promise(res => {
+      const ov = document.createElement("div"); ov.className = "qio-ov";
+      ov.innerHTML = `<div class="qio-dlg" role="dialog" aria-modal="true"><b>${esc(titulo)}</b>${campo ? `<input id="qioDlgIn" class="qio-in" maxlength="120" placeholder="${esc(campo)}">` : ""}
+        <div class="qio-acc"><button type="button" class="qio-b" data-d="no">Volver</button><button type="button" class="qio-b prim" data-d="si">${esc(ok || "Confirmar")}</button></div></div>`;
+      document.body.appendChild(ov);
+      ov.onclick = ev => { const b = ev.target.closest("[data-d]"); if (ev.target === ov) { ov.remove(); return res(null); } if (!b) return;
+        if (b.dataset.d === "no") { ov.remove(); return res(null); }
+        const i = $("qioDlgIn"); const v = i ? i.value.trim() : true; if (i && !v) { i.focus(); return; } ov.remove(); res(v); };
+      const i = $("qioDlgIn"); if (i) setTimeout(() => i.focus(), 50);
+    });
+  }
+  window.qrImpOficina = { leer: () => leer(true), estado: () => st };
+  const visible = () => { if (document.hidden) return false; if (EN_ADMIN || EN_PAGINA) return true; const s = $("screen-queruclor"); return !!(s && s.classList.contains("active")); };
+  setInterval(() => { if (visible()) leer(false); }, 5000);
+  setInterval(() => { if (visible() && !$("qrImpOf")) pintar(); }, 1500);
+})();
+
+</script>
+</body>
+</html>
