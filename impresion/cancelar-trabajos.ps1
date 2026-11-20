@@ -10,7 +10,9 @@
     powershell -ExecutionPolicy Bypass -File cancelar-trabajos.ps1 -Ids 12 -Reanudar
     powershell -ExecutionPolicy Bypass -File cancelar-trabajos.ps1 -Reanudar          (no borra nada: solo reanuda)
 #>
-param([int[]]$Ids = @(), [switch]$Reanudar, [string]$Impresora)
+param([string[]]$Ids = @(), [switch]$Reanudar, [string]$Impresora)
+# Llamado con -File, «46,4» llega como UN texto y en español se lee 464: se separa por coma y por espacio.
+$Ids = @($Ids | ForEach-Object { [string]$_ -split "[,; ]+" } | Where-Object { $_ -match "^d+$" } | ForEach-Object { [int]$_ })
 $ErrorActionPreference = "Continue"
 $fecha = Get-Date -Format "yyyyMMdd-HHmmss"
 $Salida = Join-Path ([Environment]::GetFolderPath("Desktop")) "evidencia-impresion-cancelacion-$fecha"
