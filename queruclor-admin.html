@@ -15099,5 +15099,101 @@ renderCatKPIs();
 })();
 
 </script>
+<script id="qrActualizador" data-sw="./service-worker.js">
+/* ═══════════════════════════════════════════════════════════════════
+   ACTUALIZADOR COMÚN (19/11/2026) — Reparto, Caja, Depósito, Facturación y Admin.
+
+   Qué hace: cuando hay una versión nueva publicada, muestra un cuadro «Hay una versión nueva» con el botón «Actualizar ahora».
+   Al tocarlo pide al service worker que se actualice (todos usan skipWaiting + clients.claim), espera a que tome el control (hasta
+   6 s) y recarga: la página fresca viene de la red. Nunca recarga sola: Laura o el repartidor pueden estar a mitad de algo.
+   «Después» lo esconde 10 minutos. Lo guardado en el equipo (colas, borradores, sesión) no se toca: vive en localStorage, que
+   el service worker no borra (probado en prototipo/reparto-colas-actualizacion-navegador.js y actualizacion-modal-navegador.js).
+
+   Cómo se entera (dos caminos, porque no todas las páginas están controladas por un service worker):
+     1) Eventos del service worker: `updatefound` → instalado, y `controllerchange` (otra pestaña ya actualizó).
+     2) Sondeo de la versión publicada: cada 30 min y al volver a la pestaña lee el archivo del service worker (unos bytes, mismo
+        origen GitHub Pages, cache: no-store; no toca Supabase ni los Workers) y compara el CACHE_NAME con el que vio al cargar.
+        Como cada publicación sube esa versión, alcanza para enterarse aunque la página no tenga service worker.
+   El archivo a sondear lo indica data-sw en el <script id="qrActualizador"> (lo pone produccion/actualizador-inyectar.js). */
+(function () {
+  "use strict";
+  if (window.__qrActualizador) return;
+  window.__qrActualizador = true;
+  var DORMIR_MS = 10 * 60 * 1000, CADA_MS = 30 * 60 * 1000, dormidoHasta = 0, reg = null, mostrado = false, versionBase = null;
+  var propio = document.getElementById("qrActualizador");
+  var SW_URL = (propio && propio.getAttribute("data-sw")) || "./sw.js";
+  var tieneSW = "serviceWorker" in navigator;
+
+  function cuadro() {
+    if (mostrado || Date.now() < dormidoHasta || !document.body) return;
+    mostrado = true;
+    var fondo = document.createElement("div");
+    fondo.id = "qrActModal"; fondo.setAttribute("role", "dialog"); fondo.setAttribute("aria-modal", "true"); fondo.setAttribute("aria-labelledby", "qrActT");
+    fondo.style.cssText = "position:fixed;inset:0;z-index:2147483646;background:rgba(15,18,32,.55);display:flex;align-items:center;justify-content:center;padding:16px;font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif";
+    fondo.innerHTML =
+      '<div style="background:#fff;color:#111827;border-radius:16px;max-width:380px;width:100%;padding:20px 18px;box-shadow:0 20px 60px rgba(0,0,0,.35)">' +
+        '<div id="qrActT" style="font-size:18px;font-weight:800;margin:0 0 6px">Hay una versión nueva</div>' +
+        '<p style="margin:0 0 14px;color:#374151">Tocá <b>Actualizar ahora</b> para pasar a la última versión. Lo que tenés guardado en este equipo (pendientes, borradores, sesión) se conserva.</p>' +
+        '<button type="button" id="qrActSi" style="width:100%;min-height:48px;border:0;border-radius:12px;background:#0b7a60;color:#fff;font:inherit;font-weight:800;font-size:16px;cursor:pointer">Actualizar ahora</button>' +
+        '<button type="button" id="qrActNo" style="width:100%;min-height:40px;margin-top:8px;border:0;border-radius:12px;background:transparent;color:#374151;font:inherit;font-weight:700;cursor:pointer">Después (te lo recuerdo en 10 minutos)</button>' +
+      "</div>";
+    document.body.appendChild(fondo);
+    document.getElementById("qrActSi").onclick = function () {
+      this.disabled = true; this.textContent = "Actualizando…";
+      try { sessionStorage.setItem("qr_actualizado_en", new Date().toISOString()); } catch (e) {}
+      actualizar();
+    };
+    document.getElementById("qrActNo").onclick = function () { dormidoHasta = Date.now() + DORMIR_MS; mostrado = false; fondo.remove(); setTimeout(revisar, DORMIR_MS + 50); };
+    try { document.getElementById("qrActSi").focus(); } catch (e) {}
+  }
+  /* Pide la actualización del service worker, espera a que el nuevo tome el control (o 6 s) y recarga. */
+  function actualizar() {
+    var listo = false, fin = function () { if (listo) return; listo = true; location.reload(); };
+    setTimeout(fin, 6000);
+    if (!tieneSW) return fin();
+    try { navigator.serviceWorker.addEventListener("controllerchange", fin); } catch (e) {}
+    var r = reg ? Promise.resolve(reg) : navigator.serviceWorker.getRegistration();
+    Promise.resolve(r).then(function (rg) {
+      if (!rg) return fin();
+      if (rg.waiting) { try { rg.waiting.postMessage({ type: "SKIP_WAITING" }); } catch (e) {} }
+      return rg.update().then(function () {
+        /* Si ya había uno nuevo activo (skipWaiting lo activa solo), no hay que esperar nada. */
+        if (!rg.installing && !rg.waiting) setTimeout(fin, 800);
+      });
+    }).catch(fin);
+  }
+  function vigilar(r) {
+    if (!r || reg === r) return;
+    reg = r;
+    if (r.waiting && navigator.serviceWorker.controller) cuadro();
+    r.addEventListener("updatefound", function () {
+      var w = r.installing; if (!w) return;
+      w.addEventListener("statechange", function () { if (w.state === "installed" && navigator.serviceWorker.controller) cuadro(); });
+    });
+  }
+  function versionPublicada() {
+    return fetch(SW_URL, { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (txt) { var m = txt && txt.match(/CACHE_NAME\s*=\s*['"]([^'"]+)['"]/); return m ? m[1] : null; }).catch(function () { return null; });
+  }
+  function revisar() {
+    if (reg && typeof reg.update === "function") reg.update().catch(function () {});
+    versionPublicada().then(function (v) {
+      if (!v) return;
+      if (versionBase === null) { versionBase = v; return; }
+      if (v !== versionBase) cuadro();
+    });
+  }
+  if (tieneSW) {
+    navigator.serviceWorker.getRegistration().then(vigilar).catch(function () {});
+    navigator.serviceWorker.ready.then(vigilar).catch(function () {});
+    navigator.serviceWorker.addEventListener("controllerchange", function () { if (navigator.serviceWorker.controller) cuadro(); });
+  }
+  versionPublicada().then(function (v) { if (v && versionBase === null) versionBase = v; });
+  setInterval(revisar, CADA_MS);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) revisar(); });
+  window.qrRevisarActualizacion = revisar;
+})();
+
+</script>
 </body>
 </html>
