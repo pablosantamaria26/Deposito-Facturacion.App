@@ -30,7 +30,7 @@
 #>
 param([switch]$Prueba, [string]$Html, [string]$Dir, [string]$ArchivoSalida, [int]$Vueltas = 0)
 $ErrorActionPreference = "Stop"
-$VERSION = "2026-11-21"
+$VERSION = "2026-11-22"
 if (-not $Dir) { $Dir = Join-Path $env:LOCALAPPDATA "MLImpresion" }
 $TRABAJO = Join-Path $Dir "trabajo"; $DIARIO = Join-Path $Dir "diario"
 New-Item -ItemType Directory -Force -Path $TRABAJO, $DIARIO | Out-Null
@@ -57,6 +57,13 @@ $ANCHO_MM = [double](Valor "ancho_mm" 100); $ALTO_MM = [double](Valor "alto_mm" 
 $PAUSAR_TRAS_SEG = [int](Valor "pausar_tras_seg" 120)
 # Solo pruebas: tomar trabajos aunque Windows diga que la impresora no está lista (para ensayar un trabajo que queda detenido).
 $IGNORAR_ESTADO = [bool](Valor "ignorar_estado_impresora" $false)
+# Trabajo que NO cambia (mismo estado de Windows y mismas páginas) con la impresora «lista» y sin error: caso Pizzurno (22/11/2026).
+# Windows lo dejó «Complete» (ya le entregó toda la tira) y la impresora nunca confirmó. Se lo da por detenido («retenida», o
+# «sin_avance» si ni siquiera llegó a Complete) cuando pasa más de max(mínimo, segundos por etiqueta × etiquetas) sin cambiar.
+# NO se usa PagesPrinted=0 solo: hay controladores que nunca actualizan ese contador y la tira sale igual (el trabajo se va de
+# la cola y la constancia de Windows dice impreso). Si el trabajo cambia (páginas o estado), el reloj vuelve a cero.
+$SIN_AVANCE_MIN_SEG = [int](Valor "sin_avance_min_seg" 180)
+$SIN_AVANCE_POR_ETIQUETA_SEG = [int](Valor "sin_avance_por_etiqueta_seg" 3)
 
 Add-Type -AssemblyName System.Security
 function Token() {
@@ -366,21 +373,38 @@ function BorrarDiario($id) { Remove-Item (Join-Path $DIARIO "$id.json") -Force -
 # Sigue el trabajo HASTA QUE SALE de la cola de Windows y dice si se entregó (impresa), si se borró por orden (cancelada) o
 # si no se sabe (incierta). Mientras está detenido avisa «detenida» con el detalle; a los 2 minutos detenido lo pausa en
 # Windows para que no salga solo al volver la impresora. Ejecuta las órdenes que llegan en el latido.
+# 22/11/2026: también es «detenida» un trabajo que no cambia en nada durante demasiado tiempo con la impresora «lista»
+# (retenida «Complete» como Pizzurno, o sin avance): antes quedaba «imprimiendo» para siempre y nadie se enteraba.
 $script:pausadoPorAgente = $null
+# El trabajo en la cola de Windows (función aparte para poder ensayar Seguir sin impresora: prueba-seguir.ps1 la reemplaza).
+function LeerTrabajo($impresora, $jobId, $doc) { Get-PrintJob -PrinterName $impresora -ErrorAction SilentlyContinue | Where-Object { ($jobId -and $_.Id -eq $jobId) -or $_.DocumentName -eq $doc } | Select-Object -First 1 }
 function Seguir($doc, $jobId, $desde, $impresora, $paginas, $id) {
   $detenidoDesde = $null; $firma = ""; $ultimoAvance = [datetime]::MinValue; $pp = 0
+  $huella = $null; $sinCambioDesde = Get-Date; $impresoSegunWindows = $false
+  $sinAvanceSeg = [Math]::Max($SIN_AVANCE_MIN_SEG, $SIN_AVANCE_POR_ETIQUETA_SEG * [int]$paginas)
   while ($true) {
-    $j = Get-PrintJob -PrinterName $impresora -ErrorAction SilentlyContinue | Where-Object { ($jobId -and $_.Id -eq $jobId) -or $_.DocumentName -eq $doc } | Select-Object -First 1
+    $j = LeerTrabajo $impresora $jobId $doc
     if (-not $j) { break }
     if (-not $jobId) { $jobId = $j.Id }
-    $st = [string]$j.JobStatus; $pp = [int]$j.PagesPrinted
-    $codigo = CodigoDeEstado $st $impresora
-    $mal = $st -match 'Error|PaperOut|Offline|Blocked|UserIntervention|Paused'
+    $stWin = [string]$j.JobStatus; $st = $stWin; $pp = [int]$j.PagesPrinted
+    # Windows dice «Printed» y el trabajo sigue en la cola (retención de impresos): salió; no hay nada que seguir.
+    if ($stWin -match 'Printed' -and $stWin -notmatch 'Error|PaperOut|Offline|Blocked|UserIntervention|Paused') { $impresoSegunWindows = $true; break }
+    $codigo = CodigoDeEstado $stWin $impresora
+    $mal = $stWin -match 'Error|PaperOut|Offline|Blocked|UserIntervention|Paused'
     # El trabajo puede no decir nada y ser la IMPRESORA la que está mal (fuera de línea, sin papel, cola en pausa): también es «detenida».
     if (-not $mal) { $ei = EstadoImpresora $impresora; if (-not $ei.lista) { $mal = $true; $codigo = $ei.codigo; $st = "impresora: " + $ei.texto } }
+    # Nada cambió (ni el estado de Windows ni las páginas) durante más de lo que tardaría la tira entera, con la impresora «lista»:
+    # «retenida» si Windows ya la entregó entera (Complete) y la impresora no confirma; «sin_avance» si ni siquiera llegó a eso.
+    $h = "$stWin|$pp"; if ($h -ne $huella) { $huella = $h; $sinCambioDesde = Get-Date }
+    $quieto = [int]((Get-Date) - $sinCambioDesde).TotalSeconds
+    if (-not $mal -and $quieto -ge $sinAvanceSeg) {
+      $mal = $true
+      if ($stWin -match 'Complete') { $codigo = "retenida"; $st = "retenida: Windows ya le entregó toda la tira a la impresora y ésta no confirma que haya salido ($stWin, $quieto s sin cambios)" }
+      else { $codigo = "sin_avance"; $st = "sin avance: $quieto s sin cambiar ($stWin)" }
+    }
     # Si la pausa es NUESTRA (ver más abajo), la causa que se informa sigue siendo la original (sin papel, fuera de línea…), no «pausada».
-    if ($codigo -eq "pausada" -and $script:pausadoPorAgente -eq $id -and $script:causaPausa) { $codigo = $script:causaPausa }
-    if ($mal -and $codigo -ne "pausada") { $script:causaPausa = $codigo }
+    if ($codigo -eq "pausada" -and $script:pausadoPorAgente -eq $id -and $script:causaPausa) { $codigo = $script:causaPausa; if ($script:causaTexto) { $st = $script:causaTexto } }
+    if ($mal -and $codigo -ne "pausada") { $script:causaPausa = $codigo; $script:causaTexto = $st }
     $det = @{ paginas_impresas = $pp; paginas = [int]$paginas; estado_windows = $st; codigo = $codigo; trabajo_windows = $jobId }
     if ($mal) {
       if (-not $detenidoDesde) { $detenidoDesde = Get-Date }
@@ -390,8 +414,9 @@ function Seguir($doc, $jobId, $desde, $impresora, $paginas, $id) {
       $f = "detenida|$codigo"
       if ($id -and ($f -ne $firma -or ((Get-Date) - $ultimoAvance).TotalSeconds -ge 60)) { Avance $id "detenida" "trabajo detenido en Windows: $st" $det | Out-Null; $firma = $f; $ultimoAvance = Get-Date }
       # Más de 2 minutos detenido y Windows no lo tiene en pausa: lo pausamos NOSOTROS. Así, cuando vuelva la impresora, no sale
-      # solo (ni repetido): la persona decide «Continuar» o «Cancelar en la PC».
-      if (((Get-Date) - $detenidoDesde).TotalSeconds -ge $PAUSAR_TRAS_SEG -and $st -notmatch 'Paused' -and $script:pausadoPorAgente -ne $id) {
+      # solo (ni repetido): la persona decide «Continuar» o «Cancelar en la PC». Vale también para la retenida: pausada, el
+      # spooler no la vuelve a mandar cuando se reabre el puerto (lo que pasó el 20/11 a las 11:56 con la de Pizzurno).
+      if (((Get-Date) - $detenidoDesde).TotalSeconds -ge $PAUSAR_TRAS_SEG -and $stWin -notmatch 'Paused' -and $script:pausadoPorAgente -ne $id) {
         try { Suspend-PrintJob -InputObject $j -ErrorAction Stop; $script:pausadoPorAgente = $id; $ultimoAvance = [datetime]::MinValue; $script:ultimoLatido = [datetime]::MinValue; Log "  $doc detenido $([int](((Get-Date) - $detenidoDesde).TotalSeconds)) s ($codigo): PAUSADO en Windows hasta que la persona decida" }
         catch { Log "  no se pudo pausar $doc en Windows: $($_.Exception.Message)" }
       }
@@ -406,6 +431,7 @@ function Seguir($doc, $jobId, $desde, $impresora, $paginas, $id) {
     Start-Sleep -Seconds 2
   }
   $script:estadoExtra = $null
+  if ($impresoSegunWindows) { Log "  $doc figura «Printed» en la cola de Windows (retención de impresos): se da por impresa"; return @{ estado = "impresa"; detalle = @{ paginas_impresas = [int]$paginas; paginas = [int]$paginas; estado_windows = "Printed" } } }
   for ($i = 0; $i -lt 5; $i++) {
     $c = Constancia $jobId $impresora $desde $paginas
     if ($c -eq "impresa") { return @{ estado = "impresa"; detalle = @{ paginas_impresas = [int]$paginas; paginas = [int]$paginas; estado_windows = "Printed" } } }

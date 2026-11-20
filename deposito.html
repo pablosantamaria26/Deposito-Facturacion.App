@@ -7493,7 +7493,7 @@ var qrcode = function() {
        · «Salieron algunas»: se confirman solo las cajas marcadas; el resto queda sin imprimir y sale después como «las que faltan».
        · Reponer una etiqueta ya impresa pide autorización de oficina (Laura o Pablo). «Reimprimir todas» no existe más.
        · Nada se pregunta con confirm()/prompt(): hojas propias, grandes, para el S9. */
-  const IMP_CODIGO_TXT = { sin_papel: "La impresora avisa que no tiene papel", fuera_de_linea: "La impresora está fuera de línea (apagada o desconectada)", tapa_abierta: "La tapa de la impresora está abierta",
+  const IMP_CODIGO_TXT = { retenida: "Windows ya le entregó toda la tira a la impresora y la impresora no confirma que haya salido: puede tenerla en su memoria (caso Pizzurno). Fijate si salió; si no, apagá la impresora con el interruptor antes de decidir", sin_avance: "La impresión no avanza desde hace unos minutos aunque la impresora dice estar lista", sin_papel: "La impresora avisa que no tiene papel",fuera_de_linea: "La impresora está fuera de línea (apagada o desconectada)", tapa_abierta: "La tapa de la impresora está abierta",
     atascada: "Hay una etiqueta atascada", pausada: "La cola de Windows está en pausa", atencion: "La impresora pide atención", error: "La impresora dio error", bandeja_llena: "La bandeja de salida está llena",
     borrando: "Windows la está borrando", imprimiendo: "Está imprimiendo" };
   const detDe = t => (t && t.detalle) || {};
