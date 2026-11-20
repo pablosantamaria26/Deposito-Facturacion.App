@@ -1373,6 +1373,23 @@ td[align=right]{text-align:right; font-variant-numeric:tabular-nums}
 })(typeof window !== "undefined" ? window : globalThis);
 </script>
 <!-- VENCIMIENTOS:FIN -->
+<style id="qrImpOficinaCss">
+  /* ── Impresora de Depósito desde oficina (20/11/2026) ─────────────────────────────────────────────────── */
+  .qio{ font-family:inherit; background:#fff; border:1px solid var(--qr-ln,#e2e8f0); border-radius:16px; padding:14px 16px; margin:0 16px 12px; box-shadow:var(--qr-sh,0 2px 12px rgba(0,0,0,.08)); display:grid; gap:10px }
+  .qio-min{ display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 14px; font-size:.86rem; color:var(--qr-tx2,#475569) }
+  .qio-mal{ background:var(--qr-mal-l,#fee2e2); color:#9f1d1d }
+  .qio-h{ display:flex; justify-content:space-between; gap:12px; align-items:baseline; flex-wrap:wrap } .qio-h b{ font-size:1.05rem } .qio-h span{ font-size:.8rem; color:var(--qr-tx2,#475569) }
+  .qio-sec{ border:1px solid var(--qr-ln,#e2e8f0); border-radius:12px; padding:10px 12px } .qio-sec h4{ margin:0 0 4px; font-size:.92rem } .qio-sec p{ margin:0; font-size:.84rem; color:var(--qr-tx2,#475569); line-height:1.4 }
+  .qio-warn{ background:var(--qr-warn-l,#fef3c7); border-color:#f3d28a } .qio-aut{ background:#eef4ff; border-color:#bfd0ff }
+  .qio-acc{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; align-items:center }
+  .qio-b{ padding:8px 14px; border:1px solid var(--qr-ln,#e2e8f0); background:#fff; border-radius:10px; font:inherit; font-weight:700; cursor:pointer; min-height:40px; color:var(--qr-tx,#0f172a) }
+  .qio-b.prim{ background:var(--qr-vio,#1d4ed8); border-color:var(--qr-vio,#1d4ed8); color:#fff } .qio-b.mal{ background:#b91c1c; border-color:#b91c1c; color:#fff }
+  .qio-in{ flex:1 1 220px; padding:9px 12px; border:1px solid var(--qr-ln,#e2e8f0); border-radius:10px; font:inherit; min-height:40px }
+  .qio-l{ background:none; border:0; color:var(--qr-vio,#1d4ed8); font:inherit; font-weight:700; cursor:pointer; text-decoration:underline; padding:4px 6px }
+  .qio-m{ font-size:.82rem; color:var(--qr-tx2,#475569) } .qio-pie{ display:flex; gap:10px; justify-content:flex-end }
+  .qio-ov{ position:fixed; inset:0; z-index:2147483000; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; padding:16px }
+  .qio-dlg{ background:#fff; border-radius:14px; padding:18px; width:100%; max-width:460px; display:grid; gap:12px } .qio-dlg b{ font-size:1rem }
+</style>
 </head>
 <body>
 <div class="layout">
@@ -15192,6 +15209,124 @@ renderCatKPIs();
   setInterval(revisar, CADA_MS);
   document.addEventListener("visibilitychange", function () { if (!document.hidden) revisar(); });
   window.qrRevisarActualizacion = revisar;
+})();
+
+</script>
+<script id="qrImpOficinaMod">
+/* ═══════════════════════════════════════════════════════════════════
+   IMPRESORA DE DEPÓSITO desde oficina (Caja · Queruclor) — 20/11/2026, incidente «Pizzurno»
+
+   Un solo panel arriba de «Cuentas Queruclor» que solo aparece cuando hay algo que hacer o saber:
+     · Reposiciones de etiquetas que esperan autorización (Rodri pidió reponer una etiqueta ya impresa): Autorizar / Rechazar.
+     · Impresiones detenidas, inciertas o sin confirmar en Depósito (solo aviso: las resuelve el celular).
+     · Trabajos viejos retenidos en la cola de Windows de la PC de Depósito (huérfanos): «Borrar de la PC» (la PC lo ejecuta).
+     · La pausa general de la impresión: pausar con motivo / levantar.
+   Todo va por las funciones del servidor (qr_imp_oficina, qr_imp_autorizar, qr_imp_orden, qr_imp_pausar) con el token del puesto;
+   la Caja no toca la impresora ni las cajas. Se relee cada 30 s con la pantalla Queruclor a la vista.
+   ═══════════════════════════════════════════════════════════════════ */
+(function () {
+  "use strict";
+  if (window.qrImpOficina) return;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const quien = () => (typeof USUARIO_APP !== "undefined" && USUARIO_APP) || "Laura";
+  const aviso = (t, ok) => { if (window.showToast) showToast(t, ok !== false); };
+  const hhmm = iso => { try { return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+  const ddhm = iso => { try { return new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+  const enBase = () => !!(window.QR_LOCAL && window.QRSrv);
+  /* 21/11/2026: SIEMPRE asincrónico. fetch relativo a /rest/v1/: el adaptador de cada pantalla lo manda al Worker con el token del
+     puesto (en producción) o al servidor local (en pruebas). Nunca QRSrv.rpc (XMLHttpRequest síncrono): con red lenta congelaba la Caja. */
+  async function rpc(fn, p) {
+    const r = await fetch("/rest/v1/rpc/" + fn, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ p }), cache: "no-store" });
+    let j = null; try { j = await r.json(); } catch (e) {}
+    if (!r.ok) throw new Error((j && (j.message || j.motivo)) || ("error " + r.status));
+    return j;
+  }
+  const st = { datos: null, t: 0, error: null, ocupado: false, abierto: false, motivo: "" };
+  const ESTADO_TXT = { detenida: "Detenida en la impresora", incierta: "No se sabe si salió", impresa: "Impresa, sin confirmar en Depósito", tomada: "Hace más de 15 min que la PC la prepara", enviada: "Hace más de 15 min que está en la impresora" };
+
+  async function leer(forzar) {
+    if (!enBase()) return;
+    if (!forzar && Date.now() - st.t < 30000) return;
+    try { st.datos = await rpc("qr_imp_oficina", { ultimas: 5 }); st.error = null; }
+    catch (e) { st.error = "Sin conexión con el servidor: no se puede ver la impresora de Depósito."; }
+    st.t = Date.now(); pintar();
+  }
+  /* Dónde se monta: en la Caja, debajo del título de Cuentas Queruclor; en el Admin (21/11/2026), debajo de la barra superior, en todas las pestañas. */
+  const EN_ADMIN = window.QR_PUESTO === "admin";
+  function host() {
+    let h = $("qrImpOf");
+    if (!h) {
+      const s = $("screen-queruclor"); const ancla = (s && s.querySelector(".qr-hd")) || (EN_ADMIN ? document.querySelector(".main .top-header") : null);
+      if (!ancla) return null; h = document.createElement("div"); h.id = "qrImpOf"; ancla.insertAdjacentElement("afterend", h);
+    }
+    return h;
+  }
+  const cajaTxt = a => (a.cajas || []).map(c => "N° " + String(c.n).padStart(3, "0") + " · " + (c.nombre || "") + " (impresa " + (c.impresiones || 0) + (c.reimpresiones ? ", repuesta " + c.reimpresiones : "") + ")").join(" — ");
+  function pintar() {
+    const h = host(); if (!h) return;
+    const d = st.datos;
+    if (!d) { h.innerHTML = st.error ? `<div class="qio qio-mal">${esc(st.error)}</div>` : ""; return; }
+    const aut = d.autorizaciones || [], at = d.atencion || [], hu = d.huerfanos || [], ag = d.agente, pausa = d.pausa || {}, esp = d.agente_esperado || {};
+    const pcMal = !ag ? "La PC de Depósito nunca se conectó." : ag.segundos > 90 ? "La PC de Depósito no responde desde las " + hhmm(ag.latido) + "." : null;
+    /* 21/11/2026: la copia instalada del agente se compara con la versión que fijó oficina (publicar la web no actualiza el PowerShell de la PC). */
+    const versionMal = ag && esp.version && ag.version !== esp.version ? "El agente instalado en la PC es la versión " + (ag.version || "?") + " y se espera la " + esp.version + (ag.segundos <= 90 ? ": se actualiza solo cuando esté en reposo; si no lo hace en unos minutos, hay que correr el instalador en esa PC." : ".") : null;
+    const nada = !aut.length && !at.length && !hu.length && !pausa.activa && !st.abierto && !versionMal;
+    if (nada) { h.innerHTML = `<div class="qio qio-min"><span>🖨️ Impresora de Depósito: ${esc(pcMal || (ag.estado_impresora || "lista"))} · agente ${esc(ag.version || "?")}</span><button type="button" class="qio-l" id="qioAbrir">Pausar / ver</button></div>`; enganchar(); return; }
+    let html = `<div class="qio"><div class="qio-h"><b>🖨️ Impresora de Depósito</b><span>${esc(pcMal || ("PC " + (ag.agente || "") + " · " + (ag.estado_impresora || "") + " · agente " + (ag.version || "?")))}</span></div>`;
+    if (versionMal) html += `<div class="qio-sec qio-warn"><h4>⚠️ Versión del agente</h4><p>${esc(versionMal)}</p></div>`;
+    if (pausa.activa) html += `<div class="qio-sec qio-warn"><h4>⏸ Impresión pausada${pausa.quien ? " por " + esc(pausa.quien) : ""} · ${esc(ddhm(pausa.desde))}</h4><p>${esc(pausa.motivo || "")}</p><div class="qio-acc"><button type="button" class="qio-b prim" data-a="despausar">Levantar la pausa</button></div></div>`;
+    for (const a of aut) html += `<div class="qio-sec qio-aut" data-id="${esc(a.id)}"><h4>Reposición de ${a.etiquetas === 1 ? "1 etiqueta" : a.etiquetas + " etiquetas"} · pedido ${esc(a.codigo_corto || "")} · ${esc(a.cliente || "")}</h4>
+        <p>Pidió <b>${esc(a.solicitada_por || "")}</b> a las ${esc(hhmm(a.solicitada_at))} · motivo: <b>${esc(a.motivo || "")}</b><br>${esc(cajaTxt(a))}</p>
+        <div class="qio-acc"><button type="button" class="qio-b prim" data-a="autorizar" data-id="${esc(a.id)}">Autorizar</button><button type="button" class="qio-b" data-a="rechazar" data-id="${esc(a.id)}">Rechazar…</button></div></div>`;
+    for (const x of at) html += `<div class="qio-sec"><h4>${esc(ESTADO_TXT[x.estado] || x.estado)} · pedido ${esc(x.codigo_corto || "")} · ${esc(x.cliente || "")} · ${x.etiquetas} etiq.</h4>
+        <p>${esc(x.error || "")}${x.detalle && x.detalle.paginas ? " · " + (x.detalle.paginas_impresas || 0) + " de " + x.detalle.paginas + " salieron según Windows" : ""}${x.orden ? " · orden pendiente: " + esc(x.orden) : ""}. Se resuelve desde el celular de Depósito (Continuar / Cancelar en la PC / qué salió).</p></div>`;
+    for (const o of hu) html += `<div class="qio-sec qio-warn"><h4>Trabajo viejo retenido en la PC: ${esc(o.documento)}${o.codigo_corto ? " · pedido " + esc(o.codigo_corto) : ""}${o.cliente ? " · " + esc(o.cliente) : ""}</h4>
+        <p>${o.trabajo ? "En el sistema figura «" + esc(o.estado) + "» (" + esc(ddhm(o.solicitada_at)) + ")" : "No es del sistema (lo mandó otro programa)"} · Windows: ${esc(o.estado_windows || "?")} · ${o.paginas_impresas != null ? o.paginas_impresas + " de " + (o.paginas || "?") + " págs." : ""} Mientras esté ahí puede volver a salir y frena las impresiones de ese pedido.</p>
+        ${o.trabajo ? `<div class="qio-acc">${o.orden ? `<span class="qio-m">⏳ Orden de borrar enviada a la PC…</span>` : `<button type="button" class="qio-b mal" data-a="borrar" data-id="${esc(o.trabajo)}">Borrar de la PC</button>`}</div>` : `<p class="qio-m">Se borra desde la PC de Depósito (cola de Windows).</p>`}</div>`;
+    if (!pausa.activa) html += `<div class="qio-sec"><h4>Pausar la impresión</h4><p>Nadie puede pedir impresiones ni reimpresiones y la PC no toma nada hasta levantarla. Lo que ya está en la impresora sigue su curso.</p>
+        <div class="qio-acc"><input id="qioMotivo" class="qio-in" maxlength="120" placeholder="Motivo (obligatorio)" value="${esc(st.motivo)}"><button type="button" class="qio-b" data-a="pausar">Pausar</button></div></div>`;
+    html += `<div class="qio-pie"><button type="button" class="qio-l" data-a="refrescar">Actualizar</button>${nada || !st.abierto ? "" : `<button type="button" class="qio-l" data-a="cerrar">Ocultar</button>`}</div></div>`;
+    h.innerHTML = html; enganchar();
+  }
+  function enganchar() {
+    const h = $("qrImpOf"); if (!h) return;
+    const ab = $("qioAbrir"); if (ab) ab.onclick = () => { st.abierto = true; pintar(); };
+    h.querySelectorAll("[data-a]").forEach(b => { b.onclick = () => accion(b.dataset.a, b.dataset.id); });
+    const m = $("qioMotivo"); if (m) m.oninput = () => { st.motivo = m.value; };
+  }
+  async function accion(a, id) {
+    if (st.ocupado) return; st.ocupado = true;
+    try {
+      let r;
+      if (a === "refrescar") { await leer(true); return; }
+      if (a === "cerrar") { st.abierto = false; pintar(); return; }
+      if (a === "autorizar") { r = await rpc("qr_imp_autorizar", { id, quien: quien(), aprobar: true }); aviso(r.ok ? "Autorizada: sale por la PC de Depósito" : (r.motivo || "No se pudo autorizar"), r.ok); }
+      if (a === "rechazar") { const mot = await preguntar("¿Por qué se rechaza la reposición?", "Motivo (queda registrado)"); if (mot == null) return; r = await rpc("qr_imp_autorizar", { id, quien: quien(), aprobar: false, motivo: mot }); aviso(r.ok ? "Rechazada" : (r.motivo || "No se pudo"), r.ok); }
+      if (a === "borrar") { if (!(await preguntar("¿Borrar ese trabajo de la cola de Windows de la PC de Depósito?", null, "Sí, borrar"))) return; r = await rpc("qr_imp_orden", { id, orden: "cancelar", quien: quien() }); aviso(r.ok ? "Orden enviada a la PC" : (r.motivo || "No se pudo"), r.ok); }
+      if (a === "pausar") { const mot = (st.motivo || "").trim(); if (!mot) { aviso("Escribí el motivo de la pausa", false); const i = $("qioMotivo"); if (i) i.focus(); return; } r = await rpc("qr_imp_pausar", { activa: true, quien: quien(), motivo: mot }); aviso(r.ok ? "Impresión pausada" : (r.motivo || "No se pudo"), r.ok); if (r.ok) st.motivo = ""; }
+      if (a === "despausar") { r = await rpc("qr_imp_pausar", { activa: false, quien: quien() }); aviso(r.ok ? "Pausa levantada" : (r.motivo || "No se pudo"), r.ok); }
+      await leer(true);
+    } catch (e) { aviso("Sin conexión: no se hizo. " + e.message, false); }
+    finally { st.ocupado = false; }
+  }
+  /* Pregunta propia (sin confirm/prompt). Devuelve el texto (o true) / null si cancela. */
+  function preguntar(titulo, campo, ok) {
+    return new Promise(res => {
+      const ov = document.createElement("div"); ov.className = "qio-ov";
+      ov.innerHTML = `<div class="qio-dlg" role="dialog" aria-modal="true"><b>${esc(titulo)}</b>${campo ? `<input id="qioDlgIn" class="qio-in" maxlength="120" placeholder="${esc(campo)}">` : ""}
+        <div class="qio-acc"><button type="button" class="qio-b" data-d="no">Volver</button><button type="button" class="qio-b prim" data-d="si">${esc(ok || "Confirmar")}</button></div></div>`;
+      document.body.appendChild(ov);
+      ov.onclick = ev => { const b = ev.target.closest("[data-d]"); if (ev.target === ov) { ov.remove(); return res(null); } if (!b) return;
+        if (b.dataset.d === "no") { ov.remove(); return res(null); }
+        const i = $("qioDlgIn"); const v = i ? i.value.trim() : true; if (i && !v) { i.focus(); return; } ov.remove(); res(v); };
+      const i = $("qioDlgIn"); if (i) setTimeout(() => i.focus(), 50);
+    });
+  }
+  window.qrImpOficina = { leer: () => leer(true), estado: () => st };
+  const visible = () => { if (document.hidden) return false; if (EN_ADMIN) return true; const s = $("screen-queruclor"); return !!(s && s.classList.contains("active")); };
+  setInterval(() => { if (visible()) leer(false); }, 5000);
+  setInterval(() => { if (visible() && !$("qrImpOf")) pintar(); }, 1500);
 })();
 
 </script>

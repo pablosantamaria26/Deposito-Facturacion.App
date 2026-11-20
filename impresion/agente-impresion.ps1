@@ -30,7 +30,7 @@
 #>
 param([switch]$Prueba, [string]$Html, [string]$Dir, [string]$ArchivoSalida, [int]$Vueltas = 0)
 $ErrorActionPreference = "Stop"
-$VERSION = "2026-11-20"
+$VERSION = "2026-11-21"
 if (-not $Dir) { $Dir = Join-Path $env:LOCALAPPDATA "MLImpresion" }
 $TRABAJO = Join-Path $Dir "trabajo"; $DIARIO = Join-Path $Dir "diario"
 New-Item -ItemType Directory -Force -Path $TRABAJO, $DIARIO | Out-Null
@@ -72,25 +72,40 @@ function ElegirImpresora() {
   $p = Get-Printer | Where-Object { $_.DriverName -match '4BARCODE|4B-2054|LDT|3nstar' } | Select-Object -First 1
   if ($p) { return $p.Name } else { return "" }
 }
-# Códigos de DetectedErrorState (Win32_Printer, Microsoft): 0 desconocido · 1 otro · 2 sin error · 3 poco papel · 4 SIN PAPEL ·
-# 5 poca tinta · 6 sin tinta · 7 tapa abierta · 8 atascada · 9 fuera de línea · 10 requiere atención · 11 bandeja de salida llena.
-# (La versión 2026-11-11 tenía 9 y 11 cambiados.) El código «sin_papel» es el ÚNICO con el que la pantalla dice «Falta rollo».
-$MAPA_ERR = @{ 4 = @("sin_papel", "sin papel (falta rollo)"); 6 = @("sin_tinta", "sin cinta"); 7 = @("tapa_abierta", "tapa abierta"); 8 = @("atascada", "etiqueta atascada");
-               9 = @("fuera_de_linea", "fuera de línea (apagada o desconectada)"); 10 = @("atencion", "requiere atención"); 11 = @("bandeja_llena", "bandeja de salida llena"); 1 = @("error", "con error") }
+# ── Interpretación del estado que informa Windows (Win32_Printer, tablas de Microsoft) ───────────────────────
+# DetectedErrorState:          0 desconocido · 1 otro · 2 sin error · 3 poco papel · 4 SIN PAPEL · 5 poca tinta · 6 sin tinta · 7 tapa abierta ·
+#                              8 atascada · 9 FUERA DE LÍNEA · 10 requiere atención · 11 bandeja de salida llena.
+# ExtendedDetectedErrorState:  0 desconocido · 1 otro · 2 sin error · 3 poco papel · 4 SIN PAPEL · 5 poca tinta · 6 sin tinta · 7 tapa abierta ·
+#                              8 atascada · 9 REQUIERE ATENCIÓN · 10 bandeja llena · 11 problema con el papel · 12 no puede imprimir la página ·
+#                              13 intervención del usuario · 14 sin memoria · 15 servidor desconocido.
+# Son dos tablas DISTINTAS (9, 10 y 11 no significan lo mismo): se interpretan por separado (21/11/2026; la 2026-11-20 usaba una sola).
+# El código «sin_papel» es el ÚNICO con el que la pantalla dice «Falta rollo»: 4 en cualquiera de las dos. 3 (poco papel) no bloquea.
+$MAPA_DET = @{ 1 = @("error", "con error"); 4 = @("sin_papel", "sin papel (falta rollo)"); 6 = @("sin_tinta", "sin cinta"); 7 = @("tapa_abierta", "tapa abierta"); 8 = @("atascada", "etiqueta atascada");
+               9 = @("fuera_de_linea", "fuera de línea (apagada o desconectada)"); 10 = @("atencion", "requiere atención"); 11 = @("bandeja_llena", "bandeja de salida llena") }
+$MAPA_EXT = @{ 1 = @("error", "con error"); 4 = @("sin_papel", "sin papel (falta rollo)"); 6 = @("sin_tinta", "sin cinta"); 7 = @("tapa_abierta", "tapa abierta"); 8 = @("atascada", "etiqueta atascada");
+               9 = @("atencion", "requiere atención"); 10 = @("bandeja_llena", "bandeja de salida llena"); 11 = @("papel", "problema con el papel (no dice que falte)");
+               12 = @("error", "no puede imprimir la página"); 13 = @("atencion", "requiere intervención"); 14 = @("error", "sin memoria") }
+# Función pura (sin Windows): recibe los campos y devuelve @{lista; codigo; texto}. La prueba prueba-mapeo.ps1 la ejercita código por código.
+function Interpretar($workOffline, $det, $ext, $printerStatus, $printerState, $enCola) {
+  $det = [int]$det; $ext = [int]$ext; $printerStatus = [int]$printerStatus; $printerState = [int]$printerState
+  if ($workOffline) { return @{ lista = $false; codigo = "fuera_de_linea"; texto = "fuera de línea (apagada o desconectada)" } }
+  if ($det -eq 4 -or $ext -eq 4) { return @{ lista = $false; codigo = "sin_papel"; texto = "sin papel (falta rollo) (" + $(if ($det -eq 4) { "det 4" } else { "ext 4" }) + ")" } }
+  if ($MAPA_DET[$det] -and $det -ne 1) { return @{ lista = $false; codigo = $MAPA_DET[$det][0]; texto = $MAPA_DET[$det][1] + " (det $det)" } }
+  if ($MAPA_EXT[$ext] -and $ext -ne 1) { return @{ lista = $false; codigo = $MAPA_EXT[$ext][0]; texto = $MAPA_EXT[$ext][1] + " (ext $ext)" } }
+  if ($det -eq 1 -or $ext -eq 1) { return @{ lista = $false; codigo = "error"; texto = "con error (" + $(if ($det -eq 1) { "det 1" } else { "ext 1" }) + ")" } }
+  if ($printerStatus -eq 7) { return @{ lista = $false; codigo = "fuera_de_linea"; texto = "fuera de línea (apagada o desconectada)" } }
+  if ($printerState -eq 1 -or $printerStatus -eq 6) { return @{ lista = $false; codigo = "pausada"; texto = "la cola de Windows está EN PAUSA" } }
+  $poco = ($det -eq 3 -or $ext -eq 3)
+  $txt = "lista"; if ($poco) { $txt += " · poco papel" }
+  if ($enCola) { $txt += " · " + $enCola + " en la cola de Windows" }
+  return @{ lista = $true; codigo = $(if ($poco) { "poco_papel" } else { "lista" }); texto = $txt }
+}
 function EstadoImpresora($nombre) {
   if (-not $nombre) { return @{ lista = $false; codigo = "sin_impresora"; texto = "no se encontró la impresora térmica" } }
   $w = Get-CimInstance Win32_Printer -Filter ("Name='" + $nombre.Replace("'", "''") + "'") -ErrorAction SilentlyContinue
   if (-not $w) { return @{ lista = $false; codigo = "sin_impresora"; texto = "no existe la impresora «$nombre»" } }
-  if ($w.WorkOffline) { return @{ lista = $false; codigo = "fuera_de_linea"; texto = "fuera de línea (apagada o desconectada)" } }
-  $det = [int]$w.DetectedErrorState; $ext = [int]$w.ExtendedDetectedErrorState
-  foreach ($d in @($det, $ext)) { if ($d -gt 2 -and $d -ne 3 -and $d -ne 5 -and $MAPA_ERR[$d]) { return @{ lista = $false; codigo = $MAPA_ERR[$d][0]; texto = $MAPA_ERR[$d][1] + " ($d)" } } }
-  if ($det -eq 1 -or $ext -eq 1) { return @{ lista = $false; codigo = "error"; texto = "con error (1)" } }
-  if ([int]$w.PrinterStatus -eq 7) { return @{ lista = $false; codigo = "fuera_de_linea"; texto = "fuera de línea (apagada o desconectada)" } }
-  if ([int]$w.PrinterState -eq 1 -or ($w.PrinterStatus -eq 6)) { return @{ lista = $false; codigo = "pausada"; texto = "la cola de Windows está EN PAUSA" } }
   $cola = @(Get-PrintJob -PrinterName $nombre -ErrorAction SilentlyContinue)
-  $txt = "lista"; if ($det -eq 3 -or $ext -eq 3) { $txt += " · poco papel" }
-  if ($cola.Count) { $txt += " · " + $cola.Count + " en la cola de Windows" }
-  return @{ lista = $true; codigo = $(if ($det -eq 3 -or $ext -eq 3) { "poco_papel" } else { "lista" }); texto = $txt }
+  return Interpretar $w.WorkOffline $w.DetectedErrorState $w.ExtendedDetectedErrorState $w.PrinterStatus $w.PrinterState $cola.Count
 }
 # Qué código le damos a un estado de trabajo de Windows (JobStatus): solo PaperOut → sin_papel.
 function CodigoDeEstado($st, $impresora) {
@@ -518,6 +533,22 @@ while ($true) {
     if ($r.pendientes -and @($r.pendientes).Count) { Reconciliar @($r.pendientes) $imp }
     $reconciliado = $true
     if ($r.trabajo) { Procesar $r.trabajo $imp; $ultimoTrabajo = Get-Date; continue }
+    # Actualización ordenada por oficina (21/11/2026): si el servidor dice que la versión esperada es otra, se baja del sitio
+    # publicado, se comprueba la huella SHA-256 que fijó oficina y la sintaxis, se reemplaza este archivo y se sale con código 3:
+    # la tarea programada lo vuelve a arrancar. Solo en reposo (nunca con un trabajo en curso). Sin huella no se actualiza nada.
+    if ($r.agente_esperado -and $r.agente_esperado.version -and $r.agente_esperado.version -ne $VERSION -and $r.agente_esperado.url -and $r.agente_esperado.sha256 -and -not (Valor "sin_actualizar" $false)) {
+      try {
+        $tmp = Join-Path $Dir ("agente-" + $r.agente_esperado.version + ".ps1.nuevo")
+        Invoke-WebRequest -Uri $r.agente_esperado.url -OutFile $tmp -UseBasicParsing -TimeoutSec 60
+        $sha = ([Security.Cryptography.SHA256]::Create().ComputeHash([IO.File]::ReadAllBytes($tmp)) | ForEach-Object { $_.ToString("x2") }) -join ""
+        if ($sha -ne ([string]$r.agente_esperado.sha256).ToLower()) { throw "la huella no coincide (bajado $sha)" }
+        $errs = $null; [void][System.Management.Automation.Language.Parser]::ParseFile($tmp, [ref]$null, [ref]$errs); if ($errs) { throw "el archivo bajado no es un script válido" }
+        if (-not (Select-String -Path $tmp -Pattern ('^\$VERSION = "' + [regex]::Escape($r.agente_esperado.version) + '"') -Quiet)) { throw "el archivo bajado no es la versión esperada" }
+        Copy-Item $tmp $PSCommandPath -Force; Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+        Log "Actualizado a la versión $($r.agente_esperado.version) por orden de oficina: se reinicia"
+        [Environment]::Exit(3)
+      } catch { if (-not $script:actualizacionAvisada) { Log "No se pudo actualizar a $($r.agente_esperado.version): $($_.Exception.Message)"; $script:actualizacionAvisada = $true }; Remove-Item (Join-Path $Dir "*.ps1.nuevo") -Force -ErrorAction SilentlyContinue }
+    }
   } catch {
     $fallasSeguidas++
     if ($fallasSeguidas -le 3 -or $fallasSeguidas % 30 -eq 0) { Log "Sin conexión con el servidor ($fallasSeguidas): $($_.Exception.Message)" }

@@ -6459,11 +6459,9 @@ var qrcode = function() {
     const total = arts.reduce((s, a) => s + a.cajas, 0);
     /* Los códigos de caja salen de la base: sin conexión no se imprime una
        tira con códigos que nadie registró. */
-    let bultos = null;
-    try { bultos = Etiquetas.prepararBultos(p, arts, quien(), true); } catch (e) { return toast("Sin conexión: no se imprimió. Los códigos de las cajas los da el servidor.", "error"); }
-    Etiquetas.imprimir(Etiquetas.htmlTira(arts, p, null, bultos));
-    marcarImpresas(p.id, total);
-    setTimeout(pintarBarra, 600);
+    /* 21/11/2026: nada se imprime desde el navegador. Va a la PC de Depósito por el circuito único (queda registrado y confirmado). */
+    if (window.qrImpPedirRemoto) return qrImpPedirRemoto();
+    toast("Las etiquetas salen por la PC de Depósito: abrí el armado con lector de este pedido", "error");
   };
 
   /* ── Reimprimir UNA copia de un artículo puntual ──────────────────
@@ -6479,24 +6477,16 @@ var qrcode = function() {
 
     const elegir = clave => {
       const art = arts.find(a => Etiquetas.claveDe(a) === clave) || arts[0];
-      if (!confirm(
-        "Reimprimir 1 etiqueta\n\n" + art.articulo + "\nCliente N° " + (p.cliente_id || "—") +
-        " · Pedido #" + p.id + "\n\nEsta etiqueta es idéntica a las que ya imprimiste — no cuenta como" +
-        " una caja nueva, es solo un repuesto para la que se rompió o se perdió."
-      )) return;
       /* Con códigos de caja, se elige cuál se rompió: la reimpresión lleva
          EL MISMO código y queda anotada en la base. */
       let codigos = [];
       try { const b = Etiquetas.prepararBultos(p, arts, quien(), false); codigos = (b && b[Etiquetas.claveDe(art)]) || []; }
       catch (e) { return toast("Sin conexión: no se reimprimió", "error"); }
       const imprimirCodigo = codigo => {
-        let info = null;
-        if (codigo && window.QRSrv) {
-          try { const r = QRSrv.rpc("qr_bulto_reimpresion", { p_codigo: codigo, p_quien: quien() }); if (!r || !r.ok) return toast((r && r.motivo) || "No se pudo reimprimir", "error"); info = r.bulto; }
-          catch (e) { return toast("Sin conexión: no se reimprimió", "error"); }
-        }
-        Etiquetas.imprimir(Etiquetas.reimprimirArticulo(p, items(), Etiquetas.claveDe(art), codigo, info));
-        if (window.toast) toast("Etiqueta reimpresa");
+        /* 21/11/2026: reposición por el circuito único (la autoriza oficina y sale por la PC de Depósito); nada se imprime ni se anota desde acá. */
+        if (!codigo) return toast("Esta caja no tiene código registrado: no se puede reponer", "error");
+        if (window.qrImpReponerPedir) return qrImpReponerPedir(codigo);
+        toast("La reposición se pide desde el armado con lector de este pedido", "error");
       };
       if (codigos.length <= 1) return imprimirCodigo(codigos[0] || null);
       const ov2 = document.createElement("div");
@@ -6544,7 +6534,7 @@ var qrcode = function() {
     const total = Etiquetas.contarCajasQueruclor(items());
     if (!total) return;
 
-    const ya = impresas()[p.id];
+    const ya = impresas()[p.id] || (window.qrImpImpresas ? qrImpImpresas(p.id) : null);   /* 21/11/2026: lo que dice el servidor (confirmadas), no solo la marca local */
     const div = document.createElement("div");
     div.id = "qrEtqBarra";
     div.className = "qr-etq-barra" + (ya ? " impresa" : "");
@@ -6557,8 +6547,7 @@ var qrcode = function() {
           : "Imprimilas y llevate la tira: cada etiqueta es una caja que hay que bajar"}</div>
       </div>
       <button class="qr-etq-b ghost" onclick="qrVerEtiquetas()">👁️ Ver</button>
-      ${ya ? `<button class="qr-etq-b ghost" onclick="qrReimprimirUna()">🔁 Reimprimir 1</button>` : ""}
-      <button class="qr-etq-b" onclick="qrImprimirEtiquetas()">${ya ? "🖨️ Imprimir todo de nuevo" : "🖨️ Imprimir"}</button>`;
+      ${ya ? `<button class="qr-etq-b ghost" onclick="qrReimprimirUna()">🔁 Reponer una etiqueta</button>` : `<button class="qr-etq-b" onclick="qrImprimirEtiquetas()">🖨️ Imprimir en Depósito</button>`}`;
     cont.parentNode.insertBefore(div, cont);
   }
 
@@ -7524,7 +7513,8 @@ var qrcode = function() {
     const huerf = Array.isArray(d.huerfanos) ? d.huerfanos : [];
     const pcMal = !ag ? "La PC de impresión todavía no se conectó." : ag.segundos > 90 ? "La PC de impresión no responde desde las " + hhmm(ag.latido) + "." : null;
     const impMal = ag && ag.segundos <= 90 && ag.estado_impresora && !/^lista/.test(ag.estado_impresora) && !/^(imprimiendo|preparando)/i.test(ag.estado_impresora) ? "Impresora: " + ag.estado_impresora + "." : null;
-    const local = celu ? "" : `<button type="button" class="lq-lnk" id="lqTira" ${bloqueado || pausa || enWin.length ? "disabled" : ""}>Imprimir directo en esta PC</button>`;
+    /* 21/11/2026: «Imprimir directo en esta PC» ya no existe: toda etiqueta sale por la PC de Depósito y queda registrada. */
+    const local = "";
     const caja = (clase, titulo, texto, acciones) => `<div class="lq-imp ${clase}" role="status"><b>${titulo}</b>${texto ? `<p>${esc(texto)}</p>` : ""}${acciones ? `<div class="lq-acc">${acciones}</div>` : ""}</div>`;
     const activas = (e.cajas || []).filter(c => c.estado === "activo");
     const sinImp = activas.filter(c => !(c.impresiones > 0));
@@ -7549,6 +7539,7 @@ var qrcode = function() {
         : sinImp.length ? "🖨️ Imprimir las " + sinImp.length + " que faltan"
         : "🖨️ Reponer una etiqueta…";
       const sinBoton = !!(pausa || enWin.length);
+      if (!algunaImp && !bloqueado) html += `<div class="lq-tarea-t"><b>1 · Primero imprimí las etiquetas</b><span>${activas.length ? activas.length + " cajas · una etiqueta por caja" : ""}${t && t.estado === "no_salio" ? " · la anterior no salió" : ""}</span></div>`;
       html += `<div class="lq-imp-bar"><button type="button" class="lq-b ${faltaAlgo ? "prim" : ""}" id="lqImpPedir" ${bloqueado || impEstado.pidiendo || sinBoton ? "disabled" : ""}>${esc(txt)}</button>${(pcMal || impMal) && !sinBoton ? local : ""}</div>`;
       if (enWin.length) html += caja("aviso", "⚠️ Hay una impresión vieja de este pedido retenida en la PC de Depósito",
         enWin.map(x => (x.etiquetas || "?") + " etiquetas · " + (x.paginas_impresas != null ? x.paginas_impresas + " salieron según Windows · " : "") + "Windows: " + (x.estado_windows || "?")).join(" — ") + ". No sale nada nuevo de este pedido hasta que oficina la borre o la haga continuar (desde Caja o Admin).", bVer);
@@ -7563,20 +7554,20 @@ var qrcode = function() {
       html += caja("curso", "⏳ Esperando autorización de oficina · " + hhmm(t.solicitada_at), (t.tipo === "reimpresion" ? "Reposición de " + (t.etiquetas === 1 ? "1 etiqueta" : t.etiquetas + " etiquetas") : "Volver a imprimir la tira") + (t.motivo ? " · motivo: " + t.motivo : "") + ". Laura o Pablo la aprueban desde Caja o Admin; cuando lo hagan, sale sola por la PC de Depósito.",
         `<button type="button" class="lq-b" id="lqImpCancelar">Cancelar</button>`);
     } else if (t.estado === "solicitada") {
-      html += caja(pcMal || impMal ? "aviso" : "curso", "⏳ Pedida a la PC de Depósito · " + hhmm(t.solicitada_at),
-        pcMal || impMal ? (pcMal || impMal) + " Queda en la cola y sale cuando vuelva." : "Esperando que la PC la tome.",
+      html += caja(pcMal || impMal ? "aviso" : "curso", "⏳ Pedido de impresión recibido · " + hhmm(t.solicitada_at),
+        (pcMal || impMal ? (pcMal || impMal) + " Queda en la cola y sale cuando vuelva." : "Pedida a la PC de Depósito: esperando que la tome.") + " No hace falta tocar nada más.",
         `<button type="button" class="lq-b" id="lqImpCancelar">Cancelar</button>${pcMal || impMal ? local : ""}`);
     } else if (t.estado === "tomada") {
-      html += caja("curso", "🖨️ La PC de Depósito la está preparando…", (ag && /preparando/i.test(ag.estado_impresora || "") ? ag.estado_impresora + ". " : "") + (t.etiquetas > 20 ? "Una tira larga tarda varios minutos." : ""), "");
+      html += caja("curso", "🖨️ Preparando las etiquetas…", (ag && /preparando/i.test(ag.estado_impresora || "") ? ag.estado_impresora + ". " : "La PC de Depósito está armando la tira. ") + (t.etiquetas > 20 ? "Una tira larga tarda varios minutos." : ""), "");
     } else if (t.estado === "enviada") {
-      html += caja("curso", "🖨️ Imprimiendo…", progreso(t) || (impMal || "Esperando que la impresora termine."), ordenTxt(t) ? `<span class="lq-ord">${esc(ordenTxt(t))}</span>` : "");
+      html += caja("curso", "🖨️ Esperando las etiquetas… (imprimiendo)", progreso(t) || (impMal || "La impresora la está sacando."), ordenTxt(t) ? `<span class="lq-ord">${esc(ordenTxt(t))}</span>` : "");
     } else if (t.estado === "detenida") {
       html += caja("duda", tituloDetenida(t), textoDetenida(t),
         t.orden ? `<span class="lq-ord">${esc(ordenTxt(t))}</span>${bVer}`
           : `<button type="button" class="lq-b prim" id="lqImpCont">${detDe(t).codigo === "sin_papel" ? "Ya puse rollo: continuar" : "Ya está lista: continuar"}</button><button type="button" class="lq-b" id="lqImpCancPC">No sigue: cancelar en la PC</button>${bVer}`);
     } else if (t.estado === "impresa") {
       const una = t.etiquetas === 1;
-      html += caja("listo", "✅ La impresora la recibió · " + hhmm(t.impresa_at), "Buscá " + (una ? "la etiqueta" : "las " + (t.etiquetas || "") + " etiquetas") + " en la térmica. ¿" + (una ? "La tenés" : "Las tenés") + " en la mano?",
+      html += caja("listo", "✅ Las etiquetas tienen que estar en la térmica · " + hhmm(t.impresa_at), "Windows ya se las entregó. Buscá " + (una ? "la etiqueta" : "las " + (t.etiquetas || "") + " etiquetas") + ". ¿" + (una ? "La tenés" : "Las tenés") + " en la mano?",
         `<button type="button" class="lq-b prim" id="lqImpSi">Sí, ya ${una ? "la" : "las"} tengo</button>${una ? "" : bAlg}<button type="button" class="lq-b" id="lqImpNo">No salió</button>`);
     } else if (t.estado === "incierta") {
       html += caja("duda", "⚠️ No se sabe si salió", (t.error ? t.error + " " : "") + progreso(t) + " Mirá la impresora antes de hacer nada: no se reimprime sola.",
@@ -7785,6 +7776,40 @@ var qrcode = function() {
   }
   /* «Verificar impresora»: solo relee el estado del servidor. Nunca crea una impresión. */
   async function verificarImp() { impEstado.t = 0; aviso("Consultando a la PC de Depósito…"); await leerImp(); pintar(); }
+  /* 21/11/2026 · Pantalla «una tarea por estado»: la impresión ES la tarea principal hasta que las etiquetas están confirmadas en la mano
+     (o mientras haya algo en curso / sin resolver); después la tarea es leer, y lo de impresión pasa a «Tengo un problema». */
+  function impTareaActiva(e) {
+    const t = tiraActual(), activas = (e && e.cajas || []).filter(c => c.estado === "activo");
+    const alguna = activas.some(c => c.impresiones > 0);
+    const cancelSinResolver = !!(t && t.estado === "cancelada" && t.enviada_at && !t.confirmada_at);
+    const faltaAlguna = alguna && activas.some(c => !(c.impresiones > 0));   // una caja agregada después o la parte que no salió: imprimir sigue siendo lo primero
+    return !alguna || faltaAlguna || !!(t && (IMP_EN_CURSO.includes(t.estado) || cancelSinResolver));
+  }
+  /* Salidas directas de etiquetas (barra de PC e historial) redirigidas al circuito único (21/11/2026): nada se imprime desde el navegador. */
+  window.qrImpPedirRemoto = function () { return pedirImpresion(); };
+  /* Para la barra de etiquetas de la PC: si el servidor dice que las cajas ya tienen etiqueta (confirmada), quién y cuándo. */
+  window.qrImpImpresas = function (pid) {
+    const e = st.estado; if (!e || String(st.pid) !== String(pid)) return null;
+    const c = (e.cajas || []).filter(x => x.estado === "activo"); if (!c.length || !c.some(x => x.impresiones > 0)) return null;
+    const t = tiraActual(); return { quien: (t && t.confirmada_por) || "Depósito", cuando: (t && t.confirmada_at) || null };
+  };
+  /* La barra de la PC se dibuja antes de que llegue el estado del servidor: cuando llega, se la pone al día (sin volver a dibujarla). */
+  window.qrImpSincronizarBarra = function () {
+    const p = pedido(), bar = $("qrEtqBarra"); if (!p || !bar || bar.classList.contains("impresa")) return;
+    const ya = qrImpImpresas(p.id); if (!ya) return;
+    bar.classList.add("impresa");
+    const s = bar.querySelector(".qr-etq-s"); if (s) s.textContent = "Impresas por " + ya.quien + " · si una se rompe o se pierde, reponé solo esa (lo autoriza oficina)";
+    const b = bar.querySelector('button[onclick="qrImprimirEtiquetas()"]'); if (b) { b.textContent = "🔁 Reponer una etiqueta"; b.className = "qr-etq-b ghost"; b.setAttribute("onclick", "qrReimprimirUna()"); }
+  };
+  window.qrImpReponerPedir = async function (codigo) {
+    const p = pedido(); if (!p) return;
+    if (!quien()) return aviso("Primero poné tu nombre", "error");
+    const motivo = await hojaPregunta({ titulo: "¿Por qué se repone esta etiqueta?", texto: "Una copia de la caja " + String(codigo).split("-").pop() + ", con el mismo código. La autoriza oficina (Laura o Pablo) y sale por la PC de Depósito.", campo: "Motivo…", ok: "Pedir la reposición", cancelar: "Volver" });
+    if (!motivo) return;
+    const arts = Etiquetas.articulosDe(p, items());
+    let bultos; try { bultos = await Etiquetas.prepararBultosAsync(p, arts, quien(), false); } catch (x) { return aviso("Sin conexión: no se pidió nada.", "error"); }
+    return enviarImp(p, arts, bultos, "reimpresion", [codigo], motivo);
+  };
   (function () {
     const s = document.createElement("style");
     s.textContent = ".lq-impw{margin:8px 0 10px}.lq-imp-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}" +
@@ -7808,7 +7833,11 @@ var qrcode = function() {
       ".lqh-env{min-height:50px;align-items:center}.lqh-x{min-height:48px;border:0;background:none;color:#334155;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}" +
       /* 20/11/2026: impresión segura */
       ".lqh-op.mal{background:#b91c1c;border-color:#b91c1c;color:#fff}.lqh-op.mal small{color:#fecaca}.lqh-chk.on{border-color:#1d4ed8;background:#eff6ff}.lqh-op[disabled]{opacity:.5;cursor:default}" +
-      ".lq-ord{font-size:13.5px;font-weight:700;color:#1e3a8a}.lq-imp .lq-b[disabled]{opacity:.5}";
+      ".lq-ord{font-size:13.5px;font-weight:700;color:#1e3a8a}.lq-imp .lq-b[disabled]{opacity:.5}" +
+      /* 21/11/2026: una tarea por estado */
+      ".lq-tarea{margin:0 0 10px}.lq-tarea-t{display:flex;flex-direction:column;gap:2px;margin:0 0 8px}.lq-tarea-t b{font-size:17px}.lq-tarea-t span{font-size:13.5px;opacity:.8}" +
+      ".lq-prob{margin-top:12px;border:1.5px dashed rgba(148,163,184,.85);border-radius:12px;padding:0 12px 4px}.lq-prob summary{cursor:pointer;font-weight:800;padding:12px 0;list-style:none;min-height:44px;display:flex;align-items:center;gap:8px}" +
+      ".lq-prob summary::-webkit-details-marker{display:none}.lq-prob summary::after{content:\"▾\";margin-left:auto}.lq-prob[open] summary::after{content:\"▴\"}.lq-prob .lq-links{padding:4px 0 10px}.lq-prob .lq-impw{margin:4px 0 10px}";
     (document.head || document.documentElement).appendChild(s);
   })();
 
@@ -7845,13 +7874,13 @@ var qrcode = function() {
       cuerpo = `
             ${b.esperando_desde && !b.tomado_por ? `<div class="lq-res pend"><b>⏸ Queruclor esperando ingreso</b><p>Desde ${esc(new Date(b.esperando_desde).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }))}${b.esperando_por ? " · lo marcó " + esc(b.esperando_por) : ""}. Cuando llegue la mercadería, leé la primera caja: la parte se retoma sola y se conserva lo ya preparado.</p></div>` : ""}
             ${ajeno ? `<div class="lq-res duda"><b>${esc(b.tomado_por)} está armando la parte Queruclor</b><p>Ves su avance en vivo. Para leer vos, pedile que la libere o reasigná la parte con motivo (arriba).</p></div>` : ""}
-            ${leerOk ? htmlGuia(e) : ""}
+            <div class="lq-tarea">${impTareaActiva(e) ? htmlImpRemota(e, impresa) : (leerOk ? htmlGuia(e) : "")}</div>
             ${leerOk ? `<div class="lq-scan">
                 ${surt ? `<div class="lq-modo">Armando la caja surtida <b>${esc(surt.etiqueta)}</b> · ${surt.contenido_estado === "por_caja" ? "lleva " + lineaCont(surt.contenido) : "sin detalle por caja"} · van ${(surt.prep_comp || []).reduce((s, u) => s + (u.sueltas || 0), 0)}
                     <button type="button" class="lq-lnk" id="lqSalirSurt">Salir de esta caja</button></div>` : ""}
                 <label for="lqCodigo">${surt ? "Código de cada unidad" : "Código del fabricante (caja)"}</label>
                 <input id="lqCodigo" class="lq-in" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="Leé con el lector…" ${!impresa ? "disabled" : ""}>
-                ${!impresa ? `<div class="lq-res mal lq-tira" role="alert"><b>🖨️ Falta imprimir la tira de este pedido</b><p>El lector no registra cajas hasta que se imprime la tira (las etiquetas que se pegan en cada caja). Tocá «Imprimir etiquetas» (sale por la térmica de Depósito) y, cuando las tengas en la mano, confirmalo: ahí se habilita este campo.</p></div>`
+                ${!impresa ? `<p class="lq-mut lq-tira">El lector se habilita cuando confirmes, arriba, que tenés las etiquetas en la mano.</p>`
                   : !st.ultimo ? `<p class="lq-mut">La app no puede comprobar si el lector está conectado: si al leer aparece el resultado acá abajo, está funcionando.</p>` : ""}
               </div>` : ""}
         <div class="lq-grid">
@@ -7861,6 +7890,7 @@ var qrcode = function() {
             ${st.lote ? htmlLote() : ""}
             ${htmlLoteBar()}
             ${st.faltante ? htmlFaltante(e) : ""}
+            <details class="lq-prob" ${st.sinLector || st.faltante || st.verOps || (!impTareaActiva(e) && (((impEstado.datos || {}).pausa || {}).activa || ((impEstado.datos || {}).en_windows || []).length)) ? "open" : ""}><summary>🛟 Tengo un problema</summary>
             <div class="lq-links">
               <button type="button" class="lq-lnk" id="lqVerOps">${st.verOps ? "Ocultar lecturas" : "Revisar última lectura"}</button>
               ${leerOk && !st.sinLector && !surt ? `<button type="button" class="lq-lnk" id="lqSinLector">El código no lee</button>` : ""}
@@ -7868,6 +7898,8 @@ var qrcode = function() {
               ${leerOk && !surt && !$("blq-queruclor") && !(b.esperando_desde && !b.tomado_por) && e.preparadas < e.total ? `<button type="button" class="lq-lnk" id="lqEsperar">Esperando ingreso (seguir cuando llegue)</button>` : ""}
             </div>
             ${st.verOps ? htmlOps(e) : ""}
+            ${!impTareaActiva(e) ? htmlImpRemota(e, impresa) : ""}
+            </details>
           </div>
           <div class="lq-col">
             <div class="lq-lista">${htmlArticulos(e)}</div>
@@ -7886,7 +7918,6 @@ var qrcode = function() {
         <div class="lq-bar">
           ${servidor}
         </div>
-        ${htmlImpRemota(e, impresa)}
         ${cuerpo}
         <p class="lq-pie">Leer no descuenta stock (se descuenta al facturar). Reimprimir conserva la misma caja.</p>
       </div>
@@ -7942,16 +7973,6 @@ var qrcode = function() {
 
   function enganchar(e) {
     const on = (id, f) => { const x = $(id); if (x) x.onclick = f; };
-    on("lqTira", async () => {
-      const t = tiraActual(), d = impEstado.datos || {};
-      if (Array.isArray(d.en_windows) && d.en_windows.length) return aviso("Hay una impresión de este pedido retenida en la PC de Depósito: primero se resuelve esa.", "error");
-      if (d.pausa && d.pausa.activa) return aviso("La impresión está pausada por oficina.", "error");
-      if (t && t.estado === "solicitada") {
-        try { const c = await rpcImp("qr_imp_cancelar", { id: t.id, quien: quien(), motivo: "se imprimió desde este equipo" }); if (!c.ok && !(await hojaPregunta({ titulo: c.motivo || "La PC de Depósito ya la tomó.", texto: "¿Imprimir también desde este equipo? Puede salir dos veces.", ok: "Imprimir igual", peligro: true, cancelar: "No" }))) return; }
-        catch (x) { if (!(await hojaPregunta({ titulo: "No se pudo cancelar el pedido a Depósito (sin conexión)", texto: "Podría salir dos veces. ¿Imprimir igual desde este equipo?", ok: "Imprimir igual", peligro: true, cancelar: "No" }))) return; }
-      } else if (t && ["tomada", "enviada", "detenida"].includes(t.estado) && !(await hojaPregunta({ titulo: "La PC de Depósito ya la está imprimiendo", texto: "¿Imprimir también desde este equipo? Puede salir dos veces.", ok: "Imprimir igual", peligro: true, cancelar: "No" }))) return;
-      window.qrImprimirEtiquetas(); setTimeout(() => { leerEstado(true); leerImp(); pintar(); }, 700);
-    });
     on("lqImpPedir", () => pedirImpresion());
     on("lqImpSi", () => confirmarImp(true));
     on("lqImpNo", () => confirmarImp(false));
@@ -7961,6 +7982,7 @@ var qrcode = function() {
     on("lqImpCont", () => ordenImp("reanudar"));
     on("lqImpCancPC", () => ordenImp("cancelar"));
     on("lqImpVer", () => verificarImp());
+    if (window.qrImpSincronizarBarra) qrImpSincronizarBarra();
     on("lqReimp", () => window.qrReimprimirUna());
     on("lqAyuda", () => { st.ayuda = st.ayuda || 1; pintar(); });
     on("lqAyudaCerrar", () => { st.ayuda = null; pintar(); });
