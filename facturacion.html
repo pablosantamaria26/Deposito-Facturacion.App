@@ -1449,7 +1449,43 @@ body:has(#barraProto:not(.bp-arriba)){ padding-bottom:0 !important }
   background:#7c2d12; color:#fed7aa; font:700 10px/1.5 system-ui,sans-serif;
   padding:4px 10px; text-align:center; letter-spacing:.04em }
 body{ padding-bottom:22px }
-</style></head>
+</style><style id="qrAltaFactCss">
+  /* ── Cliente nuevo (alta desde Pedidos) pendiente de E-PyME: aviso en Facturación (21/11/2026) ─────────────────────── */
+  .alf-bg{ position:fixed; inset:0; z-index:2147483000; background:rgba(15,23,42,.62); display:flex; align-items:center; justify-content:center; padding:16px; font-family:"Segoe UI",system-ui,sans-serif }
+  .alf{ width:min(820px,100%); max-height:calc(100dvh - 32px); overflow:auto; background:#fff; color:#17243a; border-radius:18px; box-shadow:0 24px 70px rgba(15,23,42,.35); border-top:7px solid #2457d6; padding:22px 24px 18px; box-sizing:border-box }
+  .alf-h{ display:flex; gap:14px; align-items:flex-start; margin-bottom:14px }
+  .alf-ic{ width:46px; height:46px; border-radius:12px; background:#eaf1ff; color:#2457d6; display:grid; place-items:center; flex-shrink:0; font-size:22px }
+  .alf-h h2{ margin:0; font-size:21px; line-height:26px } .alf-h p{ margin:4px 0 0; color:#526077; font-size:13.5px; line-height:1.4 }
+  .alf-meta{ display:flex; flex-wrap:wrap; gap:6px 14px; font-size:12.5px; color:#526077; margin:0 0 14px; padding:10px 12px; background:#f3f5f9; border-radius:10px }
+  .alf-meta b{ color:#17243a }
+  .alf-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px }
+  .alf-row{ border:1px solid #dce3ed; border-radius:12px; padding:9px 12px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 10px; align-items:center; min-width:0 }
+  .alf-row.ancha{ grid-column:1 / -1 }
+  .alf-k{ font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#526077; grid-column:1 }
+  .alf-v{ font-size:16px; font-weight:700; overflow-wrap:anywhere; user-select:all; -webkit-user-select:all; grid-column:1; min-height:22px }
+  .alf-v.vacio{ color:#925208; font-weight:600 }
+  .alf-row > .alf-c{ grid-column:2; grid-row:1 / 3 }
+  .alf-c{ border:1px solid #93b2f3; background:#fff; color:#2457d6; border-radius:8px; min-height:34px; padding:5px 11px; font:600 12.5px "Segoe UI",system-ui,sans-serif; cursor:pointer; white-space:nowrap }
+  .alf-c:hover{ background:#eaf1ff } .alf-c.ok{ border-color:#79ad90; color:#157044; background:#eaf7ef }
+  .alf-mail{ display:flex; gap:8px; align-items:center; grid-column:1 / -1; flex-wrap:wrap }
+  .alf-mail input{ flex:1 1 220px; min-width:0; min-height:36px; border:1px solid #bac6d6; border-radius:8px; padding:6px 10px; font:inherit; font-size:14px; color:#17243a; background:#fff }
+  .alf-mail .alf-c{ min-height:36px }
+  .alf-nota{ font-size:12px; color:#526077; margin:6px 0 0; grid-column:1 / -1 }
+  .alf-gestor{ margin-top:12px; padding:10px 12px; border-radius:10px; font-size:13px; display:flex; gap:10px; align-items:center; flex-wrap:wrap }
+  .alf-gestor.mal{ background:#fff3db; color:#925208; border:1px solid #f3d28a } .alf-gestor.ok{ background:#eaf7ef; color:#157044; border:1px solid #c6e5d2 }
+  .alf-acc{ display:flex; gap:10px; justify-content:flex-end; align-items:center; flex-wrap:wrap; margin-top:18px; padding-top:14px; border-top:1px solid #dce3ed }
+  .alf-acc .alf-todo{ margin-right:auto }
+  .alf-b{ min-height:44px; padding:8px 16px; border-radius:10px; border:1px solid #dce3ed; background:#fff; color:#17243a; font:700 14px "Segoe UI",system-ui,sans-serif; cursor:pointer }
+  .alf-b:hover{ background:#f3f5f9 } .alf-b:disabled{ opacity:.6; cursor:default }
+  .alf-b.prim{ background:#157044; border-color:#157044; color:#fff } .alf-b.prim:hover{ background:#115c38 }
+  .alf-link{ background:none; border:0; color:#526077; font:600 12.5px "Segoe UI",system-ui,sans-serif; text-decoration:underline; cursor:pointer; padding:6px 4px }
+  .alf-est{ font-size:13px; color:#b32332; min-height:18px; margin-top:8px }
+  .alf-est.ok{ color:#157044 }
+  .alf-peq{ font-size:11.5px; color:#526077 }
+  @media (max-width:760px){ .alf{ padding:16px 14px 14px } .alf-grid{ grid-template-columns:1fr } .alf-h h2{ font-size:18px; line-height:23px } .alf-acc .alf-todo{ margin-right:0; width:100% } .alf-b{ flex:1 1 auto } }
+  @media (prefers-reduced-motion:no-preference){ .alf{ animation:alf-in .14s ease-out } @keyframes alf-in{ from{ opacity:0; transform:translateY(6px) } to{ opacity:1; transform:none } } }
+</style>
+</head>
 <body>
 
 <div id="loader"><div class="spinner"></div><div style="font-size:16px;font-weight:700;color:#64748b;">Cargando...</div></div>
@@ -12044,7 +12080,153 @@ var qrcode = function() {
 
 })();
 
-</script><script id="qrActualizador" data-sw="./service-worker.js">
+</script><script id="qrAltaFactMod">
+/* ═══════════════════════════════════════════════════════════════════
+   FACTURACIÓN · Cliente nuevo cargado desde Pedidos, pendiente de E-PyME (21/11/2026)
+
+   Segundo aviso a Laura (el primero es el WhatsApp del vendedor, que puede no haber salido): al ABRIR un pedido cuyo cliente fue
+   dado de alta desde la app de Pedidos y todavía no está confirmado en E-PyME, se muestra un modal grande con cada dato del
+   cliente, cada uno con «Copiar» (para pegar en E-PyME), el email editable, y dos salidas:
+     · «Ya lo tenía cargado en E-PyME» → confirma con modo ya_estaba;
+     · «Lo cargué recién en E-PyME»    → confirma con modo cargado.
+   Hasta que se confirme, «Facturar pedido» vuelve a mostrar el modal: sin el cliente en E-PyME no se puede facturar.
+   También muestra si la copia al Gestor de clientes falló y permite reintentarla. Todo va por el adaptador de la pantalla
+   (fetch relativo a /rest/v1/rpc y /api/clientes, con el token del puesto facturación); nada escribe en Supabase por su cuenta.
+   ═══════════════════════════════════════════════════════════════════ */
+(function () {
+  "use strict";
+  if (window.qrAltaFact) return;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const quien = () => { try { return (typeof currentUser !== "undefined" && currentUser) || localStorage.getItem("fact_user") || "LAURA"; } catch (e) { return "LAURA"; } };
+  const aviso = (t, ok) => { try { if (typeof toast === "function") toast(t, ok === false ? "error" : "ok"); } catch (e) {} };
+  const fmtCuit = c => { c = String(c || "").replace(/\D/g, ""); return c.length === 11 ? c.slice(0, 2) + "-" + c.slice(2, 10) + "-" + c.slice(10) : c; };
+  const ddhm = iso => { try { return new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+  async function rpc(fn, body) {
+    const r = await fetch("/rest/v1/rpc/" + fn, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), cache: "no-store" });
+    let j = null; try { j = await r.json(); } catch (e) {}
+    if (!r.ok) throw new Error((j && (j.message || j.motivo)) || ("error " + r.status));
+    return j;
+  }
+  async function api(acc, body) {
+    const r = await fetch("/api/clientes/" + acc, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}), cache: "no-store" });
+    let j = {}; try { j = await r.json(); } catch (e) {}
+    if (!r.ok && !j.motivo) throw new Error(j.message || j.error || ("HTTP " + r.status));
+    return j;
+  }
+  const st = { ficha: null, pedido: null, abierto: false, cache: {} };
+
+  /* ¿El cliente de este pedido es un alta de Pedidos sin confirmar en E-PyME? (una lectura por cliente cada 20 s) */
+  async function fichaDe(clienteId) {
+    const k = String(clienteId || ""); if (!k) return null;
+    const c = st.cache[k]; if (c && Date.now() - c.t < 20000) return c.f;
+    const f = await rpc("qr_cliente_alta_ficha", { p_num: k });
+    st.cache[k] = { t: Date.now(), f: f && f.id ? f : null };
+    return st.cache[k].f;
+  }
+  const pendiente = f => !!(f && f.alta_desde_pedidos && f.epyme_estado === "pendiente");
+
+  function cerrar() { const m = $("alfBg"); if (m) m.remove(); st.abierto = false; }
+  function fila(k, v, copia, extra) {
+    const vacio = v == null || String(v).trim() === "";
+    return `<div class="alf-row${extra && extra.ancha ? " ancha" : ""}"><span class="alf-k">${esc(k)}</span><b class="alf-v${vacio ? " vacio" : ""}">${vacio ? esc(extra && extra.siVacio || "—") : esc(v)}</b>${vacio ? "" : `<button type="button" class="alf-c" data-copiar="${esc(copia == null ? v : copia)}" aria-label="Copiar ${esc(k)}">Copiar</button>`}</div>`;
+  }
+  const textoTodo = (f, p) => [
+    "CLIENTE NUEVO · cargado desde Pedidos por " + (f.vendedor || "") + " el " + ddhm(f.creado),
+    "N.º de cliente: " + f.id, "Apellido / comercio: " + (f.apellido || "—"), "Nombre: " + (f.nombre || "—"), "Nombre completo: " + ((f.apellido || "") + " " + (f.nombre || "")).trim(),
+    "CUIT: " + (f.cuit ? fmtCuit(f.cuit) : "— (sin CUIT)"), "Email: " + (f.email || "— (sin email)"), "Domicilio de entrega: " + (f.domicilio || "—"), "Localidad: " + (f.localidad || "—"),
+    "Descuento Habituales: " + (Number(f.descuento) === 5 ? "5 %" : "sin descuento"), "Vendedor: " + (f.vendedor || "—"),
+    p ? "Pedido: " + (p.codigo_corto || "") + (p.numero_diario ? " (N° " + p.numero_diario + " del día)" : "") : "",
+  ].filter(Boolean).join("\n");
+
+  function mostrar(f, p, origen) {
+    cerrar(); st.ficha = f; st.pedido = p; st.abierto = true;
+    const nombreCompleto = ((f.apellido || "") + " " + (f.nombre || "")).trim();
+    const m = document.createElement("div"); m.id = "alfBg"; m.className = "alf-bg"; m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true"); m.setAttribute("aria-labelledby", "alfT");
+    m.innerHTML = `<div class="alf">
+      <div class="alf-h"><div class="alf-ic" aria-hidden="true">👤</div><div><h2 id="alfT">Cliente nuevo: todavía no está en E-PyME</h2>
+        <p>Lo cargó <b>${esc(f.vendedor || "un vendedor")}</b> desde la app de Pedidos el ${esc(ddhm(f.creado))}. ${origen === "facturar" ? "<b>No se puede facturar hasta tenerlo cargado en E-PyME con este mismo número.</b>" : "Antes de facturar este pedido, cargalo en E-PyME <b>con este mismo número</b>. Cada dato tiene su botón Copiar."}</p></div></div>
+      <div class="alf-meta"><span>Pedido <b>${esc((p && p.codigo_corto) || "—")}</b></span>${p && p.numero_diario ? `<span>N° <b>${esc(p.numero_diario)}</b> del día</span>` : ""}<span>Vendedor <b>${esc(f.vendedor || "—")}</b></span><span>Descuento Habituales <b>${Number(f.descuento) === 5 ? "5 %" : "sin descuento"}</b></span></div>
+      <div class="alf-grid">
+        ${fila("N.º de cliente (el mismo en E-PyME)", f.id)}
+        ${fila("Nombre completo", nombreCompleto)}
+        ${fila("Apellido / nombre del comercio", f.apellido, null, { siVacio: "— (sin apellido)" })}
+        ${fila("Nombre", f.nombre)}
+        ${fila("CUIT", f.cuit ? fmtCuit(f.cuit) : "", f.cuit ? String(f.cuit) : null, { siVacio: "Sin CUIT: pedírselo al vendedor o al cliente" })}
+        ${fila("Domicilio de entrega", f.domicilio)}
+        ${fila("Localidad", f.localidad)}
+        ${fila("Vendedor", f.vendedor)}
+        <div class="alf-row ancha"><span class="alf-k">Email (para la factura electrónica y el aviso de despacho)</span>
+          <div class="alf-mail"><input id="alfMail" type="email" inputmode="email" autocomplete="off" spellcheck="false" value="${esc(f.email || "")}" placeholder="${f.email ? "" : "El vendedor no lo cargó: si lo tenés, anotalo acá"}"><button type="button" class="alf-c" id="alfMailGuardar">Guardar email</button>${f.email ? `<button type="button" class="alf-c" data-copiar="${esc(f.email)}">Copiar</button>` : ""}</div>
+          <p class="alf-nota">${f.email ? "Queda en la ficha fiscal del cliente: la Caja lo usa para mandar la factura." : "Sin email no se le puede mandar la factura electrónica. Podés seguir y cargarlo después desde la Caja."}</p></div>
+      </div>
+      ${f.gestor_estado === "error" ? `<div class="alf-gestor mal">⚠️ La copia al <b>Gestor de clientes</b> (planilla Base Clientes) falló${f.gestor_detalle ? ": " + esc(String(f.gestor_detalle).slice(0, 120)) : ""}. Carga de Reparto lo necesita ahí. <button type="button" class="alf-c" id="alfGestor">Reintentar copia</button></div>`
+        : f.gestor_estado === "ok" ? `<div class="alf-gestor ok">✓ Ya está copiado en el Gestor de clientes (Carga de Reparto lo encuentra).</div>` : ""}
+      <div class="alf-est" id="alfEst" role="status" aria-live="polite"></div>
+      <div class="alf-acc"><button type="button" class="alf-b alf-todo" data-copiar-todo="1">📋 Copiar todos los datos</button>
+        <button type="button" class="alf-b" id="alfYa">Ya lo tenía cargado en E-PyME</button>
+        <button type="button" class="alf-b prim" id="alfCargue">✓ Lo cargué recién en E-PyME</button></div>
+      <div style="text-align:right;margin-top:6px"><button type="button" class="alf-link" id="alfDespues">Después (el pedido queda abierto, pero no se puede facturar hasta confirmarlo)</button></div>
+    </div>`;
+    document.body.appendChild(m);
+    const est = (t, ok) => { const e = $("alfEst"); if (e) { e.textContent = t || ""; e.className = "alf-est" + (ok ? " ok" : ""); } };
+    const copiar = async (txt, b) => { try { await navigator.clipboard.writeText(txt); } catch (e) { try { const r = document.createRange(); const span = document.createElement("span"); span.textContent = txt; document.body.appendChild(span); r.selectNodeContents(span); const s = getSelection(); s.removeAllRanges(); s.addRange(r); document.execCommand("copy"); s.removeAllRanges(); span.remove(); } catch (e2) { est("No se pudo copiar: seleccioná el texto a mano"); return; } }
+      if (b) { const t0 = b.textContent; b.textContent = "Copiado ✓"; b.classList.add("ok"); setTimeout(() => { b.textContent = t0; b.classList.remove("ok"); }, 1400); } };
+    m.querySelectorAll("[data-copiar]").forEach(b => b.onclick = () => copiar(b.dataset.copiar, b));
+    m.querySelector("[data-copiar-todo]").onclick = e => copiar(textoTodo(st.ficha, st.pedido), e.currentTarget);
+    $("alfMailGuardar").onclick = async () => {
+      const v = $("alfMail").value.trim(); const b = $("alfMailGuardar"); b.disabled = true;
+      try { const r = await rpc("qr_alta_email_set", { p: { numero: String(f.id), email: v, quien: quien() } }); if (!r.ok) { est(r.motivo || "No se pudo guardar el email"); return; }
+        st.cache = {}; est(v ? "Email guardado en la ficha del cliente" : "Email quitado", true); if (r.cliente) { st.ficha = r.cliente; } }
+      catch (e) { est("Sin conexión: no se guardó el email (" + e.message + ")"); } finally { b.disabled = false; }
+    };
+    const g = $("alfGestor"); if (g) g.onclick = async () => { g.disabled = true; g.textContent = "Copiando…"; try { const r = await api("gestor", { numero: String(f.id) }); if (r.ok) { est("Copiado al Gestor de clientes", true); g.closest(".alf-gestor").outerHTML = `<div class="alf-gestor ok">✓ Copiado al Gestor de clientes.</div>`; st.cache = {}; } else { est("El Gestor sigue sin recibirlo: " + (r.detalle || r.motivo || "")); g.disabled = false; g.textContent = "Reintentar copia"; } } catch (e) { est("Sin conexión con el Gestor: " + e.message); g.disabled = false; g.textContent = "Reintentar copia"; } };
+    const confirmar = async modo => {
+      const bs = [$("alfYa"), $("alfCargue")]; bs.forEach(b => { b.disabled = true; }); est(modo === "cargado" ? "Confirmando que lo cargaste…" : "Confirmando…", true);
+      try {
+        const r = await rpc("qr_alta_epyme_confirmar", { p: { numero: String(f.id), quien: quien(), modo } });
+        if (!r || !r.ok) { est((r && r.motivo) || "No se pudo confirmar"); bs.forEach(b => { b.disabled = false; }); return; }
+        st.cache = {}; cerrar(); aviso("Cliente N° " + f.id + (modo === "cargado" ? " cargado en E-PyME: ya se puede facturar" : " confirmado en E-PyME: ya se puede facturar"), true);
+      } catch (e) { est("Sin conexión: no se confirmó (" + e.message + "). Volvé a intentar."); bs.forEach(b => { b.disabled = false; }); }
+    };
+    $("alfYa").onclick = () => confirmar("ya_estaba"); $("alfCargue").onclick = () => confirmar("cargado");
+    $("alfDespues").onclick = cerrar;
+    m.addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); cerrar(); } });
+    setTimeout(() => { try { $("alfCargue").focus(); } catch (e) {} }, 40);
+  }
+
+  /* Revisa el cliente del pedido activo; si está pendiente muestra el modal. Devuelve true si quedó bloqueado. */
+  async function revisar(origen) {
+    try {
+      const p = (typeof pedidoActivo !== "undefined" && pedidoActivo) || null; if (!p || !p.cliente_id) return false;
+      const f = await fichaDe(p.cliente_id);
+      if (!pendiente(f)) { if (st.abierto && st.ficha && String(st.ficha.id) === String(p.cliente_id)) cerrar(); return false; }
+      if (typeof pedidoActivo !== "undefined" && pedidoActivo && String(pedidoActivo.cliente_id) !== String(p.cliente_id)) return false;   // cambió de pedido mientras consultaba
+      mostrar(f, p, origen); return true;
+    } catch (e) { console.warn("alta E-PyME:", e); return false; }
+  }
+  /* Engancha la selección de pedido y la facturación sin tocar sus cuerpos. Otros módulos (etiqueta de total, resumen fv2) también
+     envuelven facturarPedido, a veces después de cargar: por eso se vuelve a enganchar tras cada selección y, además, el botón
+     «Facturar» se intercepta en fase de captura (antes de cualquier manejador) mientras el cliente siga pendiente. */
+  function enganchar() {
+    if (typeof window.seleccionar === "function" && !window.seleccionar.__alf) {
+      const o = window.seleccionar; window.seleccionar = async function () { const r = await o.apply(this, arguments); enganchar(); revisar("abrir"); return r; }; window.seleccionar.__alf = true;
+    }
+    for (const n of ["facturarPedido", "_ejecutarFacturar"]) {
+      if (typeof window[n] === "function" && !window[n].__alf) {
+        const o = window[n]; const w = async function () { if (await revisar("facturar")) { aviso("Antes de facturar hay que cargar el cliente nuevo en E-PyME", false); return; } return o.apply(this, arguments); };
+        w.__alf = true; w._conEtiqueta = o._conEtiqueta; w.__fv2 = o.__fv2; window[n] = w;
+      }
+    }
+    const b = document.getElementById("btnFacturar");
+    if (b && !b.__alf) { b.__alf = true; b.addEventListener("click", async e => { const p = (typeof pedidoActivo !== "undefined" && pedidoActivo) || null; if (!p) return; const c = st.cache[String(p.cliente_id)]; const f = c && Date.now() - c.t < 20000 ? c.f : await fichaDe(p.cliente_id); if (pendiente(f)) { e.stopImmediatePropagation(); e.preventDefault(); mostrar(f, p, "facturar"); aviso("Antes de facturar hay que cargar el cliente nuevo en E-PyME", false); } }, true); }
+  }
+  enganchar(); setTimeout(enganchar, 1500); setTimeout(enganchar, 5000);
+  document.addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey && st.abierto) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  window.qrAltaFact = { revisar, cerrar, estado: () => st, fichaDe };
+})();
+</script>
+<script id="qrActualizador" data-sw="./service-worker.js">
 /* ═══════════════════════════════════════════════════════════════════
    ACTUALIZADOR COMÚN (19/11/2026) — Reparto, Caja, Depósito, Facturación y Admin.
 
