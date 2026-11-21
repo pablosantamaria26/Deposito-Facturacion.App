@@ -531,7 +531,7 @@
     if (!enBase()) return;
     if (!forzar && Date.now() - st.t < 30000) return;
     if (forzar) { st.leyendo = true; const b = document.querySelector('#qrImpOf [data-a="refrescar"]'); if (b) { b.disabled = true; b.textContent = "Actualizando…"; } }
-    try { st.datos = await rpc("qr_imp_oficina", { ultimas: 5 }); st.error = null; st.leido = Date.now(); }
+    try { st.datos = await rpc("qr_imp_oficina", { ultimas: 12 }); st.error = null; st.leido = Date.now(); }
     catch (e) { st.error = "Sin conexión con el servidor: no se puede ver la impresora de Depósito."; }
     st.t = Date.now(); st.leyendo = false; pintar();
   }
@@ -556,10 +556,14 @@
     if (!ag) h += `<p>Nunca se conectó.</p>`;
     else h += `<p><b>${esc(ag.agente || "")}</b> · impresora «${esc(ag.impresora || "?")}» · ${esc(ag.estado_impresora || "")}<br>Último latido: ${esc(ddhm(ag.latido))} (${ag.segundos > 90 ? "<b>sin respuesta</b>" : "respondiendo"}) · agente instalado <b>${esc(ag.version || "?")}</b>${esp.version ? " · esperado " + esc(esp.version) : ""}</p>` +
       `<p><b>Cola de Windows:</b> ${(ag.cola || []).length ? (ag.cola || []).map(c => esc(c.documento) + " · " + esc(c.estado_windows || "") + (c.paginas != null ? " · " + (c.paginas_impresas || 0) + "/" + c.paginas + " págs." : "")).join("<br>") : "vacía"}</p>`;
-    h += `</div><div class="qio-sec"><h4>Últimas impresiones</h4>`;
-    const ul = d.ultimas || [];
+    h += `</div><div class="qio-sec"><h4>Impresiones de hoy</h4>`;
+    /* 21/11/2026 (Pablo): la tabla queda libre para lo nuevo: solo lo de HOY o lo que siga abierto; lo resuelto de días anteriores no se
+       muestra (sigue en la base, no se borra nada). El motivo de una reposición se rotula como motivo, no como resultado. */
+    const TERMINAL = new Set(["confirmada", "no_salio", "cancelada", "vencida", "descartada", "rechazada", "fallida"]);
+    const hoyLoc = new Date().toLocaleDateString("es-AR"), esHoy = iso => { try { return new Date(iso).toLocaleDateString("es-AR") === hoyLoc; } catch (e) { return false; } };
+    const ul = (d.ultimas || []).filter(t => esHoy(t.solicitada_at) || !TERMINAL.has(t.estado));
     h += ul.length ? `<div class="qio-tw"><table class="qio-t"><thead><tr><th>Hora</th><th>Tipo</th><th>Etiq.</th><th>Estado</th><th>Pidió</th><th>Detalle</th></tr></thead><tbody>` +
-      ul.map(t => `<tr><td>${esc(ddhm(t.solicitada_at))}</td><td>${esc(t.tipo)}</td><td>${t.etiquetas}</td><td><b>${esc(ESTADO_CORTO[t.estado] || t.estado)}</b></td><td>${esc(t.solicitada_por || "")}</td><td>${esc(t.error || t.motivo || "")}${t.detalle && t.detalle.paginas ? " · " + (t.detalle.paginas_impresas || 0) + "/" + t.detalle.paginas : ""}</td></tr>`).join("") + `</tbody></table></div>` : `<p>Todavía no hay impresiones.</p>`;
+      ul.map(t => `<tr><td>${esc(ddhm(t.solicitada_at))}</td><td>${esc(t.tipo)}</td><td>${t.etiquetas}</td><td><b>${esc(ESTADO_CORTO[t.estado] || t.estado)}</b></td><td>${esc(t.solicitada_por || "")}</td><td>${esc(t.error || "")}${!t.error && t.motivo ? "pedida porque: " + esc(t.motivo) : ""}${t.detalle && t.detalle.paginas ? " · " + (t.detalle.paginas_impresas || 0) + "/" + t.detalle.paginas : ""}</td></tr>`).join("") + `</tbody></table></div>` : `<p>Sin impresiones hoy. Las anteriores quedan en el historial del sistema.</p>`;
     return h + `</div>`;
   }
   const cajaTxt = a => (a.cajas || []).map(c => "N° " + String(c.n).padStart(3, "0") + " · " + (c.nombre || "") + " (impresa " + (c.impresiones || 0) + (c.reimpresiones ? ", repuesta " + c.reimpresiones : "") + ")").join(" — ");
