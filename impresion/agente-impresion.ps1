@@ -23,14 +23,23 @@
   Antes de mandar cada trabajo deja una marca en un diario local: si la PC se corta en el medio, al volver sabe
   qué quedó sin mandar (vuelve a la cola), qué sigue en Windows (lo vuelve a seguir) y qué quedó en duda.
 
+  22/11/2026 (versión 2026-11-23, impresión directa desde Facturación): además de las tiras, la cola trae la ETIQUETA DE TOTAL
+  (destino «etiquetas»: la misma térmica, misma medida) y el REMITO valorizado de Queruclor (destino «hojas»: una impresora de
+  hojas A4 configurada UNA vez en config.json como «impresora_hojas»; nunca «la predeterminada» ni «la primera Brother»). El
+  latido informa si esta PC tiene impresora de hojas; si no la tiene, los remitos quedan en la cola para una PC que sí, y
+  Facturación lo sabe y los imprime por el navegador. Mismo diario, misma reconciliación, mismo seguimiento de Windows para
+  los dos destinos. El remito se dibuja a 300 ppp (dpi_hojas) en vez de los 203 de la térmica.
+
   Uso:
     agente-impresion.ps1                    corre en bucle (lo lanza la tarea programada)
     agente-impresion.ps1 -Prueba            imprime una ETIQUETA DE PRUEBA local, sin servidor
     agente-impresion.ps1 -Html x.html       imprime ese archivo, sin servidor (diagnóstico)
+    agente-impresion.ps1 -Impresoras        lista las impresoras de esta PC (para elegir la de hojas)
+    agente-impresion.ps1 -Hojas "nombre"    guarda la impresora de hojas en config.json (tiene que existir en Windows)
 #>
-param([switch]$Prueba, [string]$Html, [string]$Dir, [string]$ArchivoSalida, [int]$Vueltas = 0)
+param([switch]$Prueba, [string]$Html, [string]$Dir, [string]$ArchivoSalida, [int]$Vueltas = 0, [switch]$Impresoras, [string]$Hojas)
 $ErrorActionPreference = "Stop"
-$VERSION = "2026-11-22"
+$VERSION = "2026-11-23"
 if (-not $Dir) { $Dir = Join-Path $env:LOCALAPPDATA "MLImpresion" }
 $TRABAJO = Join-Path $Dir "trabajo"; $DIARIO = Join-Path $Dir "diario"
 New-Item -ItemType Directory -Force -Path $TRABAJO, $DIARIO | Out-Null
@@ -53,6 +62,16 @@ $API = Valor "api" "https://queruclor-api.santamariapablodaniel.workers.dev"
 $AGENTE = Valor "agente" $env:COMPUTERNAME
 $IMPRESORA = Valor "impresora" ""
 $ANCHO_MM = [double](Valor "ancho_mm" 100); $ALTO_MM = [double](Valor "alto_mm" 150)
+# Impresora de hojas (remitos A4). Solo por configuración explícita; si no está o no existe en Windows, esta PC no toma remitos.
+$IMPRESORA_HOJAS = [string](Valor "impresora_hojas" "")
+$DPI_HOJAS = [int](Valor "dpi_hojas" 300); $DPI_ETIQUETAS = 203
+if ($Impresoras) { Get-Printer | Select-Object Name, DriverName, PortName, PrinterStatus | Format-Table -AutoSize | Out-String | Write-Host; exit 0 }
+if ($Hojas) {
+  if (-not (Get-Printer -Name $Hojas -ErrorAction SilentlyContinue)) { Write-Host "No existe en Windows una impresora llamada «$Hojas». Correr con -Impresoras para ver los nombres exactos."; exit 2 }
+  $cfg | Add-Member -NotePropertyName impresora_hojas -NotePropertyValue $Hojas -Force
+  $cfg | ConvertTo-Json -Depth 5 | Set-Content $CFG_PATH -Encoding UTF8
+  Write-Host "Impresora de hojas guardada: «$Hojas». El agente la informa en su próximo latido (reiniciar la tarea o esperar la próxima vuelta)."; exit 0
+}
 # Solo pruebas: cuánto espera detenido antes de pausar el trabajo en Windows (producción: 120 s).
 $PAUSAR_TRAS_SEG = [int](Valor "pausar_tras_seg" 120)
 # Solo pruebas: tomar trabajos aunque Windows diga que la impresora no está lista (para ensayar un trabajo que queda detenido).
@@ -78,6 +97,22 @@ function ElegirImpresora() {
   if ($IMPRESORA) { return $IMPRESORA }
   $p = Get-Printer | Where-Object { $_.DriverName -match '4BARCODE|4B-2054|LDT|3nstar' } | Select-Object -First 1
   if ($p) { return $p.Name } else { return "" }
+}
+# La de hojas: solo la configurada, y solo si existe en Windows ahora (si la desinstalan, deja de ofrecerse sin adivinar otra).
+$script:hojasAvisada = $false
+function ElegirImpresoraHojas() {
+  if (-not $IMPRESORA_HOJAS) { return "" }
+  if (Get-Printer -Name $IMPRESORA_HOJAS -ErrorAction SilentlyContinue) { return $IMPRESORA_HOJAS }
+  if (-not $script:hojasAvisada) { Log "La impresora de hojas configurada «$IMPRESORA_HOJAS» no existe en Windows: no se toman remitos hasta corregir config.json"; $script:hojasAvisada = $true }
+  return ""
+}
+# Un trabajo del agente puede estar en la cola de cualquiera de las dos impresoras.
+function BuscarTrabajo($doc) {
+  foreach ($imp in @((ElegirImpresora), (ElegirImpresoraHojas)) | Where-Object { $_ }) {
+    $j = Get-PrintJob -PrinterName $imp -ErrorAction SilentlyContinue | Where-Object { $_.DocumentName -eq $doc } | Select-Object -First 1
+    if ($j) { return $j }
+  }
+  return $null
 }
 # ── Interpretación del estado que informa Windows (Win32_Printer, tablas de Microsoft) ───────────────────────
 # DetectedErrorState:          0 desconocido · 1 otro · 2 sin error · 3 poco papel · 4 SIN PAPEL · 5 poca tinta · 6 sin tinta · 7 tapa abierta ·
@@ -186,7 +221,8 @@ function Latir($impresora, $detalleTrabajo, [switch]$Forzar) {
     $e = EstadoImpresora $impresora
     $texto = $e.texto; if ($script:estadoExtra) { $texto = $script:estadoExtra }
     if (-not (RegistroActivo)) { $texto += " · registro de impresión de Windows apagado" }
-    $p = @{ agente = $AGENTE; impresora = $impresora; estado_impresora = $texto; version = $VERSION; cola = @(ColaWindows $impresora) }
+    $hojas = ElegirImpresoraHojas
+    $p = @{ agente = $AGENTE; impresora = $impresora; estado_impresora = $texto; version = $VERSION; cola = @(@(ColaWindows $impresora) + @(ColaWindows $hojas)); hojas = [bool]$hojas; impresora_hojas = $hojas }
     if ($detalleTrabajo) { $p.trabajo = $detalleTrabajo }
     $r = Rpc "qr_imp_latido" @{ p = $p }
     $script:ultimoLatido = Get-Date
@@ -199,7 +235,8 @@ function Ordenes($impresora, $actual) {
   $cancelado = $null
   foreach ($o in @($script:ordenes)) {
     $id = [string]$o.id; $doc = "ML-etiqueta-$id"; $enCurso = ($o.estado -in @("enviada", "detenida", "incierta"))
-    $j = Get-PrintJob -PrinterName $impresora -ErrorAction SilentlyContinue | Where-Object { $_.DocumentName -eq $doc } | Select-Object -First 1
+    $j = BuscarTrabajo $doc
+    $impJ = if ($j) { [string]$j.PrinterName } else { $impresora }
     try {
       if ($o.orden -eq "cancelar") {
         if ($j) { Remove-PrintJob -InputObject $j -ErrorAction Stop; Log "Orden de $($o.quien): borrado de la cola de Windows $doc (trabajo #$($j.Id), $($j.PagesPrinted)/$($j.TotalPages) págs)" }
@@ -209,7 +246,7 @@ function Ordenes($impresora, $actual) {
         else { Avance $id "orden_hecha" $(if ($j) { $null } else { "ya no estaba en la cola de Windows" }) $det | Out-Null; if ($enCurso -and $id -eq $actual) { $cancelado = $id } }
       } elseif ($o.orden -eq "reanudar") {
         if ($j) {
-          $w = Get-CimInstance Win32_Printer -Filter ("Name='" + $impresora.Replace("'", "''") + "'") -ErrorAction SilentlyContinue
+          $w = Get-CimInstance Win32_Printer -Filter ("Name='" + $impJ.Replace("'", "''") + "'") -ErrorAction SilentlyContinue
           if ($w -and ([int]$w.PrinterState -eq 1 -or [int]$w.PrinterStatus -eq 6)) { try { Invoke-CimMethod -InputObject $w -MethodName Resume -ErrorAction Stop | Out-Null; Log "Orden de $($o.quien): impresora reanudada" } catch { Log "  no se pudo reanudar la impresora: $($_.Exception.Message)" } }
           Resume-PrintJob -InputObject $j -ErrorAction Stop; Log "Orden de $($o.quien): reanudado en Windows $doc (trabajo #$($j.Id))"
           $script:pausadoPorAgente = $null
@@ -317,14 +354,15 @@ public static class MLEtiqueta {
 }
 "@
 
-function PdfAImagenes($pdfPath, $impresora) {
+function PdfAImagenes($pdfPath, $impresora, $anchoMm, $altoMm, $dpi) {
+  if (-not $anchoMm) { $anchoMm = $ANCHO_MM }; if (-not $altoMm) { $altoMm = $ALTO_MM }; if (-not $dpi) { $dpi = $DPI_ETIQUETAS }
   $file = Esperar ([Windows.Storage.StorageFile]::GetFileFromPathAsync($pdfPath)) ([Windows.Storage.StorageFile])
   $doc = Esperar ([Windows.Data.Pdf.PdfDocument]::LoadFromFileAsync($file)) ([Windows.Data.Pdf.PdfDocument])
   $imgs = @()
   for ($i = 0; $i -lt $doc.PageCount; $i++) {
     $pg = $doc.GetPage($i)
     $o = New-Object Windows.Data.Pdf.PdfPageRenderOptions
-    $o.DestinationWidth = [uint32][Math]::Round($ANCHO_MM / 25.4 * 203); $o.DestinationHeight = [uint32][Math]::Round($ALTO_MM / 25.4 * 203)
+    $o.DestinationWidth = [uint32][Math]::Round($anchoMm / 25.4 * $dpi); $o.DestinationHeight = [uint32][Math]::Round($altoMm / 25.4 * $dpi)
     $ms = New-Object Windows.Storage.Streams.InMemoryRandomAccessStream
     EsperarAccion ($pg.RenderToStreamAsync($ms, $o))
     $ms.Seek(0)
@@ -332,20 +370,22 @@ function PdfAImagenes($pdfPath, $impresora) {
     $bmp = New-Object System.Drawing.Bitmap $st
     $imgs += [MLEtiqueta]::BlancoYNegro($bmp, 160)
     $bmp.Dispose(); $pg.Dispose()
-    if ($impresora -and ($i % 8 -eq 7)) { $script:estadoExtra = "preparando la tira: $($i + 1)/$($doc.PageCount) etiquetas"; Latir $impresora $null }
+    if ($impresora -and ($i % 8 -eq 7)) { $script:estadoExtra = "preparando: $($i + 1)/$($doc.PageCount) páginas"; Latir $(if ($script:termica) { $script:termica } else { $impresora }) $null }
   }
   $script:estadoExtra = $null
   return , $imgs
 }
 
 # ── Imprimir un HTML: devuelve el nombre del documento en la cola de Windows ──
-function ImprimirHtml($id, $html, $impresora, $aArchivo) {
+# $impresora es la cola destino (térmica o de hojas); el papel y la resolución vienen del trabajo (por defecto, la etiqueta).
+function ImprimirHtml($id, $html, $impresora, $aArchivo, $anchoMm, $altoMm, $dpi) {
+  if (-not $anchoMm) { $anchoMm = $ANCHO_MM }; if (-not $altoMm) { $altoMm = $ALTO_MM }; if (-not $dpi) { $dpi = $DPI_ETIQUETAS }
   $hp = Join-Path $TRABAJO ("$id.html"); $pp = Join-Path $TRABAJO ("$id.pdf")
   [IO.File]::WriteAllText($hp, $html, (New-Object Text.UTF8Encoding $false))
-  $script:estadoExtra = "preparando la tira (PDF)"
-  HtmlAPdf $hp $pp $impresora
-  $imgs = PdfAImagenes $pp $impresora
-  if (-not $imgs.Count) { throw "La etiqueta no tiene páginas." }
+  $script:estadoExtra = "preparando el documento (PDF)"
+  HtmlAPdf $hp $pp $(if ($script:termica) { $script:termica } else { $impresora })
+  $imgs = PdfAImagenes $pp $impresora $anchoMm $altoMm $dpi
+  if (-not $imgs.Count) { throw "El documento no tiene páginas." }
   $doc = "ML-etiqueta-$id"
   # Si por un corte anterior ese documento YA está en la cola de Windows, no se manda otra vez: se lo sigue.
   $ya = TrabajoWindows $impresora $doc
@@ -355,7 +395,7 @@ function ImprimirHtml($id, $html, $impresora, $aArchivo) {
   if ($env:ML_SIMULAR_CORTE -eq "enviando") { Log "(prueba) corte simulado antes de mandar"; [Environment]::Exit(9) }
   $desde = Get-Date
   Diario $id @{ estado = "enviando"; documento = $doc; paginas = $imgs.Count; desde = $desde.ToString("o") }
-  [MLEtiqueta]::Imprimir($impresora, $doc, $imgs, $ANCHO_MM, $ALTO_MM, $aArchivo)
+  [MLEtiqueta]::Imprimir($impresora, $doc, $imgs, $anchoMm, $altoMm, $aArchivo)
   $jobId = TrabajoWindows $impresora $doc
   Diario $id @{ estado = "enviada"; documento = $doc; paginas = $imgs.Count; desde = $desde.ToString("o"); trabajo_windows = $jobId }
   if ($env:ML_SIMULAR_CORTE -eq "enviada") { Log "(prueba) corte simulado después de mandar"; [Environment]::Exit(9) }
@@ -410,7 +450,7 @@ function Seguir($doc, $jobId, $desde, $impresora, $paginas, $id) {
       if (-not $detenidoDesde) { $detenidoDesde = Get-Date }
       $det.detenida_desde = $detenidoDesde.ToString("o")
       if ($script:pausadoPorAgente -eq $id) { $det.pausada_por_agente = $true }
-      $script:estadoExtra = "DETENIDA ($codigo): $st · $pp/$paginas etiquetas"
+      $script:estadoExtra = "DETENIDA ($codigo): $st · $pp/$paginas páginas"
       $f = "detenida|$codigo"
       if ($id -and ($f -ne $firma -or ((Get-Date) - $ultimoAvance).TotalSeconds -ge 60)) { Avance $id "detenida" "trabajo detenido en Windows: $st" $det | Out-Null; $firma = $f; $ultimoAvance = Get-Date }
       # Más de 2 minutos detenido y Windows no lo tiene en pausa: lo pausamos NOSOTROS. Así, cuando vuelva la impresora, no sale
@@ -422,11 +462,13 @@ function Seguir($doc, $jobId, $desde, $impresora, $paginas, $id) {
       }
     } else {
       if ($detenidoDesde) { $detenidoDesde = $null; if ($id) { Avance $id "enviada" $null $det | Out-Null; $firma = "enviada"; $ultimoAvance = Get-Date } }
-      $script:estadoExtra = "imprimiendo: $pp/$paginas etiquetas"
+      $script:estadoExtra = "imprimiendo: $pp/$paginas páginas"
       if ($id -and ((Get-Date) - $ultimoAvance).TotalSeconds -ge 60) { Avance $id "enviada" $null $det | Out-Null; $ultimoAvance = Get-Date }
     }
-    Latir $impresora (@{ id = $id; paginas_impresas = $pp; paginas = [int]$paginas; estado_windows = $st; codigo = $codigo; pausada_por_agente = ($script:pausadoPorAgente -eq $id) })
-    $cancelado = Ordenes $impresora $id
+    # El latido y las órdenes van siempre con la térmica (la identidad de la PC); el trabajo que se sigue puede estar en la de hojas.
+    $termica = if ($script:termica) { $script:termica } else { $impresora }
+    Latir $termica (@{ id = $id; paginas_impresas = $pp; paginas = [int]$paginas; estado_windows = $st; codigo = $codigo; pausada_por_agente = ($script:pausadoPorAgente -eq $id); impresora = $impresora })
+    $cancelado = Ordenes $termica $id
     if ($cancelado -and $cancelado -eq $id) { $script:estadoExtra = $null; return @{ estado = "cancelada" } }
     Start-Sleep -Seconds 2
   }
@@ -443,10 +485,13 @@ function Seguir($doc, $jobId, $desde, $impresora, $paginas, $id) {
 }
 
 # Después de un corte: lo que el servidor dice que este agente tenía, contra el diario local y la cola de Windows.
-function Reconciliar($pendientes, $impresora) {
+function Reconciliar($pendientes, $termica) {
   foreach ($p in $pendientes) {
     $d = LeerDiario $p.id
     $doc = "ML-etiqueta-$($p.id)"
+    # Cada trabajo se sigue en SU cola: la térmica (etiquetas, tiras, total) o la de hojas (remitos).
+    $impresora = if ([string]$p.destino -eq "hojas") { ElegirImpresoraHojas } else { $termica }
+    if (-not $impresora) { Log "Recupero $($p.id): es un remito y esta PC ya no tiene impresora de hojas → incierta"; Avance $p.id "incierta" "La PC ya no tiene configurada la impresora de hojas: no se puede saber si salió." $null | Out-Null; BorrarDiario $p.id; continue }
     if ($p.estado -eq "tomada" -and (-not $d -or $d.estado -eq "tomada")) {
       if (TrabajoWindows $impresora $doc) { Log "Recupero $($p.id): tomada pero YA está en Windows → se sigue"; $d = [pscustomobject]@{ estado = "enviada"; documento = $doc; paginas = 0; desde = (Get-Date).ToString("o"); trabajo_windows = (TrabajoWindows $impresora $doc) } }
       else { Log "Recupero $($p.id): no se llegó a mandar → vuelve a la cola"; Avance $p.id "devuelta" $null $null | Out-Null; BorrarDiario $p.id; continue }
@@ -474,12 +519,19 @@ function Reconciliar($pendientes, $impresora) {
   }
 }
 
-function Procesar($t, $impresora) {
-  Log "Trabajo $($t.id) · $($t.tipo) · pedido $($t.pedido_id) · $($t.etiquetas) etiqueta(s)"
-  Diario $t.id @{ estado = "tomada"; desde = (Get-Date).ToString("o") }
+function Procesar($t, $termica) {
+  # Destino explícito del trabajo (migración 052): «hojas» → impresora de hojas configurada; cualquier otro → la térmica.
+  $dest = [string]$t.destino; $hojas = ($dest -eq "hojas")
+  $impresora = if ($hojas) { ElegirImpresoraHojas } else { $termica }
+  $an = $ANCHO_MM; $al = $ALTO_MM; $dpi = $DPI_ETIQUETAS
+  if ($t.papel) { if ($t.papel.ancho_mm) { $an = [double]$t.papel.ancho_mm }; if ($t.papel.alto_mm) { $al = [double]$t.papel.alto_mm } }
+  if ($hojas) { $dpi = $DPI_HOJAS }
+  Log "Trabajo $($t.id) · $($t.tipo) · pedido $($t.pedido_id) · $($t.etiquetas) página(s) · destino $(if ($hojas) { 'hojas' } else { 'etiquetas' }) → «$impresora» · ${an}x${al} mm a $dpi ppp"
+  if (-not $impresora) { Avance $t.id "fallida" "Esta PC no tiene configurada la impresora de hojas (impresora_hojas en config.json)." $null | Out-Null; Log "  fallida: sin impresora de hojas"; return }
+  Diario $t.id @{ estado = "tomada"; desde = (Get-Date).ToString("o"); impresora = $impresora }
   $desde = Get-Date
   $aArch = if (Valor "salida_dir" "") { Join-Path (Valor "salida_dir" "") ("$($t.id).pdf") } else { $null }   # solo pruebas: imprimir a archivo
-  try { $envio = ImprimirHtml $t.id $t.html $impresora $aArch }
+  try { $envio = ImprimirHtml $t.id $t.html $impresora $aArch $an $al $dpi }
   catch {
     $script:estadoExtra = $null
     $d = LeerDiario $t.id
@@ -487,12 +539,12 @@ function Procesar($t, $impresora) {
     else { Avance $t.id "fallida" $_.Exception.Message $null | Out-Null; Log "  fallida: $($_.Exception.Message)" }
     BorrarDiario $t.id; return
   }
-  Avance $t.id "enviada" $null (@{ paginas_impresas = 0; paginas = $envio.paginas; estado_windows = "Spooling"; trabajo_windows = $envio.jobId }) | Out-Null
-  Latir $impresora (@{ id = $t.id; paginas_impresas = 0; paginas = $envio.paginas; estado_windows = "Spooling" }) -Forzar
+  Avance $t.id "enviada" $null (@{ paginas_impresas = 0; paginas = $envio.paginas; estado_windows = "Spooling"; trabajo_windows = $envio.jobId; impresora = $impresora }) | Out-Null
+  Latir $termica (@{ id = $t.id; paginas_impresas = 0; paginas = $envio.paginas; estado_windows = "Spooling"; impresora = $impresora }) -Forzar
   $r = Seguir $envio.doc $envio.jobId $envio.desde $impresora $envio.paginas $t.id
   if ($r.estado -ne "cancelada") { Avance $t.id $r.estado $r.error $r.detalle | Out-Null }
   BorrarDiario $t.id
-  Latir $impresora $null -Forzar
+  Latir $termica $null -Forzar
   Log ("  " + $r.estado + " · papel: " + [MLEtiqueta]::UltimoPapel + $(if ($r.error) { ": " + $r.error } else { "" }))
 }
 
@@ -511,7 +563,7 @@ h1 { margin: 0; font-size: 30px; text-align: center; background: #000; color: #f
 "@
 }
 
-$imp = ElegirImpresora
+$imp = ElegirImpresora; $script:termica = $imp
 if ($Prueba -or $Html) {
   if (-not $imp -and -not $ArchivoSalida) { throw "No se encontró la impresora térmica." }
   $contenido = if ($Html) { Get-Content $Html -Raw -Encoding UTF8 } else { HtmlPrueba }
@@ -542,16 +594,17 @@ function PruebaPedida() {
 PruebaPedida
 if (-not $script:TOKEN) { Log "Falta el token: correr el instalador."; exit 1 }
 $e0 = EstadoImpresora $imp
-Log "Agente $VERSION en $AGENTE · impresora «$imp» ($($e0.texto)) · registro de Windows: $(if (RegistroActivo) { 'activo' } else { 'APAGADO' })"
+Log "Agente $VERSION en $AGENTE · impresora «$imp» ($($e0.texto)) · hojas: $(if (ElegirImpresoraHojas) { '«' + (ElegirImpresoraHojas) + '»' } else { 'sin configurar (no toma remitos)' }) · registro de Windows: $(if (RegistroActivo) { 'activo' } else { 'APAGADO' })"
 $ultimoTrabajo = [datetime]::MinValue; $fallasSeguidas = 0; $reconciliado = $false; $pausaAvisada = $false
 while ($true) {
   PruebaPedida
   try {
-    $imp = ElegirImpresora
+    $imp = ElegirImpresora; $script:termica = $imp
     $e = EstadoImpresora $imp
     $texto = $e.texto; if ($script:estadoExtra) { $texto = $script:estadoExtra }
     if (-not (RegistroActivo)) { $texto += " · registro de impresión de Windows apagado" }
-    $r = Rpc "qr_imp_tomar" @{ p = @{ agente = $AGENTE; impresora = $imp; estado_impresora = $texto; version = $VERSION; lista = [bool](($e.lista -or $IGNORAR_ESTADO) -and $reconciliado); cola = @(ColaWindows $imp) } }
+    $impH = ElegirImpresoraHojas
+    $r = Rpc "qr_imp_tomar" @{ p = @{ agente = $AGENTE; impresora = $imp; estado_impresora = $texto; version = $VERSION; lista = [bool](($e.lista -or $IGNORAR_ESTADO) -and $reconciliado); cola = @(@(ColaWindows $imp) + @(ColaWindows $impH)); hojas = [bool]$impH; impresora_hojas = $impH } }
     $script:ultimoLatido = Get-Date
     $fallasSeguidas = 0
     if ($r.ordenes) { $script:ordenes = @($r.ordenes); Ordenes $imp $null | Out-Null }

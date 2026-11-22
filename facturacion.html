@@ -1485,6 +1485,602 @@ body{ padding-bottom:22px }
   @media (max-width:760px){ .alf{ padding:16px 14px 14px } .alf-grid{ grid-template-columns:1fr } .alf-h h2{ font-size:18px; line-height:23px } .alf-acc .alf-todo{ margin-right:0; width:100% } .alf-b{ flex:1 1 auto } }
   @media (prefers-reduced-motion:no-preference){ .alf{ animation:alf-in .14s ease-out } @keyframes alf-in{ from{ opacity:0; transform:translateY(6px) } to{ opacity:1; transform:none } } }
 </style>
+<style id="qrMesaCss">
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════
+   FACTURACIÓN ML · «Mesa de trabajo» (22/11/2026) — capa visual sobre facturacion.html publicada.
+   Reglas: dos columnas, Pidió / Sale, Depósito separado del Control de Laura, faltantes con texto y color suave,
+   pie que dice el próximo paso, Inicio «Mesa de facturación» sin pedido seleccionado, Enfoque y pantalla
+   dividida de una sola columna real (nunca una columna de 0 px). No cambia ninguna regla ni consulta: solo
+   presenta lo que la pantalla ya carga. Las reglas van con «#app» adelante para pisar las de la hoja original
+   (incluidas las de modo oscuro y las «!important» del modo compacto) sin tocarlas.
+   Tokens: docs/Facturacion-Diseno-y-Petitorio-Claude.md §4.
+   ══════════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Tokens (claro) y remapeo de los tokens que ya usa la pantalla ─────────────────────────────────── */
+body {
+  --m-bg:#F3F5F9; --m-surface:#FFFFFF; --m-text:#17243A; --m-muted:#526077; --m-border:#DCE3ED;
+  --m-blue:#2457D6; --m-blue-soft:#EAF1FF; --m-blue-brd:#B9CDF5;
+  --m-green:#157044; --m-green-soft:#EAF7EF; --m-green-brd:#9CCDAF;
+  --m-amber:#925208; --m-amber-soft:#FFF3DB; --m-amber-brd:#E6C98A;
+  --m-red:#B32332; --m-red-soft:#FFF0F2; --m-red-brd:#F0B4BC;
+  --m-pink:#A51172; --m-pink-soft:#FCECF6; --m-pink-brd:#E5B7D5;
+  --m-focus:#2457D6; --m-sombra:0 18px 65px rgba(20,33,58,.2);
+  --bg:var(--m-bg); --card:var(--m-surface); --text:var(--m-text); --muted:var(--m-muted); --border:var(--m-border);
+  --prox:var(--m-blue); --prox-bg:var(--m-blue-soft); --prox-brd:var(--m-blue-brd);
+  --success:var(--m-green); --succ-bg:var(--m-green-soft);
+  --hoy:var(--m-red); --hoy-bg:var(--m-red-soft); --hoy-brd:var(--m-red-brd);
+  --manana:var(--m-amber); --man-bg:var(--m-amber-soft); --man-brd:var(--m-amber-brd);
+  --danger:var(--m-red); --radius:12px; --shadow:none;
+  --m-cols:minmax(200px,1fr) 68px 84px 164px 116px 28px;   /* artículo · pidió · sale · depósito · control · menú */
+  --m-areas:"art pidio sale dep ctl menu";
+  --m-lat:20px;
+}
+/* ── Tokens (oscuro): sistema sin preferencia forzada, y forzado por el botón ───────────────────────── */
+@media (prefers-color-scheme:dark) {
+  body:not(.light-forced) {
+    --m-bg:#101827; --m-surface:#172235; --m-text:#EAF0FA; --m-muted:#B0BFD1; --m-border:#314158;
+    --m-blue:#477DF2; --m-blue-soft:#203C68; --m-blue-brd:#3A5A96;
+    --m-green:#8BD3AB; --m-green-soft:#173E31; --m-green-brd:#456D57;
+    --m-amber:#F1C47A; --m-amber-soft:#40341F; --m-amber-brd:#6B5630;
+    --m-red:#FFA2AD; --m-red-soft:#3B2430; --m-red-brd:#6E3C4A;
+    --m-pink:#F0ABD8; --m-pink-soft:#38243B; --m-pink-brd:#6A4468;
+    --m-focus:#98B8FF; --m-sombra:0 18px 65px rgba(0,0,0,.55);
+    --bg:var(--m-bg); --card:var(--m-surface); --text:var(--m-text); --muted:var(--m-muted); --border:var(--m-border);
+    --prox:var(--m-blue); --prox-bg:var(--m-blue-soft); --prox-brd:var(--m-blue-brd);
+    --success:var(--m-green); --succ-bg:var(--m-green-soft);
+    --hoy:var(--m-red); --hoy-bg:var(--m-red-soft); --hoy-brd:var(--m-red-brd);
+    --manana:var(--m-amber); --man-bg:var(--m-amber-soft); --man-brd:var(--m-amber-brd); --shadow:none;
+  }
+}
+body.dark-forced {
+  --m-bg:#101827; --m-surface:#172235; --m-text:#EAF0FA; --m-muted:#B0BFD1; --m-border:#314158;
+  --m-blue:#477DF2; --m-blue-soft:#203C68; --m-blue-brd:#3A5A96;
+  --m-green:#8BD3AB; --m-green-soft:#173E31; --m-green-brd:#456D57;
+  --m-amber:#F1C47A; --m-amber-soft:#40341F; --m-amber-brd:#6B5630;
+  --m-red:#FFA2AD; --m-red-soft:#3B2430; --m-red-brd:#6E3C4A;
+  --m-pink:#F0ABD8; --m-pink-soft:#38243B; --m-pink-brd:#6A4468;
+  --m-focus:#98B8FF; --m-sombra:0 18px 65px rgba(0,0,0,.55);
+  --bg:var(--m-bg); --card:var(--m-surface); --text:var(--m-text); --muted:var(--m-muted); --border:var(--m-border);
+  --prox:var(--m-blue); --prox-bg:var(--m-blue-soft); --prox-brd:var(--m-blue-brd);
+  --success:var(--m-green); --succ-bg:var(--m-green-soft);
+  --hoy:var(--m-red); --hoy-bg:var(--m-red-soft); --hoy-brd:var(--m-red-brd);
+  --manana:var(--m-amber); --man-bg:var(--m-amber-soft); --man-brd:var(--m-amber-brd); --shadow:none;
+}
+body, body.dark-forced, body:not(.light-forced) { background:var(--m-bg); color:var(--m-text); }
+#app :focus-visible, body .m-dlg :focus-visible, body .m-pop :focus-visible { outline:2px solid var(--m-focus); outline-offset:2px; }
+@media (prefers-reduced-motion:reduce) { #app *, body .m-dlg-bg, body .m-pop { transition:none !important; animation:none !important; scroll-behavior:auto !important; } }
+.m-sprite { position:absolute; width:0; height:0; overflow:hidden; }
+.m-i { width:16px; height:16px; flex:0 0 auto; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; vertical-align:-3px; }
+.m-oculto { position:absolute !important; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+/* ── Estructura: 56 px de barra + área de trabajo en dos columnas reales ───────────────────────────── */
+#app { height:100dvh; }
+#app .topbar { height:56px; min-height:56px; padding:0 20px; gap:8px; background:var(--m-surface); border-bottom:1px solid var(--m-border); box-shadow:none; backdrop-filter:none; -webkit-backdrop-filter:none; flex-shrink:0; }
+#app .body { flex:1 1 auto; min-height:0; display:grid; grid-template-columns:296px minmax(0,1fr); grid-template-rows:minmax(0,1fr); position:relative; }
+#app .panel-left { grid-column:1; grid-row:1; width:auto; min-width:0; min-height:0; background:var(--m-surface); border-right:1px solid var(--m-border); }
+#app .panel-right { grid-column:2; grid-row:1; min-width:0; min-height:0; background:var(--m-bg); }
+@media (min-width:1600px) { #app .body { grid-template-columns:320px minmax(0,1fr); } body { --m-cols:minmax(260px,1fr) 80px 96px 184px 160px 28px; } }
+/* Enfoque y pantalla dividida: UNA columna, y el panel principal con posición explícita (nunca cae en una columna de 0 px). */
+#app .body.enfoque, body.dividida #app .body { grid-template-columns:minmax(0,1fr); }
+#app .body.enfoque .panel-right, body.dividida #app .panel-right { grid-column:1; grid-row:1; width:auto; display:flex; }
+#app .body.enfoque .panel-left, body.dividida #app .panel-left { display:none; width:296px; border-right:0; }
+body.dividida:not(.con-pedido) #app .panel-right { display:flex; }
+body.dividida:not(.con-pedido) #app .panel-left { display:none; width:296px; }
+/* La cola como cajón (Pedidos) en Enfoque y en pantalla dividida, con o sin pedido abierto. */
+body.lista-abierta.dividida #app .panel-left, body.lista-abierta.m-enfoque #app .panel-left {
+  display:flex; position:absolute; top:0; left:0; bottom:0; width:min(296px,92%); z-index:300; box-shadow:5px 0 24px rgba(23,36,58,.18); border-right:1px solid var(--m-border);
+}
+body.lista-abierta.dividida #app #listaBackdrop, body.lista-abierta.m-enfoque #app #listaBackdrop { display:block; position:absolute; inset:0; z-index:299; background:rgba(23,36,58,.27); }
+#app .body.enfoque .ped-header, #app .body.enfoque .ia-bar { display:flex; }
+#app #pedHeaderHandle, #app #btnVolver { display:none !important; }
+
+/* ── Barra global ──────────────────────────────────────────────────────────────────────────────────── */
+#app .topbar > * { flex-shrink:0; }
+#app .topbar > a:first-of-type, #app .topbar .logo-header { order:1; }
+#app .topbar .logo-header { width:36px; height:32px; border-radius:7px; padding:0; object-fit:cover; background:transparent; }
+#app .topbar-title { order:2; flex:0 1 auto; font-size:18px; font-weight:750; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#app .m-conn { order:3; display:flex; align-items:center; gap:7px; font-size:12px; color:var(--m-muted); border-left:1px solid var(--m-border); padding-left:12px; margin-left:4px; white-space:nowrap; }
+#app .m-conn .conn-dot { width:8px; height:8px; box-shadow:none; animation:none; background:var(--m-red); }
+#app .m-conn .conn-dot.online { background:#16A35E; } #app .m-conn .conn-dot.syncing { background:#D2952A; }
+#app .topbar .m-btn, #app .topbar > button, #app .topbar > a.nav-ped, #app .topbar #btnDevoluciones, #app .topbar #diaChip {
+  height:32px; min-height:32px; padding:0 12px; border:1px solid var(--m-border); background:var(--m-surface); color:var(--m-text);
+  border-radius:8px; font:600 13px/1 inherit; font-family:inherit; display:inline-flex; align-items:center; gap:6px; cursor:pointer; white-space:nowrap; text-decoration:none; transition:background .12s, border-color .12s;
+}
+#app .topbar .m-btn:hover, #app .topbar > button:hover, #app .topbar > a.nav-ped:hover, #app .topbar #btnDevoluciones:hover { background:var(--m-bg); border-color:#8B9DB8; }
+#app #mesaInicio { order:4; } #app #btnListaPedidos { order:5; display:none; } #app .topbar > button.nav-ped { order:6; display:none; width:32px; padding:0; }
+body.con-pedido #app .topbar > button.nav-ped { display:inline-flex; }
+body.dividida #app #btnListaPedidos, body.m-enfoque #app #btnListaPedidos { display:inline-flex; }
+#app #mesaMas { order:9; margin-left:auto; display:none; }
+#app #btnImpresora { order:11; display:inline-flex !important; } #app #btnDevoluciones { order:12; } #app #btnLayout { order:13; }
+#app #btnDark { order:14; width:32px; padding:0; font-size:0; justify-content:center; } #app #btnDark .m-i { width:18px; height:18px; }
+#app #diaChip { order:15; color:var(--m-green); border-color:var(--m-green-brd); background:var(--m-green-soft); font-weight:700; }
+#app #userChip { order:16; height:32px; padding:0 10px 0 2px; border-radius:99px; background:transparent; color:var(--m-text); font-size:13px; font-weight:600; display:inline-flex; align-items:center; gap:8px; }
+#app #userChip::before { content:attr(data-ini); width:28px; height:28px; border-radius:50%; background:var(--m-blue-soft); color:var(--m-blue); display:grid; place-items:center; font-weight:750; font-size:13px; }
+#app #btnDevoluciones b { background:var(--m-amber-soft); color:var(--m-amber); border-radius:6px; padding:1px 6px; font-size:12px; }
+#app #mesaMas.m-aviso::after { content:""; width:7px; height:7px; border-radius:50%; background:var(--m-amber); }
+#app #btnImpresora:not(.m-sin-emoji) { font-size:0; } /* hasta que el módulo lo rotule */
+#app #mesaMas, #app .topbar #btnImpresora, #app #btnDevoluciones, #app #diaChip, #app #userChip { max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+
+/* ── Cola izquierda ────────────────────────────────────────────────────────────────────────────────── */
+#app .left-tabs-bar { height:52px; padding:8px 12px 0; display:flex; gap:0; border-bottom:1px solid var(--m-border); background:var(--m-surface); }
+#app .ltab { flex:1; min-width:0; padding:4px 5px; font-size:12px; font-weight:600; color:var(--m-muted); border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent !important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:color .12s, border-color .12s; }
+#app .ltab.active { color:var(--m-blue); border-bottom-color:var(--m-blue); }
+#app .ltab .m-count { font-size:11px; border-radius:4px; background:var(--m-blue); color:#fff; padding:1px 5px; margin-left:4px; font-weight:700; }
+#app .ltab:not(.active) .m-count { background:var(--m-bg); color:var(--m-muted); }
+#app .left-search { padding:12px; border-bottom:0; }
+#app .left-search input { height:36px; padding:0 10px 0 32px; border:1px solid var(--m-border); border-radius:8px; font-size:13px; background:var(--m-surface) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23526077' stroke-width='2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><path d='m20 20-3.5-3.5'/></svg>") 10px center / 15px no-repeat; color:var(--m-text); }
+#app .left-search input:focus { border-color:var(--m-blue); }
+#app #pedidosList, #app #procesoList, #app #historialList { padding:0 12px 12px; }
+#app .grupo-header { height:28px; margin:8px 0; padding:0 10px; border:0; border-left:0; border-radius:6px; font-size:11px; font-weight:700; letter-spacing:.02em; display:flex; align-items:center; justify-content:space-between; background:var(--m-blue-soft); color:var(--m-blue); position:sticky; top:0; z-index:2; }
+#app .grupo-header.hoy { background:var(--m-red-soft); color:var(--m-red); border-left:0; } #app .grupo-header.man { background:var(--m-amber-soft); color:var(--m-amber); border-left:0; } #app .grupo-header.prox { background:var(--m-blue-soft); color:var(--m-blue); border-left:0; }
+#app .grupo-count { margin-left:auto; border:0; background:transparent; color:inherit; font-size:11px; padding:0; }
+#app .pedido-item, #app .proc-item, #app .proc-item-listo, #app .proc-item-pend, #app .hist-item { animation:none !important; }
+#app .pedido-item { min-height:88px; padding:12px 12px 12px 9px; border:1px solid transparent; border-left:4px solid transparent; border-bottom-color:var(--m-border); border-radius:8px; background:transparent; }
+#app .pedido-item:hover { background:var(--m-bg); }
+#app .pedido-item.selected, #app .pedido-item.grp-hoy.selected, #app .pedido-item.grp-man.selected { background:var(--m-blue-soft); border-left-color:var(--m-blue); }
+#app .pedido-item.facturado { opacity:.6; }
+#app .pi-nombre { font-size:13px; line-height:18px; font-weight:700; white-space:normal; overflow-wrap:anywhere; }
+#app .pi-fecha { font-size:12px; font-weight:600; margin-top:2px; } #app .pi-meta { font-size:12px; margin-top:2px; color:var(--m-muted); }
+#app .pedido-item .m-estado { display:inline-block; margin-top:6px; font-size:11px; font-weight:650; border-radius:5px; padding:2px 6px; }
+#app .m-estado.listo { background:var(--m-green-soft); color:var(--m-green); } #app .m-estado.enfact { background:var(--m-blue-soft); color:var(--m-blue); }
+#app .badge-faltante { background:var(--m-pink-soft); color:var(--m-pink); box-shadow:none; border:1px solid var(--m-pink-brd); border-radius:5px; font-size:10px; padding:2px 7px; }
+#app .pedido-item.faltante { background-image:none; background:transparent; border-left-color:var(--m-pink); box-shadow:none; }
+#app .pedido-item.faltante.selected { background:var(--m-blue-soft); }
+#app #procesoListHeader { padding:10px 12px; font-size:11px; letter-spacing:.04em; color:var(--m-muted); border-bottom:0; }
+#app .proc-item { background:var(--m-amber-soft) !important; border:1px solid var(--m-amber-brd) !important; border-radius:10px; margin:8px 0; padding:12px 14px; }
+#app .proc-item-listo { background:var(--m-green-soft); border:1px solid var(--m-green-brd); border-radius:10px; margin:8px 0; padding:12px 14px; }
+#app .proc-item-pend { background:var(--m-bg); border:1px solid var(--m-border); border-radius:10px; margin:6px 0; padding:12px 14px; }
+#app .proc-nombre { font-size:13px; } #app .proc-meta { font-size:12px; } #app .proc-pulse { animation:none; }
+#app .m-proc-nota { font-size:11px; color:var(--m-muted); padding:12px 2px 0; line-height:1.45; }
+#app .hist-item { padding:12px; border-radius:8px; }
+
+/* ── Inicio: Mesa de facturación ───────────────────────────────────────────────────────────────────── */
+#app #noSel { display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:0; min-height:0; overflow:hidden; color:var(--m-text); }
+#app .m-home { overflow:auto; flex:1; min-height:0; padding:24px 24px 16px; }
+#app .m-home-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:20px; }
+#app .m-eyebrow { font-size:11px; letter-spacing:.08em; color:var(--m-muted); font-weight:700; margin-bottom:7px; text-transform:uppercase; }
+#app .m-home-head h1 { font-size:26px; line-height:32px; margin:0 0 6px; font-weight:750; text-wrap:balance; }
+#app .m-home-head p { font-size:13px; color:var(--m-muted); margin:0; }
+#app .m-pill { padding:3px 8px; border-radius:6px; display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:650; white-space:nowrap; }
+#app .m-pill.azul { background:var(--m-blue-soft); color:var(--m-blue); } #app .m-pill.hab { background:var(--m-green-soft); color:var(--m-green); } #app .m-pill.qr { background:var(--m-pink-soft); color:var(--m-pink); }
+#app .m-pill.hoy { background:var(--m-red-soft); color:var(--m-red); } #app .m-pill.man { background:var(--m-amber-soft); color:var(--m-amber); } #app .m-pill.neutro { background:var(--m-bg); color:var(--m-muted); border:1px solid var(--m-border); }
+#app .m-off { margin:0 0 16px; padding:8px 12px; background:var(--m-amber-soft); color:var(--m-amber); border-radius:7px; font-size:12px; }
+#app .m-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:22px; }
+#app .m-metrics > div { background:var(--m-surface); border:1px solid var(--m-border); border-radius:12px; padding:16px; min-width:0; }
+#app .m-metrics span { font-size:12px; color:var(--m-muted); }
+#app .m-metrics strong { display:block; font-size:28px; line-height:34px; margin:6px 0 3px; font-variant-numeric:tabular-nums; font-weight:750; }
+#app .m-metrics strong small { font-size:12px; color:var(--m-muted); font-weight:500; } #app .m-metrics strong.fecha { font-size:22px; }
+#app .m-metrics p { margin:0; font-size:11px; color:var(--m-muted); }
+#app .m-home-orders { border:1px solid var(--m-border); border-radius:12px; background:var(--m-surface); overflow:hidden; }
+#app .m-sec-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:15px 16px; }
+#app .m-sec-head h2, #app .m-home-bottom h2 { font-size:15px; margin:0; font-weight:700; }
+#app .m-sec-head span { font-size:12px; color:var(--m-muted); }
+#app .m-home-list-head, #app .m-home-order { display:grid; grid-template-columns:minmax(180px,1fr) 116px 100px 120px; align-items:center; gap:12px; padding:0 16px; }
+#app .m-home-list-head { height:32px; background:var(--m-bg); font-size:10px; color:var(--m-muted); font-weight:700; text-transform:uppercase; letter-spacing:.04em; border-top:1px solid var(--m-border); border-bottom:1px solid var(--m-border); }
+#app .m-home-grupo { padding:9px 16px 4px; font-size:11px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; color:var(--m-muted); border-top:1px solid var(--m-border); }
+#app .m-home-grupo.hoy { color:var(--m-red); } #app .m-home-grupo.man { color:var(--m-amber); } #app .m-home-grupo.prox { color:var(--m-blue); }
+#app .m-home-order { min-height:78px; padding-top:12px; padding-bottom:12px; border-top:1px solid var(--m-border); }
+#app .m-home-order b { font-size:13px; line-height:18px; display:block; overflow-wrap:anywhere; }
+#app .m-home-order small { display:block; font-size:12px; color:var(--m-muted); margin-top:3px; }
+#app .m-home-order .m-estado { display:inline-block; margin-top:6px; font-size:11px; font-weight:650; border-radius:5px; padding:2px 6px; }
+#app .m-home-ent { font-size:12px; font-weight:650; color:var(--m-blue); } #app .m-home-ent.hoy { color:var(--m-red); } #app .m-home-ent.man { color:var(--m-amber); }
+#app .m-home-ven { font-size:12px; color:var(--m-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#app .m-home-vacio { padding:28px 16px; color:var(--m-muted); font-size:13px; border-top:1px solid var(--m-border); }
+#app .m-home-bottom { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:16px; margin-top:20px; }
+#app .m-home-bottom > section { padding:18px; background:var(--m-surface); border:1px solid var(--m-border); border-radius:12px; }
+#app .m-home-bottom ol { padding:0; list-style:none; counter-reset:paso; display:flex; flex-direction:column; gap:12px; margin:14px 0 0; }
+#app .m-home-bottom li { padding-left:32px; position:relative; counter-increment:paso; font-size:12px; }
+#app .m-home-bottom li::before { content:counter(paso); position:absolute; left:0; top:0; width:22px; height:22px; display:grid; place-items:center; background:var(--m-blue-soft); color:var(--m-blue); border-radius:6px; font-weight:700; }
+#app .m-home-bottom li b { display:block; } #app .m-home-bottom li span { display:block; color:var(--m-muted); font-size:11px; margin-top:2px; }
+#app .m-home-atajos button { width:100%; display:flex; justify-content:space-between; gap:8px; text-align:left; font-size:12px; margin-top:10px; white-space:normal; }
+#app .m-footnote { font-size:11px; color:var(--m-muted); margin:14px 0 0; }
+
+/* Botones genéricos de la capa (Inicio, menús, diálogos) */
+#app .m-b, body .m-dlg .m-b, body .m-pop .m-b { font:600 13px/1.3 inherit; font-family:inherit; color:var(--m-text); border:1px solid var(--m-border); background:var(--m-surface); border-radius:8px; min-height:36px; padding:6px 12px; cursor:pointer; white-space:nowrap; transition:background .12s, border-color .12s; }
+#app .m-b:hover:not(:disabled), body .m-dlg .m-b:hover:not(:disabled), body .m-pop .m-b:hover:not(:disabled) { border-color:#8B9DB8; background:var(--m-bg); }
+#app .m-b:disabled, body .m-dlg .m-b:disabled { cursor:not-allowed; opacity:.55; }
+#app .m-b.prim, body .m-dlg .m-b.prim { background:var(--m-blue); color:#fff; border-color:var(--m-blue); }
+#app .m-b.prim:hover:not(:disabled), body .m-dlg .m-b.prim:hover:not(:disabled) { background:#1E49B8; border-color:#1E49B8; }
+#app .m-b.chico { min-height:30px; padding:4px 9px; font-size:12px; }
+#app .m-b.fantasma { border-color:transparent; background:transparent; }
+
+/* ── Encabezado del pedido ─────────────────────────────────────────────────────────────────────────── */
+#app #pedidoPanel { background:var(--m-bg); }
+#app .ped-header { display:flex !important; flex-direction:column; padding:14px var(--m-lat) 8px; min-height:106px; background:transparent; border:0; box-shadow:none; backdrop-filter:none; -webkit-backdrop-filter:none; }
+#app .m-ident { font-size:12px; color:var(--m-muted); display:flex; align-items:center; gap:12px; min-height:18px; flex-wrap:wrap; }
+#app .m-ident #phNumGrande { font-size:13px; font-weight:700; color:var(--m-blue); letter-spacing:0; line-height:1.2; cursor:pointer; user-select:none; }
+#app .m-ident #phNumGrande:hover { opacity:1; text-decoration:underline; }
+#app .m-ident #phNumDiario { display:inline !important; margin:0 !important; } #app .m-ident #phNumDiario span { font-size:12px !important; opacity:1 !important; color:var(--m-muted) !important; font-weight:500 !important; }
+#app .m-ident .m-pedcod { white-space:nowrap; }
+#app .ph-row1 { display:flex; align-items:flex-start; gap:8px; margin:3px 0 8px; min-width:0; }
+#app .ped-cliente, #app #phCliente { font-size:22px; line-height:27px; font-weight:750; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:anywhere; flex:1; min-width:0; color:var(--m-text); }
+#app .ph-row1-actions { margin-left:auto; display:flex; gap:8px; flex-shrink:0; padding-top:1px; }
+#app .btn-notas-open { min-height:30px; padding:4px 9px; border-radius:8px; border:1px solid var(--m-border); background:var(--m-surface); color:var(--m-text); font-size:12px; font-weight:600; }
+#app .btn-notas-open.tiene-notas { border-color:var(--m-amber-brd); color:var(--m-amber); background:var(--m-amber-soft); }
+#app .ph-row2 { display:flex; align-items:center; gap:10px; flex-wrap:wrap; color:var(--m-muted); font-size:12px; margin-top:0; }
+#app .ped-entrega, #app #phEntrega { font-size:12px; font-weight:650; padding:3px 8px; border-radius:6px; background:var(--m-blue-soft); color:var(--m-blue); }
+#app #phEntrega.hoy-e { background:var(--m-red-soft); color:var(--m-red); } #app #phEntrega.man-e { background:var(--m-amber-soft); color:var(--m-amber); }
+#app .ped-meta, #app #phMeta { font-size:12px; color:var(--m-muted); }
+#app #phArmador { font-size:12px !important; color:var(--m-muted) !important; font-weight:600 !important; }
+#app .ped-chips .chip { border-radius:6px; font-size:12px; padding:3px 8px; }
+#app #phDescuentoChip { display:inline-block; background:transparent !important; color:var(--m-text) !important; border:1px solid var(--m-border) !important; border-radius:6px !important; font-weight:650 !important; font-size:12px !important; padding:2px 8px !important; }
+#app .m-obs { margin-top:8px; padding:7px 10px; border-radius:7px; background:var(--m-surface); border:1px solid var(--m-border); font-size:12px; color:var(--m-text); line-height:1.4; display:flex; gap:8px; align-items:flex-start; }
+#app .m-obs b { color:var(--m-muted); font-weight:700; flex-shrink:0; } #app .m-obs span { min-width:0; overflow-wrap:anywhere; }
+#app .m-obs:not(.abierta) span.larga { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+#app .m-obs button { margin-left:auto; flex-shrink:0; border:0; background:none; color:var(--m-blue); font:600 12px inherit; font-family:inherit; cursor:pointer; padding:0; }
+#app .m-obs:empty { display:none; }
+/* Tipo de mercadería (debajo del encabezado): identidad Habituales / Queruclor y el estado del bloque que deja Depósito (fv2) */
+#app .m-kind { margin:0 var(--m-lat); display:flex; align-items:center; gap:8px; min-height:34px; border-top:1px solid var(--m-border); border-bottom:1px solid var(--m-border); font-size:12px; color:var(--m-muted); flex-shrink:0; flex-wrap:wrap; padding:3px 0; }
+#app .m-kind .m-sep { width:1px; height:16px; background:var(--m-border); }
+#app .m-kind #btnEnfoque { margin-left:auto; min-height:30px; padding:4px 9px; border-radius:8px; border:1px solid transparent; background:transparent; color:var(--m-blue); font-size:12px; font-weight:650; }
+#app .m-kind #btnEnfoque:hover { background:var(--m-blue-soft); border-color:transparent; }
+#app .m-kind #btnEnfoque[aria-pressed="true"] { background:var(--m-blue-soft); }
+#app #fv2Res { margin:0; padding:0; border:0; border-radius:0; background:transparent; font-size:12px; line-height:1.3; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+#app #fv2Res .fv2-l1 { display:none; } /* número interno, cliente, entrega y vendedor ya están arriba; el UUID vive en «Detalle» */
+#app #fv2Res .fv2-l2 { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:0; }
+#app #fv2Res .fv2-l2::before { content:"Depósito:"; color:var(--m-muted); font-weight:600; }
+#app #fv2Res .fv2-chip { border-radius:5px; padding:2px 7px; font-size:11px; font-weight:650; background:var(--m-bg); color:var(--m-muted); border:1px solid var(--m-border); }
+#app #fv2Res .fv2-chip.ok { background:var(--m-green-soft); color:var(--m-green); border-color:transparent; } #app #fv2Res .fv2-chip.ojo { background:var(--m-amber-soft); color:var(--m-amber); border-color:transparent; }
+#app .faltantes-previos-sec { margin:8px var(--m-lat) 0; border-radius:8px; border:1px solid var(--m-amber-brd); border-left-width:4px; background:var(--m-amber-soft); padding:8px 12px; }
+#app .faltantes-previos-title { font-size:12px; color:var(--m-amber); margin-bottom:4px; } #app .faltante-prev-item { font-size:13px; border-bottom-color:var(--m-amber-brd); }
+
+/* ── Filtros y acciones ────────────────────────────────────────────────────────────────────────────── */
+#app .ia-bar { display:flex; align-items:center; gap:8px; padding:10px var(--m-lat); min-height:52px; background:transparent; border:0; flex-wrap:wrap; }
+#app .m-seg { display:flex; }
+#app .m-seg button { font:600 12px/1 inherit; font-family:inherit; color:var(--m-text); border:1px solid var(--m-border); background:var(--m-surface); border-radius:0; min-height:32px; padding:5px 12px; cursor:pointer; white-space:nowrap; }
+#app .m-seg button:first-child { border-radius:7px 0 0 7px; } #app .m-seg button:last-child { border-radius:0 7px 7px 0; } #app .m-seg button + button { margin-left:-1px; }
+#app .m-seg button[aria-pressed="true"] { color:#fff; background:var(--m-blue); border-color:var(--m-blue); z-index:1; position:relative; }
+#app .m-seg button:hover:not([aria-pressed="true"]) { background:var(--m-bg); }
+#app .m-alcance { font-size:11px; color:var(--m-amber); font-weight:600; display:none; }
+#app #itemsPanel.m-f-pend ~ * .m-alcance, #app .ia-bar.m-filtrada .m-alcance { display:inline; }
+#app .ia-bar .m-bulk { margin-left:auto; display:flex; gap:8px; }
+#app .btn-ia { min-height:32px; padding:5px 12px; border-radius:8px; border:1px solid var(--m-border); background:var(--m-surface); color:var(--m-text); font-size:12px; font-weight:600; }
+#app .btn-ia:hover { border-color:#8B9DB8; color:var(--m-text); background:var(--m-bg); }
+#app .ia-bar .kbd-hint { display:none; }
+
+/* ── Tabla de renglones ────────────────────────────────────────────────────────────────────────────── */
+#app #itemsPanel { margin:0 var(--m-lat) 12px; padding:0; gap:0; flex:1 1 auto; min-height:0; overflow-y:auto; border:1px solid var(--m-border); border-radius:12px; background:var(--m-surface); scrollbar-gutter:stable; display:flex; flex-direction:column; }
+#app #itemsPanel::-webkit-scrollbar { width:8px; } #app #itemsPanel::-webkit-scrollbar-thumb { background:var(--m-border); border-radius:4px; }
+#app #mThead { position:sticky; top:0; z-index:3; display:grid; grid-template-columns:var(--m-cols); grid-template-areas:var(--m-areas); align-items:center; min-height:34px; padding:0 14px; border-bottom:1px solid var(--m-border); background:var(--m-surface); font-size:11px; font-weight:700; color:var(--m-muted); text-transform:uppercase; letter-spacing:.04em; flex-shrink:0; }
+#app #mThead .c { text-align:center; } #app #mThead .ctl { grid-area:ctl / ctl / menu / menu; }
+#app #mThead > span:nth-child(1) { grid-area:art; } #app #mThead > span:nth-child(2) { grid-area:pidio; } #app #mThead > span:nth-child(3) { grid-area:sale; } #app #mThead > span:nth-child(4) { grid-area:dep; padding:0 8px; }
+#app #itemsPanel .item-f, #app #itemsPanel .item-f.reemplazo {
+  display:grid !important; grid-template-columns:var(--m-cols) !important; grid-template-areas:var(--m-areas); gap:0 !important; align-items:center;
+  padding:6px 14px !important; min-height:52px; max-height:none !important; height:auto; margin:0; border:0 !important; border-bottom:1px solid var(--m-border) !important;
+  border-radius:0 !important; background:transparent; box-shadow:none; overflow:visible; position:relative; cursor:pointer; transition:background .12s;
+}
+#app #itemsPanel .item-f:last-of-type { border-bottom:0 !important; }
+#app #itemsPanel .item-f:hover, #app #itemsPanel .item-f:not(.ok):hover { background:var(--m-bg); box-shadow:none; border-left-color:transparent; }
+#app #itemsPanel .item-f.ok, #app #itemsPanel .item-f.ok:hover { background:var(--m-green-soft); opacity:1; }
+#app #itemsPanel .item-f.faltante, #app #itemsPanel .item-f.faltante:hover { background:var(--m-red-soft); }
+#app #itemsPanel .item-f.reemplazo, #app #itemsPanel .item-f.reemplazo:hover { background:var(--m-blue-soft); }
+#app #itemsPanel .item-f.siguiente { box-shadow:none; }
+#app #itemsPanel .item-f.siguiente::before { content:""; position:absolute; left:0; top:6px; bottom:6px; width:3px; border-radius:3px; background:var(--m-blue); }
+#app #itemsPanel .item-f > * { align-self:center; min-width:0; }
+#app #itemsPanel .item-f > .m-art { grid-area:art; padding-right:12px; overflow:visible; flex:none; }
+#app #itemsPanel .item-f.reemplazo > div:first-child:not(.m-art) { display:none; }
+#app #itemsPanel .item-f-name-row { display:flex; align-items:flex-start; gap:6px; }
+#app #itemsPanel .item-f-desc { font-size:14px; line-height:18px; font-weight:600; color:var(--m-text); white-space:normal; overflow-wrap:anywhere; }
+#app #itemsPanel .item-f-desc.tachado { text-decoration:none; color:var(--m-text); }
+#app #itemsPanel .qr-fname { font-weight:600; } #app #itemsPanel .qr-fnota { display:block; font-size:12px; line-height:17px; color:var(--m-muted); font-weight:500; margin-top:1px; }
+#app #itemsPanel .qr-ftag { color:var(--m-pink); font-weight:700; } #app #itemsPanel .qr-funi.es-caja { color:var(--m-text); font-weight:650; }
+#app #itemsPanel .item-f-who { font-size:11px; line-height:15px; opacity:1; color:var(--m-muted); margin-top:2px; white-space:normal; }
+/* «Desmarcar» deja facturado_por en la base (comportamiento previo): la firma solo se muestra en renglones controlados, para no afirmar un control que no está. */
+#app #itemsPanel .item-f:not(.ok):not(.reemplazo) .item-f-who { display:none; }
+#app #itemsPanel .mod-dep { margin-top:4px; padding:3px 7px; border-radius:6px; background:var(--m-amber-soft); border:1px solid var(--m-amber-brd); color:var(--m-amber); font-size:11px; }
+#app #itemsPanel .fpp-badge { background:var(--m-pink-soft); color:var(--m-pink); font-size:10px; margin-top:3px; }
+#app #itemsPanel .reemplazo-label { background:var(--m-blue-soft); color:var(--m-blue); border-color:var(--m-blue-brd); } #app #itemsPanel .reemplazo-origin { font-size:12px; margin-top:1px; }
+#app #itemsPanel .btn-sust, #app #itemsPanel .btn-falt, #app #itemsPanel .fv2-dep { display:none !important; } /* viven en el menú «⋯» del renglón y en las columnas Pidió / Sale / Depósito */
+#app #itemsPanel .m-pidio, #app #itemsPanel .m-sale { grid-area:pidio; text-align:center; font-variant-numeric:tabular-nums; font-size:14px; font-weight:600; color:var(--m-text); }
+#app #itemsPanel .m-sale { grid-area:sale; }
+#app #itemsPanel .m-pidio small { display:block; font-size:10px; font-weight:600; color:var(--m-amber); line-height:12px; }
+#app #itemsPanel .qty-in { grid-area:sale; width:58px !important; height:32px !important; min-height:32px; justify-self:center; padding:2px !important; font-size:14px !important; font-weight:600; border:1px solid #BAC6D6; border-radius:6px; background:var(--m-surface); color:var(--m-text); font-variant-numeric:tabular-nums; }
+#app #itemsPanel .qty-in:focus { border-color:var(--m-blue); background:var(--m-surface); }
+#app #itemsPanel .qty-in.mod { border-color:var(--m-amber); color:var(--m-amber); }
+#app #itemsPanel .m-nosale { grid-area:sale; display:none; text-align:center; font-size:12px; font-weight:650; color:var(--m-red); line-height:1.2; }
+#app #itemsPanel .item-f.faltante .qty-in { display:none; } #app #itemsPanel .item-f.faltante .m-nosale { display:block; }
+#app #itemsPanel .m-dep { grid-area:dep; font-size:12px; line-height:16px; display:flex; gap:5px; flex-wrap:wrap; align-items:center; padding:0 8px; color:var(--m-muted); }
+#app #itemsPanel .m-dep small { font-size:11px; color:var(--m-muted); }
+#app .m-st { display:inline-block; border-radius:5px; font-size:11px; font-weight:650; padding:3px 6px; white-space:nowrap; }
+#app .m-st.ok { background:var(--m-green-soft); color:var(--m-green); } #app .m-st.warn { background:var(--m-amber-soft); color:var(--m-amber); }
+#app .m-st.falt { background:var(--m-red-soft); color:var(--m-red); } #app .m-st.azul { background:var(--m-blue-soft); color:var(--m-blue); } #app .m-st.qr { background:var(--m-pink-soft); color:var(--m-pink); }
+#app #itemsPanel .item-f.fpp-dep > .m-dep > * { display:none; }
+#app #itemsPanel .item-f.fpp-dep > .m-dep::after { content:"Lo controla Depósito por cajas"; font-size:11px; color:var(--m-pink); font-weight:650; }
+/* Con el chequeo final en el pedido (22/11, 3), el renglón que controla Depósito no repite lo que ya dice la sección: remite a ella. */
+#app #itemsPanel:has(#mChequeo) .item-f.fpp-dep > .m-dep::after { content:"Ver chequeo final"; color:var(--m-muted); font-weight:600; }
+@media (max-width:760px) {
+  /* Media pantalla: el renglón de Depósito queda en dos líneas (nombre + etiquetas y firma); las unidades por caja siguen en Detalle y en «Ver cajas preparadas». */
+  #app #itemsPanel .item-f.fpp-dep { min-height:52px; }
+  /* !important: las reglas de densidad compacta (body.compacta…) tienen más peso y pondrían la nota en línea. */
+  #app #itemsPanel .item-f.fpp-dep .qr-fnota { display:none !important; }
+  #app #itemsPanel .item-f.fpp-dep .item-f-who { display:inline !important; margin:0 0 0 8px !important; }
+  #app #itemsPanel .item-f.fpp-dep .fpp-badge { margin-top:1px; }
+  #app #itemsPanel:has(#mChequeo) .item-f.fpp-dep > .m-dep { display:none; }
+}
+#app #itemsPanel .chk-f {
+  grid-area:ctl; width:116px !important; height:30px !important; min-height:30px; justify-self:start; padding:0 !important; border-radius:6px !important; border:1px solid #93B2F3 !important;
+  background:var(--m-surface) !important; color:var(--m-blue) !important; font-size:0 !important; line-height:1; display:flex; align-items:center; justify-content:center; transform:none; cursor:pointer; opacity:1;
+}
+#app #itemsPanel .chk-f::after { content:"Marcar OK"; font-size:12px; font-weight:650; }
+#app #itemsPanel .item-f.siguiente .chk-f::after { content:"Marcar OK  ↵"; }
+#app #itemsPanel .chk-f.ok { border-color:#79AD90 !important; color:var(--m-green) !important; } #app #itemsPanel .chk-f.ok::after { content:"Controlado ✓"; }
+#app #itemsPanel .chk-f.faltante { border-color:#D78590 !important; color:var(--m-red) !important; } #app #itemsPanel .chk-f.faltante::after { content:"Faltante"; }
+#app #itemsPanel .item-f.reemplazo .chk-f::after { content:"Enviado ✓"; }
+#app #itemsPanel .item-f.fpp-dep .chk-f { opacity:.55; }
+#app #itemsPanel .chk-f:active { transform:none; }
+#app #itemsPanel .m-menu { grid-area:menu; width:28px; height:30px; border:0; background:transparent; color:var(--m-muted); border-radius:6px; display:grid; place-items:center; cursor:pointer; padding:0; justify-self:end; }
+#app #itemsPanel .m-menu:hover { background:var(--m-bg); color:var(--m-text); }
+#app #itemsPanel .item-f.reemplazo .m-menu { visibility:hidden; }
+/* Filtros: solo lectura sobre lo que ya está; las filas no se destruyen, se ocultan */
+#app #itemsPanel.m-f-pend .item-f.ok, #app #itemsPanel.m-f-pend .item-f.faltante, #app #itemsPanel.m-f-pend .item-f.reemplazo { display:none !important; }
+#app #itemsPanel.m-f-falt .item-f:not(.faltante) { display:none !important; }
+#app #itemsPanel .m-vacio { display:none; padding:20px 14px; color:var(--m-muted); font-size:13px; }
+#app #itemsPanel .m-vacio.visible { display:block; }
+/* Paneles de Queruclor dentro de la misma tabla */
+#app #itemsPanel #qrPrepFact { margin:10px 12px; } #app #itemsPanel #qrPanel { margin:0; }
+#app #itemsPanel .fpp { border-color:var(--m-green-brd); background:var(--m-green-soft); color:var(--m-text); border-width:1px; }
+#app #itemsPanel .fpp.cambio { border-color:var(--m-amber-brd); background:var(--m-amber-soft); color:var(--m-text); }
+
+/* ── Pie de trabajo ────────────────────────────────────────────────────────────────────────────────── */
+#app .ped-footer { min-height:84px; padding:10px var(--m-lat); display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; background:var(--m-surface); border-top:1px solid var(--m-border); box-shadow:none; backdrop-filter:none; -webkit-backdrop-filter:none; }
+#app .ped-footer > div:first-child { order:0; flex-basis:100%; height:3px; margin:0 0 2px !important; background:var(--m-border); }
+#app .ped-footer > div:first-child #scrollProgressFill { background:var(--m-blue); }
+#app .footer-stats { order:1; flex:1 1 auto; margin:0; gap:12px; font-size:13px; font-weight:700; color:var(--m-text); flex-wrap:wrap; align-items:baseline; }
+#app .footer-stats .ok-count { font-size:13px !important; font-weight:700 !important; color:var(--m-text) !important; }
+#app .footer-stats .flt-count { color:var(--m-red); font-weight:700; } #app .footer-stats .rem-count { color:var(--m-blue); font-size:13px; font-weight:700; }
+#app .footer-stats .m-pend { color:var(--m-muted); font-weight:700; }
+#app #pedidoPanel #msgMot { order:2; flex:0 1 auto; display:block !important; font-size:12px; font-style:normal; color:var(--m-muted); text-align:right; padding:0; min-height:0; }
+#app #pedidoPanel #footerScrollHint { order:3; flex-basis:100%; display:none; text-align:left; padding:0; font-size:12px; font-weight:600; color:var(--m-amber); }
+#app #pedidoPanel #footerScrollHint.visible { display:block !important; }
+#app #fv2Conf { order:4; flex-basis:100%; margin:0; font-size:12px; color:var(--m-amber); }
+#app .acciones-facturado { order:5; flex-basis:100%; margin:0; gap:8px; }
+#app .btn-accion-fact { padding:8px; font-size:12px; border-radius:8px; border:1px solid var(--m-border); background:var(--m-surface); color:var(--m-text); }
+#app .footer-actions { order:6; flex-basis:100%; display:flex; gap:8px; justify-content:flex-end; align-items:center; flex-wrap:wrap; }
+#app .footer-actions .kbd-hint { display:inline; margin:0 auto 0 0; font-size:11px; color:var(--m-muted); }
+#app .footer-actions .kbd-hint kbd { background:var(--m-bg); border-color:var(--m-border); }
+#app .btn-wa, #app #btnEtiquetas { flex:0 0 auto; height:36px; min-height:36px; padding:0 12px !important; border-radius:8px !important; border:1px solid var(--m-border) !important; background:var(--m-surface) !important; color:var(--m-text) !important; font-size:12px !important; font-weight:600 !important; box-shadow:none !important; margin:0 !important; cursor:pointer; }
+#app .btn-wa:hover, #app #btnEtiquetas:hover { border-color:#8B9DB8 !important; background:var(--m-bg) !important; color:var(--m-text) !important; }
+#app #btnFacturar { flex:0 0 auto; min-width:158px; height:36px; padding:0 16px; border-radius:8px; border:1px solid var(--m-blue); background:var(--m-blue); color:#fff; font-size:13px; font-weight:700; box-shadow:none; white-space:nowrap; }
+#app #btnFacturar:disabled { background:#9CAECC; border-color:#9CAECC; color:#fff; cursor:not-allowed; }
+#app #btnFacturar.scroll-locked { opacity:.45; pointer-events:none; transform:none; }
+#app #btnFacturar:not(:disabled):active { transform:none; }
+
+/* ── Modales de la pantalla (nombre, PIN, confirmar, descuento, notas, hoy, proceso) ────────────────── */
+body .modal-over { align-items:center; padding:16px; backdrop-filter:none; background:rgba(20,33,58,.4); }
+body .modal-box { border-radius:16px; padding:24px; width:min(560px, calc(100vw - 32px)); animation:none; background:var(--m-surface); color:var(--m-text); border:1px solid var(--m-border); box-shadow:var(--m-sombra); max-height:calc(100dvh - 40px); overflow:auto; }
+body .modal-title { font-size:20px; line-height:26px; } body .modal-sub { font-size:13px; }
+body .modal-input, body .nota-input-modal { background:var(--m-surface); color:var(--m-text); border:1px solid var(--m-border); border-radius:8px; font-size:16px; }
+body .modal-btn { border-radius:8px; font-size:14px; padding:10px 12px; min-height:40px; }
+body .modal-btn.ok { background:var(--m-blue); color:#fff; } body .modal-btn.cancel { background:var(--m-surface); border:1px solid var(--m-border); color:var(--m-text); }
+body .nota-modal-item { background:var(--m-bg); border-color:var(--m-border); }
+/* Diálogos y menús propios de la capa */
+body .m-dlg-bg { position:fixed; inset:0; z-index:9000; background:rgba(20,33,58,.4); display:grid; place-items:center; padding:20px; }
+body .m-dlg { width:min(560px, 100%); max-height:calc(100dvh - 40px); overflow:auto; background:var(--m-surface); color:var(--m-text); border:1px solid var(--m-border); border-radius:16px; padding:24px; box-shadow:var(--m-sombra); font-size:13px; }
+body .m-dlg.ancho { width:min(880px, 100%); }
+body .m-dlg h2 { font-size:20px; line-height:26px; margin:0 0 14px; font-weight:750; }
+body .m-dlg h3 { font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:var(--m-muted); margin:16px 0 6px; }
+body .m-dlg p { margin:8px 0; color:var(--m-muted); }
+body .m-dlg .m-acciones { display:flex; gap:8px; justify-content:flex-end; margin-top:22px; flex-wrap:wrap; }
+body .m-dlg .m-acciones .m-b { min-height:40px; }
+body .m-dlg .m-lista { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+body .m-dlg .m-lista .m-b { text-align:left; white-space:normal; display:flex; justify-content:space-between; gap:10px; align-items:center; }
+body .m-dlg .m-lista .m-b small { color:var(--m-muted); font-weight:500; }
+body .m-dlg .m-datos { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:8px; }
+body .m-dlg .m-dato { border:1px solid var(--m-border); border-radius:10px; padding:10px 12px; display:flex; align-items:center; gap:8px; min-width:0; }
+body .m-dlg .m-dato div { min-width:0; flex:1; } body .m-dlg .m-dato span { display:block; font-size:11px; color:var(--m-muted); font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+body .m-dlg .m-dato b { display:block; font-size:13px; overflow-wrap:anywhere; font-weight:650; } body .m-dlg .m-dato code { font-family:Consolas, monospace; font-size:12px; overflow-wrap:anywhere; }
+body .m-dlg .m-dato .m-b { flex-shrink:0; }
+body .m-pop { position:absolute; z-index:9100; min-width:220px; max-width:min(320px, calc(100vw - 24px)); background:var(--m-surface); color:var(--m-text); border:1px solid var(--m-border); border-radius:10px; padding:6px; box-shadow:0 12px 40px rgba(20,33,58,.22); display:flex; flex-direction:column; gap:2px; }
+body .m-pop .m-b { text-align:left; border-color:transparent; background:transparent; min-height:34px; white-space:normal; display:flex; justify-content:space-between; gap:10px; }
+body .m-pop .m-b:hover:not(:disabled) { background:var(--m-bg); border-color:transparent; }
+body .m-pop .m-b small { color:var(--m-muted); font-weight:500; }
+body .m-pop .m-sep { height:1px; background:var(--m-border); margin:4px 2px; }
+body .m-pop h4 { margin:4px 8px 6px; font-size:12px; color:var(--m-muted); font-weight:600; overflow-wrap:anywhere; }
+
+/* ── Ventanas y media pantalla ─────────────────────────────────────────────────────────────────────── */
+@media (max-width:1100px) {
+  body { --m-cols:minmax(150px,1fr) 54px 68px 130px 108px 26px; --m-lat:12px; }
+  #app .topbar { padding:0 12px; gap:6px; } #app .topbar-title { font-size:16px; } #app .m-conn { padding-left:8px; }
+  #app #mesaMas { display:inline-flex; }
+  #app .topbar #btnImpresora, #app #btnDevoluciones, #app #diaChip, #app #btnLayout { display:none !important; } /* viven en «Más» */
+  #app .footer-actions .kbd-hint { display:none; }
+  #app #itemsPanel .chk-f { width:108px !important; } #app #itemsPanel .item-f, #app #itemsPanel .item-f.reemplazo { padding:6px 12px !important; } #app #mThead { padding:0 12px; }
+  #app .m-home { padding:20px; }
+  #app .m-home-list-head, #app .m-home-order { grid-template-columns:minmax(180px,1fr) 96px 80px 112px; gap:10px; }
+  #app .ped-header { padding-top:12px; }
+}
+@media (max-width:760px) {
+  body { --m-cols:minmax(140px,1fr) 48px 64px 102px 26px; --m-areas:"art pidio sale ctl menu" "dep pidio sale ctl menu"; }
+  #app .topbar .logo-header { display:none; } #app .m-conn { border:0; padding-left:0; margin-left:0; } #app .m-conn span { display:none; }
+  #app #userChip { display:none !important; } #app .topbar-title { font-size:15px; }
+  #app #mThead > span:nth-child(4) { display:none; }
+  #app #itemsPanel .item-f, #app #itemsPanel .item-f.reemplazo { min-height:58px; row-gap:2px !important; }
+  #app #itemsPanel .m-dep { padding:0; justify-self:start; }
+  #app #itemsPanel .chk-f { width:102px !important; } #app #itemsPanel .chk-f::after, #app #itemsPanel .item-f.siguiente .chk-f::after { font-size:11px; }
+  #app #itemsPanel .item-f.siguiente .chk-f::after { content:"Marcar OK ↵"; }
+  #app #itemsPanel .qty-in { width:52px !important; }
+  #app .ped-header { padding:10px 12px 8px; min-height:98px; } #app #phCliente { font-size:18px; line-height:23px; }
+  #app .ia-bar { padding:8px 12px; min-height:48px; } #app .m-seg button { padding:4px 8px; font-size:11px; } #app .btn-ia { padding:4px 7px; font-size:11px; }
+  #app .ped-footer { padding:8px 12px; min-height:92px; } #app .footer-stats { font-size:12px; } #app #pedidoPanel #msgMot { text-align:left; flex-basis:100%; order:3; } #app #pedidoPanel #footerScrollHint { order:4; }
+  #app .footer-actions { gap:6px; } #app .footer-actions > button, #app .footer-actions > a { flex:1 1 auto !important; font-size:11px !important; padding:6px 8px !important; } #app #btnFacturar { min-width:0; }
+  #app .m-home { padding:16px 12px; } #app .m-home-head { margin-bottom:14px; gap:8px; } #app .m-home-head h1 { font-size:22px; line-height:28px; } #app .m-home-head > .m-pill { display:none; }
+  #app .m-metrics { gap:8px; margin-bottom:16px; } #app .m-metrics > div { padding:12px; } #app .m-metrics strong { font-size:24px; } #app .m-metrics strong.fecha { font-size:18px; }
+  #app .m-home-list-head { display:none; }
+  #app .m-home-order { grid-template-columns:minmax(160px,1fr) 110px; gap:6px 12px; padding:14px 12px; }
+  #app .m-home-order > div { grid-column:1; grid-row:1; } #app .m-home-order .m-home-ent { grid-column:1; grid-row:2; } #app .m-home-order .m-home-ven { grid-column:1; grid-row:3; } #app .m-home-order button { grid-column:2; grid-row:1 / 4; }
+  #app .m-home-bottom { gap:12px; margin-top:16px; grid-template-columns:minmax(0,1fr); } #app .m-home-bottom > section { padding:14px; }
+  #app .m-kind { font-size:11px; }
+}
+@media (max-width:480px) {
+  body { --m-cols:minmax(110px,1fr) 40px 54px 76px 22px; }
+  #app .topbar { padding:0 8px; gap:4px; } #app .topbar-title { display:none; }
+  #app #itemsPanel .chk-f { width:76px !important; } #app #itemsPanel .chk-f::after, #app #itemsPanel .item-f.siguiente .chk-f::after { content:"OK"; } #app #itemsPanel .chk-f.ok::after { content:"Controlado"; }
+  #app #itemsPanel .qty-in { width:46px !important; } #app #itemsPanel .item-f-desc { font-size:12px; }
+  #app .m-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } #app .m-metrics > div:last-child { grid-column:1 / -1; }
+  #app .m-home-order { grid-template-columns:minmax(130px,1fr) 104px; } #app .m-home-head h1 { font-size:21px; }
+  #app .ia-bar .m-bulk { margin-left:0; }
+}
+/* Densidad COMPACTA: elegida con «Densidad» (body.m-densa) o automática cuando la ventana es baja (body.compacta, el criterio de siempre) salvo que se
+   haya elegido «cómoda» (body.m-comoda). Objetivo: 8–9 renglones a la vista en 1360×700 sin letra menor de 12 px. */
+body.compacta:not(.m-comoda) #app .ped-header, body.m-densa #app .ped-header { padding-top:6px; padding-bottom:4px; min-height:0; }
+body.compacta:not(.m-comoda) #app .ph-row1, body.m-densa #app .ph-row1 { margin:1px 0 4px; }
+body.compacta:not(.m-comoda) #app #phCliente, body.m-densa #app #phCliente { font-size:17px; line-height:22px; }
+body.compacta:not(.m-comoda) #app .m-obs, body.m-densa #app .m-obs { margin-top:4px; padding:4px 8px; }
+body.compacta:not(.m-comoda) #app .m-obs:not(.abierta) span.larga, body.m-densa #app .m-obs:not(.abierta) span.larga { -webkit-line-clamp:1; }
+body.compacta:not(.m-comoda) #app .m-kind, body.m-densa #app .m-kind { min-height:28px; padding:1px 0; }
+body.compacta:not(.m-comoda) #app .ia-bar, body.m-densa #app .ia-bar { min-height:40px; padding-top:4px; padding-bottom:4px; }
+body.compacta:not(.m-comoda) #app .m-seg button, body.m-densa #app .m-seg button { min-height:30px; }
+body.compacta:not(.m-comoda) #app .btn-ia, body.m-densa #app .btn-ia { min-height:30px; padding:4px 10px; }
+body.compacta:not(.m-comoda) #app #mThead, body.m-densa #app #mThead { min-height:28px; }
+body.compacta:not(.m-comoda) #app #itemsPanel .item-f, body.compacta:not(.m-comoda) #app #itemsPanel .item-f.reemplazo, body.m-densa #app #itemsPanel .item-f, body.m-densa #app #itemsPanel .item-f.reemplazo { min-height:42px; padding-top:3px !important; padding-bottom:3px !important; }
+body.compacta:not(.m-comoda) #app #itemsPanel .item-f-desc, body.m-densa #app #itemsPanel .item-f-desc { font-size:13px; line-height:17px; }
+body.compacta:not(.m-comoda) #app #itemsPanel .qr-fnota, body.m-densa #app #itemsPanel .qr-fnota { display:inline; margin-left:6px; font-size:11px; }
+body.compacta:not(.m-comoda) #app #itemsPanel .qty-in, body.m-densa #app #itemsPanel .qty-in { height:28px !important; min-height:28px; }
+body.compacta:not(.m-comoda) #app #itemsPanel .chk-f, body.m-densa #app #itemsPanel .chk-f { height:28px !important; min-height:28px; }
+body.compacta:not(.m-comoda) #app .ped-footer, body.m-densa #app .ped-footer { min-height:0; padding-top:4px; padding-bottom:6px; gap:2px 12px; }
+body.compacta:not(.m-comoda) #app .ped-footer > div:first-child, body.m-densa #app .ped-footer > div:first-child { margin-bottom:0 !important; }
+body.compacta:not(.m-comoda) #app .footer-actions, body.m-densa #app .footer-actions { gap:6px; }
+body.compacta:not(.m-comoda) #app .btn-wa, body.compacta:not(.m-comoda) #app #btnEtiquetas, body.compacta:not(.m-comoda) #app #btnFacturar, body.m-densa #app .btn-wa, body.m-densa #app #btnEtiquetas, body.m-densa #app #btnFacturar { height:32px; min-height:32px; }
+body.compacta:not(.m-comoda) #app .faltantes-previos-sec, body.m-densa #app .faltantes-previos-sec { padding:4px 10px; }
+/* Cantidad distinta y cambios sin confirmar */
+#app .footer-stats .m-dif { color:var(--m-amber); font-weight:700; }
+#app .m-sinconf { order:4; flex-basis:100%; display:flex; align-items:center; gap:10px; padding:6px 10px; border-radius:8px; background:var(--m-red-soft); color:var(--m-red); font-size:12px; font-weight:600; }
+#app .m-sinconf[hidden] { display:none; }
+#app #itemsPanel .item-f.m-sinconf { box-shadow:inset 0 0 0 2px var(--m-red); }
+#app #itemsPanel .item-f.m-sinconf::after { content:"Sin confirmar"; position:absolute; right:48px; bottom:2px; font-size:10px; font-weight:700; color:var(--m-red); }
+/* Resumen Queruclor (módulo existente): ámbar mientras falte resolver, verde cuando está completo */
+#app #qrPanel.m-qr-pend .qrp-head { background:linear-gradient(135deg, #925208, #B06A12) !important; }
+#app #qrPanel.m-qr-pend .qrp { border-color:var(--m-amber-brd); }
+/* Densidad compacta (continuación): nombre y nota de unidades en una línea, firma en línea, pie en dos líneas (estado · acciones). */
+body.compacta:not(.m-comoda) #app #itemsPanel .qr-fname, body.m-densa #app #itemsPanel .qr-fname { display:inline; }
+body.compacta:not(.m-comoda) #app #itemsPanel .qr-fnota, body.m-densa #app #itemsPanel .qr-fnota { display:inline-flex; margin:0 0 0 6px; vertical-align:middle; }
+body.compacta:not(.m-comoda) #app #itemsPanel .item-f-who, body.m-densa #app #itemsPanel .item-f-who { display:inline; margin:0 0 0 8px; }
+body.compacta:not(.m-comoda) #app #itemsPanel .mod-dep, body.m-densa #app #itemsPanel .mod-dep { margin-top:2px; padding:2px 6px; }
+body.compacta:not(.m-comoda) #app .ia-bar, body.m-densa #app .ia-bar { min-height:36px; padding-top:3px; padding-bottom:3px; }
+body.compacta:not(.m-comoda) #app #pedidoPanel #footerScrollHint, body.m-densa #app #pedidoPanel #footerScrollHint { flex:0 1 auto; flex-basis:auto; order:2; }
+body.compacta:not(.m-comoda) #app #fv2Conf, body.m-densa #app #fv2Conf { flex:0 1 auto; flex-basis:auto; order:2; }
+body.compacta:not(.m-comoda) #app #pedidoPanel #msgMot, body.m-densa #app #pedidoPanel #msgMot { order:3; flex:1 1 120px; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+body.compacta:not(.m-comoda) #app .footer-stats, body.m-densa #app .footer-stats { flex:0 1 auto; }
+body.compacta:not(.m-comoda) #app .ped-header, body.m-densa #app .ped-header { padding-top:5px; }
+
+/* ── Barra inferior de trabajo (22/11): solo lo relevante; los textos largos anteriores (motivacional, «importe confirmado…») quedan ocultos ── */
+#app .m-barra { order:1; flex:1 1 100%; display:flex; align-items:center; gap:6px 8px; flex-wrap:wrap; font-size:12px; min-height:28px; }
+#app .m-bseg { display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:6px; background:var(--m-bg); border:1px solid var(--m-border); color:var(--m-text); font:600 12px/1.3 inherit; font-family:inherit; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+#app .m-bseg b { font-weight:750; font-variant-numeric:tabular-nums; }
+#app .m-bk { text-transform:uppercase; font-size:10px; letter-spacing:.05em; color:var(--m-muted); font-weight:700; }
+#app .m-bseg.ok { background:var(--m-green-soft); border-color:var(--m-green-brd); color:var(--m-green); } #app .m-bseg.ok .m-bk { color:var(--m-green); }
+#app .m-bseg.mal { background:var(--m-red-soft); border-color:var(--m-red-brd); color:var(--m-red); }
+#app .m-bseg.ojo { background:var(--m-amber-soft); border-color:var(--m-amber-brd); color:var(--m-amber); }
+#app .m-bfalt { color:var(--m-red); } #app .m-bdif { color:var(--m-amber); }
+#app .m-bseg[hidden] { display:none; }
+/* «Siguiente» se achica con puntos suspensivos antes de que la barra pase a dos líneas (media pantalla). */
+#app .m-bsig { min-width:0; max-width:38%; flex:0 1 auto; }
+#app .m-bsig .m-bsig-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media (max-width:1100px) { #app .m-bsig { max-width:30%; } }
+#app button.m-bseg { cursor:pointer; min-height:24px; } #app button.m-bseg:hover:not(:disabled) { border-color:#8B9DB8; } #app button.m-bseg:disabled { cursor:default; }
+#app .m-bpend { background:var(--m-amber-soft); border-color:var(--m-amber-brd); color:var(--m-amber); }
+#app .m-bpend.ok { background:var(--m-green-soft); border-color:var(--m-green-brd); color:var(--m-green); } #app .m-bpend.mal { background:var(--m-red-soft); border-color:var(--m-red-brd); color:var(--m-red); }
+#app .m-bflex { flex:1 1 auto; min-width:4px; }
+#app .m-bguard:empty { display:none; } #app .m-bguard .m-b { min-height:22px; padding:1px 7px; font-size:11px; }
+#app .m-sp { width:10px; height:10px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; display:inline-block; animation:m-g .8s linear infinite; }
+@keyframes m-g { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { #app .m-sp { animation:none; border-right-color:currentColor; opacity:.5; } }
+#app .ped-footer .footer-stats, #app #pedidoPanel #msgMot, #app #fv2Conf { display:none !important; }
+#app #btnFacturar.m-bloq { background:#9CAECC; border-color:#9CAECC; }
+#app #itemsPanel .item-f.m-flash { box-shadow:inset 0 0 0 2px var(--m-blue); }
+/* Buscador dentro del pedido y filtro Diferencias */
+#app .m-buscar { height:32px; min-width:0; width:200px; border:1px solid var(--m-border); border-radius:8px; padding:0 10px; font:inherit; font-size:12px; background:var(--m-surface); color:var(--m-text); }
+#app .m-buscar:focus { border-color:var(--m-blue); outline:none; }
+#app #itemsPanel .item-f.m-nobusq { display:none !important; }
+#app #itemsPanel.m-f-dif .item-f:not(.m-dif):not(.faltante):not(.m-sinconf) { display:none !important; }
+#app #itemsPanel .item-f.m-dif:not(.ok) .m-art::after { content:"Cantidad distinta · sin controlar"; display:inline-block; margin-top:2px; font-size:10px; font-weight:700; color:var(--m-amber); background:var(--m-amber-soft); border-radius:4px; padding:1px 5px; }
+#app #itemsPanel .item-f.m-dif.ok .m-art::after { content:"Cantidad distinta · controlada"; display:inline-block; margin-top:2px; font-size:10px; font-weight:700; color:var(--m-green); background:var(--m-green-soft); border-radius:4px; padding:1px 5px; }
+@media (max-width:1100px) { #app .m-buscar { width:150px; } }
+@media (max-width:760px) { #app .m-buscar { width:100%; order:5; } #app .m-barra { gap:4px 6px; } #app .m-bseg { font-size:11px; padding:2px 6px; } #app .m-bsig { display:none; } }
+body.compacta:not(.m-comoda) #app .m-barra, body.m-densa #app .m-barra { min-height:24px; gap:3px 6px; } body.compacta:not(.m-comoda) #app .m-bseg, body.m-densa #app .m-bseg { padding:2px 7px; }
+</style>
+<style id="qrImpDirectaCss">
+/* Facturación · impresión directa por el agente (22/11/2026): estado de cada impresión pedida desde esta pantalla. */
+/* Por encima de la ventana de la etiqueta (99998) y del panel de la secuencia (9999), debajo del aviso de cliente nuevo (2147483000): el estado se ve siempre. */
+.qid-barra { position:fixed; right:16px; bottom:80px; z-index:2147482500; width:min(380px, calc(100vw - 32px)); display:flex; flex-direction:column; gap:8px; pointer-events:none; max-height:50vh; overflow:auto; }
+.qid { pointer-events:auto; background:var(--m-surface, #fff); color:var(--m-text, #17243A); border:1px solid var(--m-border, #DCE3ED); border-left:4px solid var(--m-blue, #2457D6); border-radius:10px; padding:10px 12px; box-shadow:0 10px 30px rgba(20,33,58,.18); font:13px/1.4 inherit; font-family:inherit; }
+.qid.ok { border-left-color:var(--m-green, #157044); } .qid.mal { border-left-color:var(--m-red, #B32332); } .qid.ojo { border-left-color:var(--m-amber, #925208); } .qid.nav { border-left-color:#8B9DB8; }
+.qid-t { font-weight:700; display:flex; gap:8px; align-items:center; min-width:0; }
+.qid-t span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+.qid-x { border:0; background:none; color:var(--m-muted, #526077); cursor:pointer; font:inherit; font-size:16px; line-height:1; padding:0 2px; flex-shrink:0; }
+.qid-s { color:var(--m-muted, #526077); font-size:12px; margin-top:2px; overflow-wrap:anywhere; }
+.qid-s b { color:var(--m-text, #17243A); }
+.qid-d { font-size:11px; color:var(--m-muted, #526077); margin-top:2px; }
+.qid-b { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+.qid-b button, .qid-b a { font:600 12px/1.2 inherit; font-family:inherit; color:var(--m-text, #17243A); border:1px solid var(--m-border, #DCE3ED); background:var(--m-surface, #fff); border-radius:7px; min-height:30px; padding:5px 10px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; }
+.qid-b button:hover, .qid-b a:hover { background:var(--m-bg, #F3F5F9); border-color:#8B9DB8; }
+.qid-b button.prim { background:var(--m-blue, #2457D6); border-color:var(--m-blue, #2457D6); color:#fff; }
+.qid-sp { width:12px; height:12px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; flex-shrink:0; animation:qid-g .8s linear infinite; }
+@keyframes qid-g { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .qid-sp { animation:none; border-right-color:currentColor; opacity:.5; } }
+@media (max-width:760px) { .qid-barra { right:8px; left:8px; width:auto; bottom:96px; max-height:40vh; } }
+[aria-busy="true"].qid-bloq { opacity:.75; cursor:progress !important; }
+</style>
+<style id="qrChequeoCss">
+/* Facturación · Chequeo final Queruclor (22/11/2026): sección compacta dentro de la tabla, antes del detalle de preparación. */
+#app #itemsPanel .m-chq { margin:10px 12px 4px; border:1px solid var(--m-pink-brd, #E5B7D5); border-left-width:4px; border-radius:10px; background:var(--m-pink-soft, #FCECF6); color:var(--m-text, #17243A); font-size:13px; }
+#app #itemsPanel .m-chq.completo { border-color:var(--m-green-brd, #9CCDAF); background:var(--m-green-soft, #EAF7EF); }
+#app #itemsPanel .m-chq.cerrado { border-color:var(--m-border, #DCE3ED); background:var(--m-bg, #F3F5F9); }
+#app #itemsPanel .m-chq.atencion { box-shadow:0 0 0 3px var(--m-amber-brd, #E6C98A); }
+#app #itemsPanel .m-chq-h { padding:7px 12px 5px; display:flex; flex-direction:column; gap:1px; }
+#app #itemsPanel .m-chq-h > div { display:flex; align-items:baseline; gap:6px 10px; flex-wrap:wrap; }
+#app #itemsPanel .m-chq-meta { font-size:11.5px; color:var(--m-muted, #526077); }
+#app #itemsPanel .m-chq-sl { color:var(--m-amber, #925208); font-weight:750; }
+#app #itemsPanel .m-chq-lnk { margin-left:auto; background:none; border:0; padding:0 2px; min-height:24px; color:var(--m-pink, #A51172); font:650 11.5px/1.3 inherit; font-family:inherit; text-decoration:underline; cursor:pointer; }
+#app #itemsPanel .m-chq.completo .m-chq-lnk { color:var(--m-green, #157044); }
+#app #itemsPanel .m-chq-lnk:focus-visible { outline:2px solid var(--m-pink, #A51172); outline-offset:2px; border-radius:4px; }
+/* Mientras el chequeo aplica, el detalle «Preparado en Depósito» plegado queda oculto (lo abre «Ver cajas preparadas» o «No coincide»). */
+#app #itemsPanel #qrPrepFact.m-chq-oculto { display:none; }
+/* El resumen Queruclor (importe y detalle) sigue debajo, más bajo. */
+#app #itemsPanel .m-chq ~ #qrPanel .qrp-head { padding:8px 12px; } #app #itemsPanel .m-chq ~ #qrPanel .qrp-monto { font-size:16px; }
+body.compacta:not(.m-comoda) #app #itemsPanel .m-chq-r, body.m-densa #app #itemsPanel .m-chq-r { padding:5px 12px; }
+#app #itemsPanel .m-chq-h b { font-size:13px; color:var(--m-pink, #A51172); }
+#app #itemsPanel .m-chq.completo .m-chq-h b { color:var(--m-green, #157044); }
+#app #itemsPanel .m-chq-prog { font-weight:700; font-size:12px; }
+#app #itemsPanel .m-chq-h small { font-size:11.5px; color:var(--m-muted, #526077); }
+#app #itemsPanel .m-chq-l { display:flex; flex-direction:column; }
+#app #itemsPanel .m-chq-r { display:grid; grid-template-columns:minmax(160px, 1fr) 84px minmax(140px, 1fr) auto; gap:8px 12px; align-items:center; padding:7px 12px; border-top:1px solid rgba(23,36,58,.08); background:var(--m-surface, #fff); }
+#app #itemsPanel .m-chq-r:last-child { border-radius:0 0 8px 8px; }
+#app #itemsPanel .m-chq-r.ok { background:var(--m-green-soft, #EAF7EF); }
+#app #itemsPanel .m-chq-r.cambio { background:var(--m-amber-soft, #FFF3DB); }
+#app #itemsPanel .m-chq-n b { display:block; font-size:13px; line-height:17px; overflow-wrap:anywhere; }
+#app #itemsPanel .m-chq-n small { display:block; font-size:11px; color:var(--m-muted, #526077); }
+#app #itemsPanel .m-chq-c { font-size:15px; font-weight:750; font-variant-numeric:tabular-nums; text-align:center; white-space:nowrap; }
+#app #itemsPanel .m-chq-e { font-size:12px; color:var(--m-muted, #526077); overflow-wrap:anywhere; }
+#app #itemsPanel .m-chq-r.ok .m-chq-e { color:var(--m-green, #157044); font-weight:650; }
+#app #itemsPanel .m-chq-r.cambio .m-chq-e { color:var(--m-amber, #925208); font-weight:650; }
+#app #itemsPanel .m-chq-b { display:flex; gap:6px; justify-content:flex-end; }
+#app #itemsPanel .m-chq-b .m-b { min-height:30px; }
+@media (max-width:760px) {
+  /* Fila en dos líneas: nombre · cajas · botones arriba; el estado debajo del nombre (los botones quedan a la derecha, no en una tercera línea). */
+  #app #itemsPanel .m-chq-r { grid-template-columns:minmax(120px, 1fr) 64px auto; grid-template-rows:auto auto; gap:2px 10px; padding:6px 10px; }
+  #app #itemsPanel .m-chq-n { grid-area:1 / 1 / 2 / 2; }
+  #app #itemsPanel .m-chq-c { grid-area:1 / 2 / 2 / 3; }
+  #app #itemsPanel .m-chq-b { grid-area:1 / 3 / 3 / 4; align-self:center; }
+  #app #itemsPanel .m-chq-e { grid-area:2 / 1 / 3 / 3; }
+  #app #itemsPanel .m-chq-h { padding:6px 10px 4px; }
+  #app #itemsPanel .m-chq-h > div { gap:3px 8px; }
+  #app #itemsPanel .m-chq-lnk { margin-left:0; }
+  /* Media pantalla: la frase de ayuda queda como título emergente de la sección, y «Pendiente» no repite lo que ya dice el botón Confirmar (la fila entra en una línea). */
+  #app #itemsPanel .m-chq-h small { display:none; }
+  #app #itemsPanel .m-chq-r.pend .m-chq-e { display:none; }
+  /* Con todo corroborado, el encabezado queda en una línea (quién preparó y cuántas cajas siguen en cada fila y en «Ver cajas preparadas»). */
+  #app #itemsPanel .m-chq.completo .m-chq-meta { display:none; }
+  #app #itemsPanel .m-chq-r { padding:5px 10px; }
+  /* Media pantalla: el resumen Queruclor (fijo abajo del panel) queda en una sola línea mientras el chequeo está; el detalle sigue en «Ver detalle». */
+  /* …y deja de ir fijo abajo (no tapa la fila de Confirmar); sigue al final del pedido, a un desplazamiento corto. */
+  #app #itemsPanel .m-chq ~ #qrPanel { position:static; padding-top:8px; }
+  #app #itemsPanel .m-chq ~ #qrPanel .qrp-head { padding:4px 12px; gap:8px; }
+  #app #itemsPanel .m-chq ~ #qrPanel .qrp-s { display:none; }
+  #app #itemsPanel .m-chq ~ #qrPanel .qrp-monto { font-size:15px; }
+  #app #itemsPanel .m-chq ~ #qrPanel .qrp-monto .qrp-de { display:none; }
+}
+</style>
 </head>
 <body>
 
@@ -12224,6 +12820,1007 @@ var qrcode = function() {
   enganchar(); setTimeout(enganchar, 1500); setTimeout(enganchar, 5000);
   document.addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey && st.abierto) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
   window.qrAltaFact = { revisar, cerrar, estado: () => st, fichaDe };
+})();
+</script>
+<script id="qrMesaMod">
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════
+   FACTURACIÓN ML · «Mesa de trabajo» (22/11/2026) — módulo de presentación sobre facturacion.html publicada.
+
+   Qué hace: reordena y rotula lo que la pantalla ya dibuja (barra, cola, encabezado, renglones, pie), agrega la vista
+   «Mesa de facturación» (Inicio) sin seleccionar ningún pedido, columnas Pidió / Sale / Depósito / Control, filtros
+   de solo lectura (Todos / Por revisar / Faltantes), el menú «⋯» por renglón con las acciones que ya existen, el
+   «Detalle» del pedido, el menú «Más» de la barra, y Enfoque / pantalla dividida con la cola como cajón.
+   Qué NO hace: no consulta nada nuevo (todo sale de pedidosAll, itemsActivos y lo que ya pintan los módulos), no
+   escribe, no cambia reglas ni atajos. Envuelve funciones existentes y las deja correr igual; conserva las marcas
+   (__fv2, __alf, _conEtiqueta) para que los otros módulos no se vuelvan a envolver.
+   ══════════════════════════════════════════════════════════════════════════════════════════════════════ */
+(function () {
+  "use strict";
+  if (window.qrMesa) return;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const st = { filtro: "todos", cargado: false, enInicio: true, pop: null, dlg: null, kindHab: 0, kindQr: 0 };
+  /* pedidoActivo, itemsActivos, pedidosAll, _pedidosHash y _enviandoFact son «let» de la pantalla: se leen como variables
+     globales léxicas (visibles desde cualquier <script> clásico), nunca por eval (la página puede tener CSP). */
+  const items = () => (typeof itemsActivos !== "undefined" && itemsActivos) || [];
+  const pedido = () => (typeof pedidoActivo !== "undefined" && pedidoActivo) || null;
+  const pedidos = () => (typeof pedidosAll !== "undefined" && pedidosAll) || [];
+  const facturando = () => { try { return typeof _enviandoFact !== "undefined" && !!_enviandoFact; } catch (e) { return false; } };
+  const hayHash = () => { try { return typeof _pedidosHash !== "undefined" && !!_pedidosHash; } catch (e) { return false; } };
+  const aviso = (t, tipo) => { try { if (typeof toast === "function") toast(t, tipo || ""); } catch (e) {} };
+  const esQR = i => { try { return !!(window.QRParse && QRParse.parseQueruclor(i.descripcion)); } catch (e) { return false; } };
+  const fFecha = fe => { try { return typeof fmtFecha === "function" ? fmtFecha(fe).replace(",", "") : (fe || "—"); } catch (e) { return fe || "—"; } };
+  const grupo = fe => { try { return typeof grupoFecha === "function" ? grupoFecha(fe) : "prox"; } catch (e) { return "prox"; } };
+  const hora = iso => { try { return new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+  const sinEmoji = s => String(s).replace(/🧑‍🏭\s?/g, "").replace(/[🔴🟠⏳📋✅🔍🔄📦⚠️💲🧾🖨️↩️🏭📝📤💬🪵👁️🕐🧴🧩🌙☀️]️?\s?/gu, "").replace(/✅\s?/g, "");
+  const ICO = {
+    casa: '<svg class="m-i" aria-hidden="true"><use href="#m-ic-casa"/></svg>', imp: '<svg class="m-i" aria-hidden="true"><use href="#m-ic-imp"/></svg>',
+    menu: '<svg class="m-i" aria-hidden="true"><use href="#m-ic-menu"/></svg>', mas: '<svg class="m-i" aria-hidden="true"><use href="#m-ic-mas"/></svg>',
+    luna: '<svg class="m-i" aria-hidden="true"><use href="#m-ic-luna"/></svg>', sol: '<svg class="m-i" aria-hidden="true"><use href="#m-ic-sol"/></svg>',
+    volver: '<svg class="m-i" aria-hidden="true"><use href="#m-ic-volver"/></svg>'
+  };
+  const SPRITE = `<svg class="m-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="m-ic-casa" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M10 20v-6h4v6"/></symbol>
+    <symbol id="m-ic-imp" viewBox="0 0 24 24"><path d="M7 8V3h10v5"/><rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 14h10v7H7z"/></symbol>
+    <symbol id="m-ic-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="m-ic-mas" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18.5" cy="12" r="1.3" fill="currentColor"/></symbol>
+    <symbol id="m-ic-luna" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+    <symbol id="m-ic-sol" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="m-ic-volver" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></symbol>
+  </svg>`;
+
+  /* Envuelve una función global sin que los demás módulos la vuelvan a envolver (copia sus marcas). */
+  function envolver(nombre, fab) {
+    const o = window[nombre]; if (typeof o !== "function" || o.__mesa) return;
+    const w = fab(o); w.__mesa = true; w.__alf = o.__alf; w.__fv2 = o.__fv2; w._conEtiqueta = o._conEtiqueta;
+    for (const k of Object.keys(o)) if (!(k in w)) w[k] = o[k];
+    window[nombre] = w;
+  }
+  const despues = (nombre, fn) => envolver(nombre, o => function () { const r = o.apply(this, arguments); const seguir = () => { try { fn(r); } catch (e) { console.warn("[mesa]", nombre, e); } }; if (r && typeof r.then === "function") r.then(seguir, seguir); else seguir(); return r; });
+  const copiar = async txt => { try { await navigator.clipboard.writeText(String(txt)); } catch (e) { const el = document.createElement("textarea"); el.value = String(txt); el.style.cssText = "position:fixed;opacity:0"; document.body.appendChild(el); el.select(); try { document.execCommand("copy"); } catch (e2) {} el.remove(); } };
+
+  /* ── Diálogos y menús propios ───────────────────────────────────────────────────────────────────── */
+  let foco = null;
+  function abrirDlg(titulo, html, acciones, ancho) {
+    cerrarDlg(); foco = document.activeElement;
+    const bg = document.createElement("div"); bg.className = "m-dlg-bg"; bg.id = "mDlgBg";
+    bg.innerHTML = `<section class="m-dlg${ancho ? " ancho" : ""}" role="dialog" aria-modal="true" aria-labelledby="mDlgT"><h2 id="mDlgT">${esc(titulo)}</h2>${html}<div class="m-acciones">${acciones || ""}<button type="button" class="m-b prim" data-cerrar>Volver</button></div></section>`;
+    bg.addEventListener("click", e => { if (e.target === bg || e.target.closest("[data-cerrar]")) cerrarDlg(); });
+    document.body.appendChild(bg); st.dlg = bg;
+    const b = bg.querySelector("button, input"); if (b) b.focus();
+    return bg;
+  }
+  function cerrarDlg() { if (st.dlg) { st.dlg.remove(); st.dlg = null; if (foco && foco.focus) try { foco.focus(); } catch (e) {} } }
+  function abrirPop(ancla, html, titulo) {
+    cerrarPop();
+    const pop = document.createElement("div"); pop.className = "m-pop"; pop.setAttribute("role", "menu");
+    pop.innerHTML = (titulo ? `<h4>${esc(titulo)}</h4>` : "") + html;
+    document.body.appendChild(pop); st.pop = pop;
+    const r = ancla.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let x = Math.min(r.right - pw, innerWidth - pw - 8), y = r.bottom + 4;
+    if (x < 8) x = 8; if (y + ph > innerHeight - 8) y = Math.max(8, r.top - ph - 4);
+    pop.style.position = "fixed"; pop.style.left = x + "px"; pop.style.top = y + "px";
+    pop.addEventListener("click", e => { const b = e.target.closest("button"); if (b && !b.hasAttribute("data-seguir")) cerrarPop(); });
+    const b = pop.querySelector("button"); if (b) b.focus();
+    return pop;
+  }
+  function cerrarPop() { if (st.pop) { st.pop.remove(); st.pop = null; } }
+  document.addEventListener("pointerdown", e => { if (st.pop && !st.pop.contains(e.target) && !e.target.closest("[data-mpop]")) cerrarPop(); }, true);
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && (st.pop || st.dlg)) { e.preventDefault(); e.stopImmediatePropagation(); if (st.pop) cerrarPop(); else cerrarDlg(); return; }
+    if (e.key === "Tab" && st.dlg) { const a = [...st.dlg.querySelectorAll("button,input,select,textarea,[href]")].filter(x => !x.disabled); if (!a.length) return;
+      if (e.shiftKey && document.activeElement === a[0]) { e.preventDefault(); a[a.length - 1].focus(); } else if (!e.shiftKey && document.activeElement === a[a.length - 1]) { e.preventDefault(); a[0].focus(); } }
+  }, true);
+  window.addEventListener("resize", cerrarPop);
+
+  /* ── Barra global ──────────────────────────────────────────────────────────────────────────────── */
+  function barra() {
+    const top = document.querySelector("#app .topbar"); if (!top) return;
+    document.body.insertAdjacentHTML("afterbegin", SPRITE);
+    const tit = top.querySelector(".topbar-title"); if (tit) tit.textContent = "Facturación ML";
+    const dot = $("connDot");
+    if (dot && !$("mConn")) { const c = document.createElement("div"); c.className = "m-conn"; c.id = "mConn"; c.setAttribute("aria-live", "polite"); dot.replaceWith(c); c.appendChild(dot); c.insertAdjacentHTML("beforeend", "<span>Conectando…</span>"); pintarConn(); new MutationObserver(pintarConn).observe(dot, { attributes: true, attributeFilter: ["class"] }); }
+    if (!$("mesaInicio")) { const b = document.createElement("button"); b.type = "button"; b.id = "mesaInicio"; b.className = "m-btn"; b.title = "Volver a la vista general (no cambia el estado de ningún pedido)"; b.innerHTML = ICO.casa + "Inicio"; b.onclick = inicio; (tit || top.firstChild).insertAdjacentElement("afterend", b); }
+    const lp = $("btnListaPedidos"); if (lp) { lp.innerHTML = ICO.menu + "Pedidos"; lp.title = "Abrir la cola de pedidos"; }
+    const bi = $("btnImpresora"); if (bi) { bi.innerHTML = ICO.imp + "Impresora"; bi.classList.add("m-sin-emoji"); bi.style.textDecoration = "none"; }
+    const bl = $("btnLayout"); if (bl) rotularVista();
+    const bd = $("btnDark"); if (bd) { pintarTema(); new MutationObserver(() => { if (!bd.querySelector("svg")) pintarTema(); }).observe(bd, { childList: true }); }
+    const dc = $("diaChip"); if (dc) { const vis = dc.style.display; dc.removeAttribute("style"); dc.style.display = vis || "none"; dc.title = "Pedidos facturados hoy (abre el detalle)"; relabelDia(); new MutationObserver(relabelDia).observe(dc, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["style"] }); }
+    const uc = $("userChip"); if (uc) { uc.title = "Cambiar nombre"; ini(uc); new MutationObserver(() => ini(uc)).observe(uc, { childList: true, characterData: true, subtree: true }); }
+    if (!$("mesaMas")) { const b = document.createElement("button"); b.type = "button"; b.id = "mesaMas"; b.className = "m-btn"; b.setAttribute("data-mpop", "1"); b.innerHTML = "Más" + ICO.mas; b.setAttribute("aria-haspopup", "menu"); b.onclick = menuMas; top.appendChild(b); }
+    function ini(el) { const t = (el.textContent || "").trim(); const i = t && t !== "—" ? t[0].toUpperCase() : "?"; if (el.getAttribute("data-ini") !== i) el.setAttribute("data-ini", i); }
+  }
+  function pintarConn() { const dot = $("connDot"), s = $("mConn") && $("mConn").querySelector("span"); if (!dot || !s) return; const cl = dot.className; const t = /online/.test(cl) ? "Conectado" : /syncing/.test(cl) ? "Actualizando…" : "Sin conexión"; if (s.textContent !== t) s.textContent = t; const off = $("mHomeOff"); if (off) off.hidden = !/offline/.test(cl) || !st.cargado; }
+  function pintarTema() { const bd = $("btnDark"); if (!bd) return; const oscuro = document.body.classList.contains("dark-forced") || (!document.body.classList.contains("light-forced") && matchMedia("(prefers-color-scheme:dark)").matches); bd.innerHTML = oscuro ? ICO.sol : ICO.luna; bd.setAttribute("aria-label", oscuro ? "Pasar a tema claro" : "Pasar a tema oscuro"); bd.title = bd.getAttribute("aria-label"); }
+  function rotularVista() { const b = $("btnLayout"); if (!b) return; const compacta = document.body.classList.contains("compacta"); if (b.textContent !== "Vista") b.textContent = "Vista"; b.title = compacta ? "Vista compacta (para media pantalla). Tocá para pasar a la clásica." : "Vista clásica. Tocá para pasar a la compacta."; }
+  let relabelando = false;
+  function relabelDia() { if (relabelando) return; const dc = $("diaChip"); if (!dc) return; const t = dc.textContent || ""; const m = t.match(/(\d+)/); const n = m ? Number(m[1]) : null; const nuevo = n == null ? t : (n === 1 ? "1 facturado hoy" : n + " facturados hoy"); if (t !== nuevo) { relabelando = true; dc.textContent = nuevo; relabelando = false; } metricaHoy(); }
+  function menuMas() {
+    const b = $("mesaMas"); const dev = $("btnDevoluciones"); const compacta = document.body.classList.contains("compacta"); const dia = $("diaChip");
+    abrirPop(b, `
+      <button type="button" class="m-b" data-ir="inicio">Inicio <small>vista general</small></button>
+      <button type="button" class="m-b" data-ir="impresora">Impresora de Depósito <small>otra ventana</small></button>
+      <button type="button" class="m-b" data-ir="dev" ${dev ? "" : "disabled"}>Devoluciones ${dev ? "" : "<small>no disponible</small>"}</button>
+      <button type="button" class="m-b" data-ir="hoy">Facturados hoy <small>${esc(dia && dia.style.display !== "none" ? dia.textContent : "sin cargar")}</small></button>
+      <div class="m-sep"></div>
+      <button type="button" class="m-b" data-ir="densidad">Densidad <small>${densidadEfectiva() === "compacta" ? "compacta → cómoda" : "cómoda → compacta"}</small></button>
+      <button type="button" class="m-b" data-ir="vista">Vista <small>${compacta ? "compacta → clásica" : "clásica → compacta"}</small></button>
+      <button type="button" class="m-b" data-ir="tema">Tema claro / oscuro</button>
+      <button type="button" class="m-b" data-ir="nombre">Quién factura <small>${esc(($("userChip") || {}).textContent || "")}</small></button>`, "Herramientas de Facturación");
+    st.pop.addEventListener("click", e => {
+      const a = e.target.closest("[data-ir]"); if (!a) return; const q = a.getAttribute("data-ir");
+      if (q === "inicio") inicio(); else if (q === "impresora") { const bi = $("btnImpresora"); if (bi) bi.click(); }
+      else if (q === "dev" && dev) dev.click(); else if (q === "hoy" && typeof abrirVistaHoy === "function") abrirVistaHoy();
+      else if (q === "vista" && typeof cambiarLayout === "function") cambiarLayout(); else if (q === "tema" && typeof toggleDark === "function") toggleDark();
+      else if (q === "densidad") setDensidad(densidadEfectiva() === "compacta" ? "comoda" : "compacta");
+      else if (q === "nombre" && typeof cambiarNombre === "function") cambiarNombre();
+    });
+  }
+
+  /* ── Cola izquierda ────────────────────────────────────────────────────────────────────────────── */
+  function cola() {
+    const si = $("searchInput"); if (si) { si.placeholder = "Buscar cliente o número"; si.setAttribute("aria-label", "Buscar cliente o número"); }
+    const hs = $("histSearch"); if (hs) { hs.placeholder = "N.º de cliente"; hs.setAttribute("aria-label", "N.º de cliente"); }
+    const lt = $("ltabPedidos"); if (lt && !lt.querySelector(".m-count")) lt.insertAdjacentHTML("beforeend", '<span class="m-count" id="mTabN" hidden>0</span>');
+    const ph = $("procesoListHeader"); if (ph) ph.textContent = "Estado del Depósito";
+  }
+  function pintarCola() {
+    const l = $("pedidosList"); if (!l) return;
+    let h = l.innerHTML;
+    if (/[\u{1F300}-\u{1FAFF}✅]/u.test(h)) {
+      h = sinEmoji(h).replace(/· Facturado|·\s*FACTURADO/g, "· Facturado");
+      l.innerHTML = h;
+    }
+    /* Estado derivado de lo ya cargado: «armado» = listo para revisar (todavía nadie lo abrió); «en_facturacion» = ya abierto en Facturación. */
+    const porId = new Map(pedidos().map(p => [String(p.id), p]));
+    l.querySelectorAll(".pedido-item").forEach(el => {
+      if (el.querySelector(".m-estado")) return;
+      const m = (el.getAttribute("onclick") || "").match(/seleccionar\('([^']+)'\)/); const p = m && porId.get(m[1]); if (!p) return;
+      const cuerpo = el.firstElementChild; if (!cuerpo) return;
+      if (p.estado === "armado") cuerpo.insertAdjacentHTML("beforeend", '<span class="m-estado listo">Listo para revisar</span>');
+      else if (p.estado === "en_facturacion") cuerpo.insertAdjacentHTML("beforeend", '<span class="m-estado enfact">En facturación</span>');
+    });
+    const n = $("mTabN"); if (n) { n.textContent = pedidos().length; n.hidden = !st.cargado; }
+  }
+  function pintarProceso() {
+    const l = $("procesoList"); if (!l) return;
+    let h = l.innerHTML;
+    h = h.replace(/✅ ARMADOS LISTOS/g, "LISTOS PARA FACTURAR").replace(/✅ Listo — hacé click para facturar/g, "✓ Listo para facturar · tocá para abrir y revisar")
+      .replace(/🔄 ARMÁNDOSE AHORA/g, "ARMÁNDOSE AHORA").replace(/📦 EN COLA DEL DEPÓSITO/g, "EN COLA DEL DEPÓSITO").replace(/🔄 Se está armando este pedido\.\.\./g, "Se está armando este pedido…")
+      .replace(/🔍 Consultá/g, "Consultar").replace(/📋 Ir a facturar/g, "Abrir en Facturación").replace(/⏳ Esperando en cola del depósito/g, "Esperando en cola del Depósito");
+    h = sinEmoji(h);
+    if (/proc-item-listo|proc-item\b|proc-item-pend/.test(h)) h += '<div class="m-proc-nota">«Listo para facturar» = armado en Depósito y listo para abrir y revisar en Facturación. Todavía no está facturado.</div>';
+    l.innerHTML = h;
+  }
+
+  /* ── Inicio: Mesa de facturación ───────────────────────────────────────────────────────────────── */
+  function armarInicio() {
+    const ns = $("noSel"); if (!ns || $("mHome")) return;
+    ns.innerHTML = `<div class="m-home" id="mHome">
+      <div class="m-home-head"><div><div class="m-eyebrow">Mercado Limpio · Oficina</div><h1>Mesa de facturación</h1><p>Elegí un pedido para revisar lo preparado y continuar.</p></div><span class="m-pill azul">Vista general</span></div>
+      <div class="m-off" id="mHomeOff" role="status" hidden>No se pudo actualizar la lista: se muestran los últimos pedidos cargados.</div>
+      <div class="m-metrics">
+        <div><span>En la lista para facturar</span><strong id="mHomeN">—</strong><p id="mHomeNp">Cargando…</p></div>
+        <div><span>Facturados hoy</span><strong id="mHomeHoy">—</strong><p id="mHomeHoyp">Todavía no se cargó</p></div>
+        <div><span>Próxima entrega de la lista</span><strong class="fecha" id="mHomeProx">—</strong><p id="mHomeProxp"></p></div>
+      </div>
+      <section class="m-home-orders"><div class="m-sec-head"><h2>Pedidos para revisar</h2><span id="mHomeCount"></span></div>
+        <div class="m-home-list-head"><span>Cliente / pedido</span><span>Entrega</span><span>Vendedor</span><span></span></div>
+        <div id="mHomeList"></div></section>
+      <div class="m-home-bottom">
+        <section><h2>En esta mesa</h2><ol><li><b>Revisá lo preparado</b><span>Habituales y Queruclor según lo que tenga el pedido.</span></li><li><b>Resolvé los faltantes</b><span>Cantidades, reemplazos y observaciones a la vista.</span></li><li><b>Confirmá la facturación</b><span>Con el remito y la etiqueta de total del circuito actual.</span></li></ol></section>
+        <section class="m-home-atajos"><h2>Accesos de oficina</h2>
+          <button type="button" class="m-b" data-ir="impresora">Impresora de Depósito <span>↗</span></button>
+          <button type="button" class="m-b" data-ir="proceso">Pedidos en proceso <span>→</span></button>
+          <button type="button" class="m-b" data-ir="historial">Consultar historial <span>→</span></button></section>
+      </div>
+      <p class="m-footnote">Abrir esta vista no toma pedidos ni registra operaciones. Un pedido pasa a «en facturación» solo cuando se abre.</p>
+    </div>`;
+    ns.addEventListener("click", e => {
+      const a = e.target.closest("[data-ir]"); if (!a) return; const q = a.getAttribute("data-ir");
+      if (q === "impresora") { const bi = $("btnImpresora"); if (bi) bi.click(); }
+      else if (q === "proceso" && typeof setLeftTab === "function") { setLeftTab("armar"); if (document.body.classList.contains("dividida")) toggleListaPedidos(true); }
+      else if (q === "historial" && typeof setLeftTab === "function") { setLeftTab("historial"); if (document.body.classList.contains("dividida")) toggleListaPedidos(true); const h = $("histSearch"); if (h) h.focus(); }
+      else if (q === "abrir" && typeof seleccionar === "function") { a.disabled = true; a.textContent = "Abriendo…"; seleccionar(a.getAttribute("data-id")); }
+    });
+  }
+  function metricaHoy() {
+    const dc = $("diaChip"), s = $("mHomeHoy"), p = $("mHomeHoyp"); if (!s) return;
+    const vis = dc && dc.style.display !== "none" && /\d/.test(dc.textContent || "");
+    if (!vis) { s.textContent = "—"; p.textContent = "Todavía no se cargó"; return; }
+    const n = Number((dc.textContent.match(/(\d+)/) || [])[1] || 0);
+    s.innerHTML = n + " <small>" + (n === 1 ? "pedido" : "pedidos") + "</small>"; p.textContent = "Resumen del día";
+  }
+  function pintarInicio() {
+    const L = $("mHomeList"); if (!L) return;
+    const lista = pedidos();
+    const n = $("mHomeN"), np = $("mHomeNp");
+    if (!st.cargado) { n.textContent = "—"; np.textContent = "Cargando…"; }
+    else { n.innerHTML = lista.length + " <small>" + (lista.length === 1 ? "pedido" : "pedidos") + "</small>"; np.textContent = "Armados o en facturación"; }
+    metricaHoy();
+    const fechas = lista.map(p => p.fecha_entrega).filter(Boolean).sort();
+    const prox = $("mHomeProx"), proxp = $("mHomeProxp");
+    if (fechas.length) { const f = fechas[0], c = fechas.filter(x => x === f).length; prox.textContent = fFecha(f); proxp.textContent = c + (c === 1 ? " pedido para esa fecha" : " pedidos para esa fecha"); }
+    else { prox.textContent = "—"; proxp.textContent = st.cargado ? "Sin entregas en la lista" : ""; }
+    $("mHomeCount").textContent = st.cargado ? lista.length + " en esta lista" : "";
+    if (!st.cargado) { L.innerHTML = '<div class="m-home-vacio">Cargando la lista…</div>'; return; }
+    if (!lista.length) { L.innerHTML = '<div class="m-home-vacio">Sin pedidos armados. Cuando Depósito arme uno, aparece acá.</div>'; return; }
+    const G2 = { hoy: [], man: [], prox: [] }; lista.forEach(p => G2[grupo(p.fecha_entrega)].push(p));
+    const TIT = { hoy: "Hoy", man: "Mañana", prox: "Próxima semana" };
+    let h = "";
+    for (const k of ["hoy", "man", "prox"]) {
+      if (!G2[k].length) continue;
+      h += `<div class="m-home-grupo ${k}">${TIT[k]} · ${G2[k].length}</div>`;
+      for (const p of G2[k]) {
+        const nd = p.numero_diario ?? p.numero; const listo = p.estado === "armado";
+        h += `<div class="m-home-order"><div><b>${esc(p.cliente_nombre || "Cliente " + (p.cliente_id || "—"))}</b><small>Cliente ${esc(p.cliente_id || "—")}${nd ? " · N° " + esc(nd) + " del día" : ""}${p.codigo_corto ? " · Pedido " + esc(p.codigo_corto) : ""}${p.armado_por ? " · Armado por " + esc(p.armado_por) : ""}</small>${p.es_pedido_faltante ? '<span class="m-estado" style="background:var(--m-pink-soft);color:var(--m-pink)">Pedido de faltantes</span>' : ""}<span class="m-estado ${listo ? "listo" : "enfact"}">${listo ? "Listo para revisar" : "En facturación"}</span></div>
+          <span class="m-home-ent ${k}">${esc(fFecha(p.fecha_entrega))}</span><span class="m-home-ven" title="${esc(p.vendedor || "")}">${esc(p.vendedor || "—")}</span>
+          <button type="button" class="m-b${listo ? " prim" : ""}" data-ir="abrir" data-id="${esc(p.id)}">Abrir pedido</button></div>`;
+      }
+    }
+    L.innerHTML = h;
+  }
+  function inicio() {
+    cerrarPop(); cerrarDlg();
+    if (facturando()) { aviso("Esperá: se está facturando el pedido.", "warn"); return; }
+    const abierto = [...document.querySelectorAll(".modal-over")].some(m => getComputedStyle(m).display !== "none") || $("alfBg") || $("etqOverlay") || $("fv2Bg") && getComputedStyle($("fv2Bg")).display !== "none";
+    if (abierto) { aviso("Cerrá la ventana abierta antes de volver al inicio.", "warn"); return; }
+    try { if (typeof salirEnfoque === "function") salirEnfoque(); } catch (e) {}
+    const pp = $("pedidoPanel"), ns = $("noSel");
+    if (pp) pp.style.display = "none"; if (ns) ns.style.display = "flex";
+    try { pedidoActivo = null; itemsActivos = []; } catch (e) { console.warn("[mesa] no se pudo soltar el pedido activo", e); }
+    st.enInicio = true;
+    try { if (typeof renderLista === "function") renderLista(); } catch (e) {}
+    try { if (typeof toggleListaPedidos === "function") toggleListaPedidos(false); } catch (e) {}
+    pintarInicio();
+    const b = $("mesaInicio"); if (b) b.setAttribute("aria-current", "page");
+  }
+
+  /* ── Encabezado del pedido ─────────────────────────────────────────────────────────────────────── */
+  function encabezado() {
+    const ph = $("pedHeader"); if (!ph || $("mIdent")) return;
+    const ident = document.createElement("div"); ident.className = "m-ident"; ident.id = "mIdent";
+    const num = $("phNumGrande"), nd = $("phNumDiario");
+    if (num) { num.title = "Copiar el número de cliente"; num.setAttribute("role", "button"); num.tabIndex = 0; num.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); num.click(); } }); ident.appendChild(num); }
+    if (nd) ident.appendChild(nd);
+    ident.insertAdjacentHTML("beforeend", '<span class="m-pedcod" id="mPedCod" hidden></span>');
+    ph.insertAdjacentElement("afterbegin", ident);
+    const bn = $("btnNotas"); if (bn) { const limpiar = () => { const t = bn.textContent; const n = sinEmoji(t).trim(); if (n && n !== t) bn.textContent = n; }; limpiar(); new MutationObserver(limpiar).observe(bn, { childList: true, characterData: true, subtree: true }); }
+    const acc = ph.querySelector(".ph-row1-actions");
+    if (acc && !$("mDetalle")) { const b = document.createElement("button"); b.type = "button"; b.id = "mDetalle"; b.className = "m-b chico"; b.textContent = "Detalle"; b.title = "Datos completos del pedido (ID interno, fechas, responsables, observaciones)"; b.onclick = detalle; acc.appendChild(b); }
+    if (!$("mObs")) { const o = document.createElement("div"); o.className = "m-obs"; o.id = "mObs"; ph.appendChild(o); }
+    if (!$("mKind")) {
+      const k = document.createElement("div"); k.className = "m-kind"; k.id = "mKind";
+      k.innerHTML = '<span id="mKindHab" hidden><span class="m-pill hab">Habituales</span> <span class="m-kind-n"></span></span><span class="m-sep" id="mKindSep" hidden></span><span id="mKindQr" hidden><span class="m-pill qr">Queruclor</span> <span class="m-kind-n"></span></span>';
+      ph.insertAdjacentElement("afterend", k);
+      const be = $("btnEnfoque"); if (be) { k.appendChild(be); be.setAttribute("aria-pressed", "false"); }
+    }
+  }
+  function pintarEncabezado() {
+    const p = pedido(); if (!p) return;
+    const num = $("phNumGrande"); if (num) num.textContent = "Cliente " + (p.cliente_id || "—");
+    const nd = $("phNumDiario"); if (nd && nd.style.display !== "none") { const n = p.numero_diario ?? p.numero; nd.innerHTML = `<span>N° ${esc(n)} del día</span>`; }
+    const pc = $("mPedCod"); if (pc) { pc.hidden = !p.codigo_corto; pc.textContent = p.codigo_corto ? "Pedido " + p.codigo_corto : ""; }
+    const en = $("phEntrega"); if (en) { const fe = p.fecha_entrega; const largo = fe ? new Date(fe + "T12:00:00").toLocaleDateString("es-AR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }) : "sin fecha"; en.textContent = "Entrega " + (fe ? fFecha(fe) : "sin fecha"); en.title = "Se entrega el " + largo; }
+    const me = $("phMeta"); if (me) me.textContent = "Vendedor " + (p.vendedor || "—");
+    const ar = $("phArmador"); if (ar && p.armado_por) ar.textContent = "Armado por " + p.armado_por + (p.armado_at ? " · " + hora(p.armado_at) : "");
+    const ch = $("phChips"); if (ch) ch.innerHTML = sinEmoji(ch.innerHTML).replace(/FACTURADO/g, "Facturado");
+    const ob = $("mObs"); if (ob) { const t = (p.observaciones || "").trim(); if (!t || /^sin observaciones$/i.test(t)) ob.innerHTML = ""; else { const larga = t.length > 140; ob.classList.remove("abierta"); ob.innerHTML = `<b>Observación</b><span class="${larga ? "larga" : ""}">${esc(t)}</span>${larga ? '<button type="button" aria-expanded="false">Ver más</button>' : ""}`; const b = ob.querySelector("button"); if (b) b.onclick = () => { const ab = ob.classList.toggle("abierta"); b.textContent = ab ? "Ver menos" : "Ver más"; b.setAttribute("aria-expanded", String(ab)); }; } }
+    const fv = $("fv2Res"), k = $("mKind"); if (fv && k && fv.parentNode !== k) { const be = $("btnEnfoque"); k.insertBefore(fv, be && be.parentNode === k ? be : null); }
+    const dc = $("phDescuentoChip"); if (dc && !dc.__mesa) { dc.__mesa = true; new MutationObserver(() => { if (/💲/.test(dc.textContent)) dc.textContent = sinEmoji(dc.textContent); }).observe(dc, { childList: true, characterData: true, subtree: true }); }
+    pintarKind();
+  }
+  function pintarKind() {
+    const l = items().filter(i => !i.es_reemplazo); const hab = l.filter(i => !esQR(i)).length, qr = l.length - hab;
+    st.kindHab = hab; st.kindQr = qr;
+    const H = $("mKindHab"), Q = $("mKindQr"), S = $("mKindSep"); if (!H) return;
+    H.hidden = !hab; H.querySelector(".m-kind-n").textContent = hab + (hab === 1 ? " artículo" : " artículos");
+    let cajas = ""; try { const e = window.qrFactPreparado && qrFactPreparado.estado(); if (e && Array.isArray(e.cajas)) { const n = e.cajas.filter(c => c.preparada).length; cajas = " · " + n + (n === 1 ? " caja preparada" : " cajas preparadas"); } } catch (e) {}
+    Q.hidden = !qr; Q.querySelector(".m-kind-n").textContent = qr + (qr === 1 ? " renglón" : " renglones") + cajas;
+    S.hidden = !(hab && qr);
+  }
+  function detalle() {
+    const p = pedido(); if (!p) return;
+    const fv = $("fv2Res"); const bloques = fv ? (fv.querySelector(".fv2-l2") || fv).innerText.replace(/\s+/g, " ").trim() : "";
+    const dato = (k, v, code) => v == null || v === "" ? "" : `<div class="m-dato"><div><span>${esc(k)}</span>${code ? `<code>${esc(v)}</code>` : `<b>${esc(v)}</b>`}</div><button type="button" class="m-b chico" data-copiar="${esc(v)}">Copiar</button></div>`;
+    const largo = p.fecha_entrega ? new Date(p.fecha_entrega + "T12:00:00").toLocaleDateString("es-AR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }) : "";
+    const bg = abrirDlg("Detalle del pedido", `
+      <div class="m-datos">${dato("Cliente", (p.cliente_id || "—") + " · " + (p.cliente_nombre || ""))}${dato("Pedido (código corto)", p.codigo_corto)}${dato("N° del día", p.numero_diario ?? p.numero)}
+        ${dato("ID interno", p.id, true)}${dato("Entrega", largo)}${dato("Vendedor", p.vendedor)}${dato("Armado por", p.armado_por ? p.armado_por + (p.armado_at ? " · " + hora(p.armado_at) : "") : null)}
+        ${dato("Estado", p.estado === "en_facturacion" ? "En facturación (abierto en esta pantalla)" : p.estado)}${dato("Cargado", p.created_at ? hora(p.created_at) : null)}${dato("Facturado", p.facturado_at ? hora(p.facturado_at) : null)}
+        ${p.es_pedido_faltante ? dato("Tipo", "Pedido de faltantes") : ""}</div>
+      ${bloques ? `<h3>Lo que dejó el Depósito por bloque</h3><p>${esc(bloques)}</p><p style="font-size:12px">El estado del bloque y el de cada renglón vienen de fuentes distintas: se muestran los dos tal cual están.</p>` : ""}
+      <h3>Observaciones</h3><p>${esc((p.observaciones || "").trim() || "Sin observaciones")}</p>`, "", true);
+    bg.addEventListener("click", async e => { const b = e.target.closest("[data-copiar]"); if (!b) return; await copiar(b.getAttribute("data-copiar")); const t = b.textContent; b.textContent = "Copiado ✓"; setTimeout(() => { b.textContent = t; }, 1400); });
+  }
+
+  /* ── Filtros y acciones ─────────────────────────────────────────────────────────────────────────── */
+  function herramientas() {
+    const bar = document.querySelector("#pedidoPanel .ia-bar"); if (!bar || $("mFiltros")) return;
+    bar.querySelectorAll(".btn-ia").forEach(b => { if (b.id !== "btnEnfoque") b.textContent = sinEmoji(b.textContent).replace(/^↩\s*/, "").trim(); });
+    const seg = document.createElement("div"); seg.className = "m-seg"; seg.id = "mFiltros"; seg.setAttribute("role", "group"); seg.setAttribute("aria-label", "Filtrar renglones (solo cambia lo que se ve)");
+    seg.innerHTML = '<button type="button" data-f="todos" aria-pressed="true">Todos</button><button type="button" data-f="pend" aria-pressed="false">Por revisar</button><button type="button" data-f="dif" aria-pressed="false" title="Cantidad distinta de la pedida, faltantes y cambios sin confirmar">Diferencias</button><button type="button" data-f="falt" aria-pressed="false">Faltantes</button>';
+    seg.addEventListener("click", e => { const b = e.target.closest("[data-f]"); if (b) setFiltro(b.getAttribute("data-f")); });
+    bar.insertAdjacentElement("afterbegin", seg);
+    seg.insertAdjacentHTML("afterend", '<input type="search" id="mBuscar" class="m-buscar" placeholder="Buscar artículo o código" aria-label="Buscar artículo dentro del pedido (no consulta nada)" autocomplete="off"><span class="m-alcance" id="mAlcance" role="status">«Todos OK» y «Desmarcar» actúan sobre todos los renglones del pedido, no solo los visibles.</span>');
+    $("mBuscar").addEventListener("input", () => buscar($("mBuscar").value));
+    $("mBuscar").addEventListener("keydown", e => { if (e.key === "Escape") { $("mBuscar").value = ""; buscar(""); } e.stopPropagation(); });
+    const bulk = document.createElement("div"); bulk.className = "m-bulk";
+    bar.querySelectorAll(".btn-ia").forEach(b => { if (b.id !== "btnEnfoque") bulk.appendChild(b); });
+    const bd = document.createElement("button"); bd.type = "button"; bd.id = "mDensidad"; bd.className = "btn-ia"; bd.onclick = () => setDensidad(densidadEfectiva() === "compacta" ? "comoda" : "compacta"); bulk.appendChild(bd);
+    bar.appendChild(bulk); aplicarDensidad();
+    const kb = bar.querySelector(".kbd-hint"), fa = document.querySelector("#pedidoPanel .footer-actions"); if (kb && fa) { kb.innerHTML = "<kbd>Enter</kbd> marcar · <kbd>Ctrl+Enter</kbd> facturar · <kbd>→</kbd> siguiente pedido"; fa.insertAdjacentElement("afterbegin", kb); }
+  }
+  function setFiltro(f) {
+    st.filtro = f; const ip = $("itemsPanel"); if (!ip) return;
+    ip.classList.toggle("m-f-pend", f === "pend"); ip.classList.toggle("m-f-falt", f === "falt"); ip.classList.toggle("m-f-dif", f === "dif");
+    document.querySelectorAll("#mFiltros [data-f]").forEach(b => b.setAttribute("aria-pressed", String(b.getAttribute("data-f") === f)));
+    const bar = document.querySelector("#pedidoPanel .ia-bar"); if (bar) bar.classList.toggle("m-filtrada", f !== "todos" || !!st.busq);
+    vacio();
+    try { if (typeof _checkScrollLock === "function") _checkScrollLock(); } catch (e) {}
+  }
+  function vacio() {
+    const ip = $("itemsPanel"); if (!ip) return;
+    let v = ip.querySelector(".m-vacio"); if (!v) { v = document.createElement("div"); v.className = "m-vacio"; const th = $("mThead"); if (th) th.insertAdjacentElement("afterend", v); else ip.insertAdjacentElement("afterbegin", v); }
+    const filas = [...ip.querySelectorAll(".item-f")]; const visibles = filas.filter(r => getComputedStyle(r).display !== "none").length;
+    const txt = st.busq ? "Ningún artículo coincide con «" + st.busq + "»." : st.filtro === "pend" ? "No quedan renglones por revisar." : st.filtro === "falt" ? "No hay faltantes marcados." : st.filtro === "dif" ? "Sin diferencias: todo sale como se pidió." : "";
+    v.textContent = txt; v.classList.toggle("visible", !!filas.length && !visibles && (st.filtro !== "todos" || !!st.busq));
+  }
+  /* Buscador dentro del pedido: solo oculta filas que no coinciden (descripción o código); ninguna consulta. */
+  function buscar(q) {
+    st.busq = String(q || "").trim().toLowerCase();
+    const porId = new Map(items().map(i => [String(i.id), i]));
+    document.querySelectorAll("#itemsPanel .item-f").forEach(r => { const it = porId.get(r.id.replace(/^ifrow-/, "")); const txt = ((it && it.descripcion) || r.textContent || "").toLowerCase(); r.classList.toggle("m-nobusq", !!st.busq && !txt.includes(st.busq)); });
+    const bar = document.querySelector("#pedidoPanel .ia-bar"); if (bar) bar.classList.toggle("m-filtrada", st.filtro !== "todos" || !!st.busq);
+    vacio(); try { if (typeof _checkScrollLock === "function") _checkScrollLock(); } catch (e) {}
+  }
+  function limpiarBusqueda() { if (!st.busq) return false; st.busq = ""; const b = $("mBuscar"); if (b) b.value = ""; buscar(""); return true; }
+  /* Diferencias: cantidad que sale distinta de la pedida (y no faltante). La clase viaja con la fila; el pie la cuenta. */
+  function marcarDif() {
+    const l = items(); let n = 0;
+    for (const it of l) { const r = $("ifrow-" + it.id); if (!r) continue; const dif = !it.es_reemplazo && !it.es_faltante && it.cantidad_real != null && Number(it.cantidad_real) !== Number(it.cantidad); r.classList.toggle("m-dif", dif); if (dif) n++; }
+    return n;
+  }
+  function contadores() {
+    const l = items(); const orig = l.filter(i => !i.es_reemplazo);
+    const pend = orig.filter(i => !i.facturado && !i.es_faltante).length, falt = orig.filter(i => i.es_faltante).length, ok = orig.filter(i => i.facturado).length;
+    const dif = marcarDif(); const sinc = sinConf.size;
+    const B = document.querySelectorAll("#mFiltros [data-f]"); if (B.length === 4) { B[0].textContent = "Todos " + orig.length; B[1].textContent = "Por revisar " + pend; B[2].textContent = "Diferencias " + (dif + falt + sinc); B[3].textContent = "Faltantes " + falt; }
+    const sp = $("mStPend"); if (sp) { sp.textContent = pend + " por revisar"; sp.hidden = !orig.length; }
+    const sd = $("mStDif"); if (sd) { sd.textContent = dif + " con cantidad distinta"; sd.hidden = !dif; }
+    estadoQr();
+    /* Segmento HABITUALES de la barra: solo lo que controla Laura. Los renglones Queruclor que Depósito preparó por lector
+       llegan ya tildados «DEPÓSITO · quien» y se informan en el segmento QUERUCLOR (chequeo final), no acá. */
+    let modoPrep = null; try { modoPrep = window.qrFactPreparado ? qrFactPreparado.modo() : null; } catch (e) {}
+    const esCajaQR = i => { try { const q = window.QRParse && QRParse.parseQueruclor(i.descripcion); return !!(q && q.modo !== "sueltas"); } catch (e) { return false; } };
+    const depo = i => esCajaQR(i) && (!!modoPrep || /^DEPÓSITO\b/.test(String(i.facturado_por || "")));
+    const hab = orig.filter(i => !esQR(i)), qrL = orig.filter(i => esQR(i) && !depo(i));   // qrL: renglones Queruclor que controla Laura (sin preparación por lector)
+    barraPie({ orig: hab.length, ok: hab.filter(i => i.facturado).length, pend, falt: hab.filter(i => i.es_faltante).length, dif, rem: l.filter(i => i.es_reemplazo).length, p: pedido(),
+      qrL: { orig: qrL.length, ok: qrL.filter(i => i.facturado).length, falt: qrL.filter(i => i.es_faltante).length } });
+    const p = pedido(); const msg = $("msgMot");
+    if (msg) {
+      let t = "";
+      if (p && p.estado === "facturado") t = "Pedido facturado. Podés copiar el resumen o avisarle al vendedor.";
+      else if (!orig.length) t = l.length ? "Este pedido no tiene renglones de Habituales para controlar." : "";
+      else if (pend) t = "Quedan " + pend + (pend === 1 ? " renglón por revisar: marcá OK o Faltante." : " renglones por revisar: marcá OK o Faltante en cada uno.");
+      else t = ok === orig.length ? "Control completo. Revisá una vez más y confirmá con «Facturar pedido»." : "Control completo con " + falt + (falt === 1 ? " faltante." : " faltantes.") + " Confirmá con «Facturar pedido».";
+      if (msg.textContent !== t) msg.textContent = t;
+    }
+    vacio(); pintarKind();
+  }
+
+  /* ── Barra inferior de trabajo: solo lo relevante para este pedido ──
+     HABITUALES n/m controlados · QUERUCLOR k/j corroborados (chequeo final) o «preparado en Depósito» · PENDIENTE: el próximo paso (clic → va
+     al lugar) · guardado · siguiente pedido · impresiones. Se arma desde lo ya cargado; ninguna consulta. */
+  function barraPie(d) {
+    const b = $("mBarra"); if (!b) return;
+    const chq = window.qrChequeo && qrChequeo.aplica() ? qrChequeo : null; const ce = chq && chq.estado(); const faltaQr = chq ? chq.falta() : [];
+    const hayHab = d.orig > 0, facturado = d.p && d.p.estado === "facturado";
+    const seg = [];
+    if (hayHab) seg.push(`<span class="m-bseg ${d.pend ? "" : "ok"}"><span class="m-bk">Habituales</span> <b>${d.ok}/${d.orig}</b> controlados${d.falt ? ` · <span class="m-bfalt">${d.falt} faltante${d.falt === 1 ? "" : "s"}</span>` : ""}${d.dif ? ` · <span class="m-bdif">${d.dif} cant. distinta</span>` : ""}${d.rem ? ` · ${d.rem} reemplazo${d.rem === 1 ? "" : "s"}` : ""}</span>`);
+    if (chq) seg.push(`<span class="m-bseg ${faltaQr.length ? "" : "ok"}"><span class="m-bk">Queruclor</span> <b>${ce ? ce.corroborados : "…"}/${ce ? ce.total : "…"}</b> corroborados</span>`);
+    else if (d.qrL && d.qrL.orig) seg.push(`<span class="m-bseg ${d.qrL.ok + d.qrL.falt >= d.qrL.orig ? "ok" : ""}"><span class="m-bk">Queruclor</span> <b>${d.qrL.ok}/${d.qrL.orig}</b> controlados${d.qrL.falt ? ` · <span class="m-bfalt">${d.qrL.falt} faltante${d.qrL.falt === 1 ? "" : "s"}</span>` : ""}</span>`);   // sin preparación por lector: los controla Laura, renglón por renglón
+    else if (st.kindQr) seg.push(`<span class="m-bseg"><span class="m-bk">Queruclor</span> ${st.kindQr} ${st.kindQr === 1 ? "renglón" : "renglones"}</span>`);
+    let pend = null;
+    if (facturado) pend = { txt: "Facturado" + (window.qrImpDirecta && Object.values(qrImpDirecta.estado().trabajos).some(j => !/impresa|confirmada|navegador|cancelada|descartada|no_salio/.test(j.estado) && String(j.pedido) === String(d.p.id)) ? " · impresión en curso" : ""), cls: "ok", ir: null };
+    else if (faltaQr.length) pend = { txt: "Pendiente: confirmar " + faltaQr.length + (faltaQr.length === 1 ? " artículo" : " artículos") + " Queruclor", cls: "", ir: () => qrChequeo.irA() };
+    else if (sinConf.size) pend = { txt: "Pendiente: " + sinConf.size + (sinConf.size === 1 ? " cambio sin confirmar" : " cambios sin confirmar"), cls: "mal", ir: () => { const r = document.querySelector("#itemsPanel .item-f.m-sinconf"); if (r) r.scrollIntoView({ block: "center" }); } };
+    else if (d.pend) pend = { txt: "Pendiente: revisar " + d.pend + (d.pend === 1 ? " renglón" : " renglones"), cls: "", ir: () => { if (st.filtro !== "todos" && st.filtro !== "pend") setFiltro("todos"); const r = document.querySelector("#itemsPanel .item-f.siguiente") || [...document.querySelectorAll("#itemsPanel .item-f")].find(x => !x.classList.contains("ok") && !x.classList.contains("faltante")); if (r) { r.scrollIntoView({ block: "center" }); r.classList.add("m-flash"); setTimeout(() => r.classList.remove("m-flash"), 1200); } } };
+    else if (d.orig || chq) {
+      /* Todo resuelto pero el último renglón de Laura todavía no estuvo a la vista (bloqueo por desplazamiento existente): el siguiente paso es bajar, y el clic baja. */
+      const bf = $("btnFacturar"); const bloqScroll = !!(bf && bf.classList.contains("scroll-locked") && st.filtro === "todos" && !st.busq);
+      pend = bloqScroll ? { txt: "Listo: bajá hasta el último renglón para habilitar Facturar", cls: "", ir: () => { const ip = $("itemsPanel"); if (ip) ip.scrollTo({ top: ip.scrollHeight, behavior: "smooth" }); } } : { txt: "Listo para facturar", cls: "ok", ir: null };
+    }
+    if (pend) seg.push(`<button type="button" class="m-bseg m-bpend ${pend.cls}" id="mBPend" ${pend.ir ? "" : "disabled"}>${esc(pend.txt)}${pend.ir ? " →" : ""}</button>`);
+    b.innerHTML = seg.join("") + `<span class="m-bflex"></span><span class="m-bseg m-bguard" id="mBGuard" aria-live="polite"></span><button type="button" class="m-bseg m-bsig" id="mBSig" hidden></button><button type="button" class="m-bseg m-bimp" id="mBImp" hidden></button>`;
+    if (pend && pend.ir) $("mBPend").onclick = pend.ir;
+    pintarGuardado(); pintarSiguiente(); pintarImpresiones();
+    /* Facturar: deshabilitado mientras falte la corroboración de Queruclor (los pendientes de Habituales siguen yendo al modal de resolución existente). */
+    const btn = $("btnFacturar"); if (btn && !facturado) { if (faltaQr.length) { btn.disabled = true; btn.title = "Falta corroborar Queruclor con el armador (chequeo final)."; btn.classList.add("m-bloq"); } else if (btn.classList.contains("m-bloq")) { btn.disabled = false; btn.title = ""; btn.classList.remove("m-bloq"); } }
+  }
+  /* D · Siguiente pedido listo según la cola (no lo abre solo: solo con el clic). */
+  function pintarSiguiente() {
+    const b = $("mBSig"); if (!b) return; let n = null; try { n = typeof siguientePedido === "function" ? siguientePedido() : null; } catch (e) {}
+    if (!n) { b.hidden = true; return; }
+    b.hidden = false; b.innerHTML = `<span class="m-bk">Siguiente</span><span class="m-bsig-t">${esc((n.cliente_nombre || "Cliente " + n.cliente_id).slice(0, 28))} · ${esc(fFecha(n.fecha_entrega))}${n.estado === "armado" ? " · listo" : ""}</span>`; b.title = "Abrir el siguiente pedido de la cola (" + (n.cliente_nombre || "") + ")";
+    b.onclick = () => { try { seleccionar(n.id); } catch (e) {} };
+  }
+  /* E · Impresiones de esta PC (las sigue el módulo de impresión directa; acá solo se muestran) → abre el panel Impresora. */
+  function pintarImpresiones() {
+    const b = $("mBImp"); if (!b) return; const D = window.qrImpDirecta ? Object.values(qrImpDirecta.estado().trabajos) : [];
+    const activos = D.filter(j => /preparando|solicitada|tomada|enviada|detenida/.test(j.estado)).length, atencion = D.filter(j => /detenida|incierta|retenida|perdida|fallida|no_enviada|vencida/.test(j.estado) && !j.oculta).length;
+    if (!activos && !atencion) { b.hidden = true; return; }
+    b.hidden = false; b.classList.toggle("ojo", atencion > 0); b.innerHTML = `<span class="m-bk">Impresiones</span> ${activos ? activos + " en curso" : ""}${activos && atencion ? " · " : ""}${atencion ? atencion + " para revisar" : ""}`;
+    b.onclick = () => { const bi = $("btnImpresora"); if (bi) bi.click(); };
+  }
+  /* C · Guardado: «Guardando…» mientras hay escrituras en vuelo; «Guardado hh:mm» recién con la respuesta; «Error · Reintentar» si algo no llegó. */
+  let enVuelo = 0, ultimoOk = null;
+  function pintarGuardado() {
+    const g = $("mBGuard"); if (!g) return;
+    if (sinConf.size) { g.className = "m-bseg m-bguard mal"; g.innerHTML = `Error · ${sinConf.size} sin guardar <button type="button" class="m-b chico" id="mBReint">Reintentar</button>`; $("mBReint").onclick = reintentarSinConf; }
+    else if (enVuelo > 0) { g.className = "m-bseg m-bguard"; g.innerHTML = '<span class="m-sp" aria-hidden="true"></span> Guardando…'; }
+    else if (ultimoOk) { g.className = "m-bseg m-bguard ok"; g.textContent = "Guardado " + new Date(ultimoOk).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false }); }
+    else { g.className = "m-bseg m-bguard"; g.textContent = ""; }
+  }
+  /* El resumen de Queruclor (módulo existente) cambia de color según lo que dice: ámbar mientras falte tildar o resolver, verde cuando está completo. */
+  function estadoQr() { const qp = $("qrPanel"); if (!qp) return; const t = qp.innerText || ""; qp.classList.toggle("m-qr-pend", /faltan\s+[1-9]|sin tildar|revisi/i.test(t)); }
+  /* ── Tabla de renglones ─────────────────────────────────────────────────────────────────────────── */
+  function decorarFilas() {
+    const ip = $("itemsPanel"); if (!ip) return;
+    let th = $("mThead");
+    if (!th) { th = document.createElement("div"); th.id = "mThead"; th.setAttribute("role", "row"); th.innerHTML = '<span>Artículo</span><span class="c">Pidió</span><span class="c">Sale</span><span>Depósito</span><span class="ctl">Control</span>'; }
+    if (ip.firstElementChild !== th) ip.insertAdjacentElement("afterbegin", th);
+    const porId = new Map(items().map(i => [String(i.id), i]));
+    const filas = ip.querySelectorAll(".item-f"); th.hidden = !filas.length;
+    filas.forEach(row => {
+      if (row.dataset.mesa === "1") return;
+      const it = porId.get(row.id.replace(/^ifrow-/, "")); if (!it) return;
+      const art = [...row.children].find(c => c.tagName === "DIV" && c.querySelector(".item-f-name-row")); if (art) art.classList.add("m-art");
+      const pid = it.cantidad_original != null && Number(it.cantidad_original) !== Number(it.cantidad) ? Number(it.cantidad_original) : Number(it.cantidad);
+      const cambio = pid !== Number(it.cantidad);
+      const pidio = document.createElement("div"); pidio.className = "m-pidio"; pidio.innerHTML = esc(pid) + (cambio ? `<small title="Depósito cambió la cantidad pedida">dep. ${esc(it.cantidad)}</small>` : ""); pidio.setAttribute("aria-label", "Pidió " + pid);
+      row.appendChild(pidio);
+      if (!row.querySelector(".qty-in")) { const s = document.createElement("div"); s.className = "m-sale"; s.textContent = it.cantidad != null ? it.cantidad : "—"; row.appendChild(s); }
+      else { const q = row.querySelector(".qty-in"); q.setAttribute("aria-label", "Cantidad que sale de " + (it.descripcion || "")); const ns = document.createElement("div"); ns.className = "m-nosale"; ns.textContent = "No sale"; row.appendChild(ns); }
+      const dep = document.createElement("div"); dep.className = "m-dep";
+      if (it.es_reemplazo) dep.innerHTML = '<span class="m-st azul">Reemplazo</span>' + (it.facturado_por ? `<small>${esc(it.facturado_por)}</small>` : "");
+      else if (it.armado) dep.innerHTML = '<span class="m-st ok">Preparado</span>' + (it.armado_por ? `<small>${esc(it.armado_por)}${it.armado_at ? " · " + esc(hora(it.armado_at)) : ""}</small>` : "");
+      else if (it.faltante_informado || (it.es_faltante && it.faltante_por)) dep.innerHTML = '<span class="m-st falt">Faltante informado</span>' + (it.faltante_por ? `<small>${esc(it.faltante_por)}${it.faltante_at ? " · " + esc(hora(it.faltante_at)) : ""}</small>` : "");
+      else if (it.es_auto_faltante) dep.innerHTML = '<span class="m-st falt">Sin stock al cargar</span>';
+      else dep.innerHTML = '<span class="m-st warn">Sin preparar</span>';
+      row.appendChild(dep);
+      const menu = document.createElement("button"); menu.type = "button"; menu.className = "m-menu"; menu.setAttribute("data-mpop", "1"); menu.setAttribute("aria-label", "Más acciones de " + (it.descripcion || "este renglón")); menu.setAttribute("aria-haspopup", "menu"); menu.innerHTML = ICO.mas;
+      menu.onclick = e => { e.stopPropagation(); menuFila(row, it, menu); };
+      row.appendChild(menu);
+      const chk = row.querySelector(".chk-f"); if (chk) chk.setAttribute("aria-label", "Control de " + (it.descripcion || ""));
+      row.dataset.mesa = "1";
+    });
+    vacio();
+  }
+  function menuFila(row, it, ancla) {
+    const idx = row.dataset.idx; const fact = !!it.facturado, falt = !!it.es_faltante;
+    const bs = row.querySelector(".btn-sust"), bf = row.querySelector(".btn-falt");
+    abrirPop(ancla, `
+      <button type="button" class="m-b" data-a="ok">${fact ? "Desmarcar control" : "Marcar OK"} <small>${fact ? "vuelve a «por revisar»" : "controlado por vos"}</small></button>
+      <button type="button" class="m-b" data-a="falt" ${bf ? "" : "disabled"}>${falt ? "Quitar marca de faltante" : "Marcar faltante"} <small>no sale en este pedido</small></button>
+      <button type="button" class="m-b" data-a="sust" ${bs ? "" : "disabled"}>Enviar reemplazo <small>${bs ? "otro artículo en su lugar" : "ya tiene reemplazo"}</small></button>`, it.descripcion);
+    st.pop.addEventListener("click", e => {
+      const a = e.target.closest("[data-a]"); if (!a) return; const q = a.getAttribute("data-a");
+      if (q === "ok" && typeof toggleFacturado === "function") toggleFacturado(it.id, Number(idx));
+      else if (q === "falt" && bf) bf.click(); else if (q === "sust" && bs) bs.click();
+    });
+  }
+
+  /* ── Pie ───────────────────────────────────────────────────────────────────────────────────────── */
+  function pie() {
+    const fs = document.querySelector("#pedidoPanel .footer-stats"); if (!fs || $("mStPend")) return;
+    const ok = fs.querySelector(".ok-count"); if (ok) { ok.childNodes.forEach(n => { if (n.nodeType === 3 && /facturados/.test(n.textContent)) n.textContent = " controlados"; }); ok.setAttribute("title", "Renglones controlados por Facturación (no significa facturado)"); }
+    fs.insertAdjacentHTML("afterbegin", '<span class="m-oculto">Estado de los renglones: </span>');
+    ok && ok.insertAdjacentHTML("afterend", '<span class="m-pend" id="mStPend" hidden></span><span class="m-dif" id="mStDif" hidden></span>');
+    fs.insertAdjacentHTML("afterend", '<div class="m-sinconf" id="mSinConf" role="alert" hidden><span></span><button type="button" class="m-b chico">Reintentar</button></div>');
+    $("mSinConf").querySelector("button").onclick = reintentarSinConf;
+    fs.insertAdjacentHTML("beforebegin", '<div class="m-barra" id="mBarra" aria-label="Estado del pedido"></div>');
+    [$("stFaltSpan"), $("stRemSpan")].forEach(s => s && s.childNodes.forEach(n => { if (n.nodeType === 3) n.textContent = sinEmoji(n.textContent).replace(/^\s*[✏️❌]\s*/u, " "); }));
+    const wa = document.querySelector("#pedidoPanel .btn-wa"); if (wa) { wa.textContent = "WhatsApp faltantes"; wa.title = "Mandar por WhatsApp el resumen de faltantes de este pedido"; }
+    const hint = $("footerScrollHint"); if (hint) hint.textContent = "Bajá hasta el final de los renglones para continuar.";
+    const bf = $("btnFacturar"); if (bf) { rotularFacturar(); new MutationObserver(rotularFacturar).observe(bf, { childList: true, characterData: true, subtree: true }); }
+    const fa = document.querySelector("#pedidoPanel .footer-actions"); if (fa) { arreglarEtiquetas(); new MutationObserver(arreglarEtiquetas).observe(fa, { childList: true }); }
+  }
+  let rotulando = false;
+  function rotularFacturar() {
+    if (rotulando) return; const b = $("btnFacturar"); if (!b) return; const t = b.textContent.trim(); let n = null;
+    const p = pedido();
+    if (/Facturando/i.test(t)) n = "Facturando…"; else if (/YA FACTURADO/i.test(t) || (p && p.estado === "facturado" && b.disabled)) n = "Facturado";
+    else { const m = t.match(/\((\d+) faltante/); if (m) n = "Facturar pedido · " + m[1] + (m[1] === "1" ? " faltante" : " faltantes"); else if (/FACTURA/i.test(t)) n = "Facturar pedido"; }
+    if (n && n !== t) { rotulando = true; b.textContent = n; rotulando = false; }
+  }
+  function arreglarEtiquetas() { const b = $("btnEtiquetas"); if (b && !b.__mesa) { b.__mesa = true; b.textContent = "Etiqueta de total"; b.title = "Etiqueta de total del pedido (bolsas, bultos y cajas) para la impresora de etiquetas"; b.removeAttribute("style"); } }
+
+  /* ── Densidad: Cómoda / Compacta (se recuerda en este equipo; sin elección, compacta cuando la ventana es baja, como siempre) ── */
+  function densidadGuardada() { try { return localStorage.getItem("factDensidad") || ""; } catch (e) { return ""; } }
+  function densidadEfectiva() { const g = densidadGuardada(); if (g) return g; return document.body.classList.contains("compacta") ? "compacta" : "comoda"; }
+  function aplicarDensidad() {
+    const g = densidadGuardada(); document.body.classList.toggle("m-densa", g === "compacta"); document.body.classList.toggle("m-comoda", g === "comoda");
+    const b = $("mDensidad"); if (b) { const e = densidadEfectiva(); b.textContent = e === "compacta" ? "Densidad: compacta" : "Densidad: cómoda"; b.title = e === "compacta" ? "Filas más apretadas para ver más artículos. Tocá para pasar a cómoda." : "Filas con más aire. Tocá para pasar a compacta."; b.setAttribute("aria-pressed", String(e === "compacta")); }
+    try { if (typeof _checkScrollLock === "function") setTimeout(_checkScrollLock, 80); } catch (e) {}
+  }
+  function setDensidad(d) { try { if (d) localStorage.setItem("factDensidad", d); else localStorage.removeItem("factDensidad"); } catch (e) {} aplicarDensidad(); }
+
+  /* ── Cambios sin confirmar: una escritura de renglón que el servidor no confirmó no se da por guardada ──
+     sbPatch devuelve null cuando el servidor rechaza y lanza cuando no hay red. Acá se anota el renglón, se avisa en el pie con «Reintentar»
+     y, para el cierre del pedido (tabla pedidos), se hace fallar la operación para que la pantalla diga «Error al facturar» en vez de un éxito falso. */
+  const sinConf = new Map();
+  function pintarSinConf() {
+    document.querySelectorAll("#itemsPanel .item-f.m-sinconf").forEach(r => { if (!sinConf.has(r.id.replace(/^ifrow-/, ""))) r.classList.remove("m-sinconf"); });
+    for (const id of sinConf.keys()) { const r = $("ifrow-" + id); if (r) r.classList.add("m-sinconf"); }
+    const f = $("mSinConf"); if (!f) return; const n = sinConf.size; f.hidden = !n;
+    if (n) f.querySelector("span").textContent = n === 1 ? "1 cambio no llegó al servidor (renglón marcado): no se dio por guardado." : n + " cambios no llegaron al servidor (renglones marcados): no se dieron por guardados.";
+  }
+  async function reintentarSinConf() { const l = [...sinConf.entries()]; for (const [id, p] of l) { try { await sbPatch("items_pedido", p.match, p.data); } catch (e) {} } pintarSinConf(); if (!sinConf.size) aviso("Cambios confirmados por el servidor.", "ok"); }
+  envolver("sbPatch", o => async function (table, match, data) {
+    let r = null, fallo = false; enVuelo++; pintarGuardado();
+    try { r = await o.apply(this, arguments); } catch (e) { fallo = true; }
+    enVuelo = Math.max(0, enVuelo - 1); if (!fallo && r != null) ultimoOk = new Date().toISOString();
+    if (table === "items_pedido") { const m = /id=eq\.([^&]+)/.exec(String(match || "")); if (m) { if (fallo || r == null) sinConf.set(m[1], { match, data, t: Date.now() }); else sinConf.delete(m[1]); pintarSinConf(); } }
+    pintarGuardado();
+    if (table === "pedidos" && (fallo || r == null)) { aviso("El servidor no confirmó el cambio del pedido. No se dio por hecho: revisá la conexión y volvé a intentar.", "error"); throw new Error("sin confirmación del servidor"); }
+    return fallo ? null : r;
+  });
+  envolver("sbInsert", o => async function () { enVuelo++; pintarGuardado(); let r = false; try { r = await o.apply(this, arguments); } catch (e) { r = false; } enVuelo = Math.max(0, enVuelo - 1); if (r) ultimoOk = new Date().toISOString(); pintarGuardado(); return r; });
+
+  /* ── Envolturas ────────────────────────────────────────────────────────────────────────────────── */
+  function enganchar() {
+    despues("renderLista", () => { st.cargado = true; pintarCola(); pintarInicio(); });
+    despues("renderHeader", pintarEncabezado);
+    despues("renderItemsF", () => { decorarFilas(); contadores(); });
+    despues("_updateRowDOM", () => { if (st.filtro !== "todos") vacio(); });
+    despues("actualizarStats", contadores);
+    despues("cargarEnProceso", pintarProceso);
+    despues("seleccionar", () => { st.enInicio = false; const b = $("mesaInicio"); if (b) b.removeAttribute("aria-current"); limpiarBusqueda(); if (st.filtro !== "todos") setFiltro("todos"); ultimoOk = null; pintarGuardado(); });
+    despues("renderLista", pintarSiguiente);
+    despues("cambiarCantidad", contadores);
+    document.addEventListener("qrchq:cambio", () => { try { contadores(); } catch (e) {} });
+    document.addEventListener("qid:cambio", () => { try { pintarImpresiones(); const p = pedido(); if (p && p.estado === "facturado") contadores(); } catch (e) {} });
+    despues("aplicarLayout", () => { rotularVista(); aplicarDensidad(); });
+    despues("toggleDark", pintarTema);
+    const enf = () => { const on = !!document.querySelector(".body.enfoque"); document.body.classList.toggle("m-enfoque", on); const b = $("btnEnfoque"); if (b) { b.textContent = on ? "Salir de enfoque" : "Enfoque"; b.setAttribute("aria-pressed", String(on)); b.title = on ? "Volver a ver la cola al costado (Escape)" : "Una sola columna: la cola queda en el botón «Pedidos»"; } if (!on) { try { toggleListaPedidos(false); } catch (e) {} } };
+    despues("toggleEnfoque", enf); despues("salirEnfoque", enf);
+    /* Bloqueo por desplazamiento (regla existente: ver todos los renglones antes de facturar). La mesa la hace lógica sin quitarla:
+       cuenta los renglones que controla Laura; cuando el último de ellos está a la vista, el botón se libera aunque abajo sigan las
+       secciones de Queruclor (chequeo final, preparación, resumen), que tienen su propia puerta. Un pedido sin renglones de Laura
+       (solo Queruclor preparado por lector) no pide bajar: lo que manda es el chequeo. Con filtro o búsqueda sigue bloqueado. */
+    envolver("_checkScrollLock", o => function () {
+      const r = o.apply(this, arguments);
+      const btn = $("btnFacturar"), hint = $("footerScrollHint"), fill = $("scrollProgressFill"), ip = $("itemsPanel");
+      if (btn && st.filtro !== "todos") { btn.classList.add("scroll-locked"); if (hint) { hint.textContent = "Volvé a «Todos» para ver los renglones completos antes de facturar."; hint.classList.add("visible"); } }
+      else {
+        if (hint && hint.textContent.startsWith("Volvé")) { hint.textContent = "Bajá hasta el final de los renglones para continuar."; try { o.apply(this, arguments); } catch (e) {} }
+        if (btn && ip && btn.classList.contains("scroll-locked")) {
+          const filas = [...ip.querySelectorAll(".item-f")].filter(x => !x.classList.contains("fpp-dep") && x.offsetParent !== null);
+          const ult = filas[filas.length - 1];
+          if (!ult || ult.getBoundingClientRect().bottom <= ip.getBoundingClientRect().bottom + 2) { btn.classList.remove("scroll-locked"); if (hint) hint.classList.remove("visible"); if (fill) fill.style.width = "100%"; }
+        }
+      }
+      const bloq = !!(btn && btn.classList.contains("scroll-locked"));
+      if (bloq !== st.scrollBloq) { st.scrollBloq = bloq; if (st.cargado || pedido()) try { contadores(); } catch (e) {} }
+      return r;
+    });
+    envolver("marcarSiguientePendiente", o => function () { const limpio = limpiarBusqueda(); if (st.filtro === "falt" || st.filtro === "dif") { setFiltro("todos"); aviso("Se muestran todos los renglones.", ""); } else if (limpio) aviso("Se muestran todos los renglones.", ""); return o.apply(this, arguments); });
+    envolver("facturarPedido", o => function () { const limpio = limpiarBusqueda(); if (st.filtro !== "todos" || limpio) { if (st.filtro !== "todos") setFiltro("todos"); aviso("Se muestran todos los renglones. Revisá hasta el final y volvé a tocar Facturar.", "warn"); return; } return o.apply(this, arguments); });
+  }
+
+  function iniciar() {
+    barra(); cola(); armarInicio(); encabezado(); herramientas(); pie(); enganchar();
+    const b = $("mesaInicio"); if (b) b.setAttribute("aria-current", "page");
+    if (pedidos().length || hayHash()) { st.cargado = true; pintarCola(); }
+    pintarInicio(); pintarConn();
+    if (pedido()) { st.enInicio = false; pintarEncabezado(); decorarFilas(); contadores(); }
+    /* El panel de preparación de Queruclor pinta aparte (al leer la base): se vuelven a contar las cajas cuando cambia. */
+    const ip = $("itemsPanel"); if (ip) new MutationObserver(() => { pintarKind(); const th = $("mThead"); if (th && ip.firstElementChild !== th && ip.querySelector(".item-f")) ip.insertAdjacentElement("afterbegin", th); }).observe(ip, { childList: true });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
+  window.qrMesa = { inicio, filtro: setFiltro, buscar: q => { const b = $("mBuscar"); if (b) b.value = q || ""; buscar(q); }, estado: () => st, detalle, densidad: setDensidad, sinConfirmar: () => [...sinConf.keys()], version: "2026-11-22" };
+})();
+</script>
+<script id="qrImpDirectaMod">
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════
+   FACTURACIÓN · Impresión directa por el agente de la PC (22/11/2026)
+
+   Qué hace: cuando la pantalla va a imprimir la ETIQUETA DE TOTAL (iframe #etqFrame, 100×150) o el REMITO valorizado de
+   Queruclor (iframe #compFrame, A4), en vez de abrir el cuadro de impresión del navegador manda el mismo HTML a la cola de
+   impresión remota (qr_imp_pedir) con el tipo que el botón ya conoce: «total» → térmica, «remito» → impresora de hojas que
+   la PC tiene configurada. El agente de la PC (2026-11-23) lo imprime con el mismo seguimiento de Windows que las tiras de
+   Depósito (diario, reconciliación, retenidas). Acá se muestra el estado en una tarjeta y los botones que disparan cada
+   documento quedan bloqueados mientras está en curso.
+   Cuándo NO desvía (y abre el cuadro del navegador, como hasta hoy, avisando por qué): la PC no late hace más de 90 s, la
+   impresión está en pausa por oficina, o es un remito y la PC no tiene impresora de hojas configurada.
+   Lo que no hace: no afirma «impreso» por una respuesta del servidor; «Enviada a la impresora» es lo que Windows confirmó.
+   Un resultado incierto o detenido NO se reimprime solo ni pasa solo al navegador. Reintentar o imprimir por el navegador
+   es siempre una acción explícita. Consultas: 1 estado (cache 20 s) + 1 pedido por documento + seguimiento cada 5 s solo
+   mientras el trabajo está en curso (máximo 3 min); nada en reposo.
+   Gancho: ambos módulos imprimen con (window.qrImpresionPrueba || (x => x.print()))(w); este módulo ocupa ese gancho y
+   conserva el que hubiera (lo usan las pruebas) para el camino del navegador.
+   ══════════════════════════════════════════════════════════════════════════════════════════════════════ */
+(function () {
+  "use strict";
+  if (window.qrImpDirecta) return;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const espera = ms => new Promise(r => setTimeout(r, ms));
+  const quien = () => { try { return (typeof currentUser !== "undefined" && currentUser) || localStorage.getItem("factUser") || "LAURA"; } catch (e) { return "LAURA"; } };
+  const aviso = (t, tipo) => { try { if (typeof toast === "function") toast(t, tipo || ""); } catch (e) {} };
+  const hhmm = iso => { try { return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+  const hash = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, "0"); };
+  const TIPOS = { total: { rotulo: "Etiqueta de total", frame: "etqFrame", dest: "térmica" }, remito: { rotulo: "Remito Queruclor", frame: "compFrame", dest: "impresora de hojas" } };
+  const BOTONES = { total: "#btnEtiquetas, #etqPrint, #etqSecEtq, #qrPrEtq", remito: "#qrPrRem, #etqSecRem, [onclick*='qrImprimirComprobante']" };
+  const FINAL = new Set(["impresa", "confirmada", "no_salio", "fallida", "incierta", "cancelada", "vencida", "descartada", "navegador", "no_enviada", "retenida", "perdida"]);
+  const OK = new Set(["impresa", "confirmada", "navegador"]);
+  const CLAVE = "qr_imp_directa_v1", CACHE_AGENTE_MS = 20000, SEGUIR_MS = 180000, PASO_MS = 5000;
+  const st = { ctx: null, ctxT: 0, agente: null, agenteT: 0, trabajos: {}, previo: null, timer: null };
+
+  async function rpc(fn, p) {
+    const r = await fetch("/rest/v1/rpc/" + fn, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ p }), cache: "no-store" });
+    let j = null; try { j = await r.json(); } catch (e) {}
+    if (!r.ok) throw new Error((j && (j.message || j.motivo)) || ("error " + r.status));
+    return j;
+  }
+  /* ── La PC y sus impresoras (una lectura, en cache 20 s: los dos documentos de un cierre la comparten) ── */
+  async function agente(forzar) {
+    if (!forzar && st.agente && Date.now() - st.agenteT < CACHE_AGENTE_MS) return st.agente;
+    const r = await rpc("qr_imp_estado", {});
+    st.agente = interpretar(r.agente, r.pausa); st.agenteT = Date.now(); return st.agente;
+  }
+  function interpretar(a, pausa) {
+    return { vivo: !!(a && a.segundos != null && a.segundos <= 90), nuevo: String((a && a.version) || "") >= "2026-11-23", version: (a && a.version) || "", nombre: a && a.agente, hojas: !!(a && a.hojas), impresora: (a && a.impresora) || "", impresoraHojas: (a && a.impresora_hojas) || "",
+      pausa: !!(pausa && pausa.activa), pausaMotivo: (pausa && pausa.motivo) || "" };
+  }
+
+  /* ── Contexto: de qué pedido y remito es el documento (no se adivina por el título) ── */
+  /* Mientras está abierto el panel «Pedido facturado» (secuencia etiqueta → remito, o el cuadro con los dos botones), los documentos
+     son de ESE pedido aunque la pantalla ya haya pasado al siguiente (la app abre sola el próximo pedido al facturar). Sin panel,
+     el documento es del pedido abierto. */
+  function contexto() {
+    const panel = $("etqSecOverlay") || $("qrImprOverlay");
+    /* Si está abierta la ventana de la etiqueta del pedido ACTIVO (#etqOverlay), el documento es de ese pedido aunque quede un panel viejo detrás. */
+    if (panel && st.ctxPanel && !$("etqOverlay")) return st.ctxPanel;
+    const p = (typeof pedidoActivo !== "undefined" && pedidoActivo) || null;
+    return p ? { pedido: p.id, cliente: p.cliente_nombre || ("Cliente " + (p.cliente_id || "")), remito: null } : null;
+  }
+  function engancharContexto() {
+    const E = window.EtiquetasFacturacion;
+    if (E && typeof E.alFacturado === "function" && !E.alFacturado.__qid) {
+      const o = E.alFacturado;
+      const w = function (comp) { try { st.ctxPanel = { pedido: comp.pedido_id, cliente: comp.cliente_nombre || "", remito: comp.numero || null }; } catch (e) {} return o.apply(this, arguments); };
+      w.__qid = true; E.alFacturado = w;
+    }
+  }
+
+  /* ── El gancho de impresión ── */
+  function instalar() {
+    const actual = window.qrImpresionPrueba;
+    if (actual && actual.__qid) return;
+    st.previo = actual || null;
+    const h = function (w) { try { return interceptar(w); } catch (e) { console.warn("[impresión directa]", e); return navegador(w); } };
+    h.__qid = true; window.qrImpresionPrueba = h;
+  }
+  const navegador = w => { const f = st.previo || (x => x.print()); return f(w); };
+  function tipoDe(w) { try { const f = w && w.frameElement; const id = f && f.id; return id === "etqFrame" ? "total" : id === "compFrame" ? "remito" : null; } catch (e) { return null; } }
+  function interceptar(w) {
+    const tipo = tipoDe(w);
+    if (!tipo) return navegador(w);
+    const html = "<!DOCTYPE html>\n" + w.document.documentElement.outerHTML;
+    const ctx = contexto();
+    if (!ctx || !ctx.pedido) { aviso("No se reconoce el pedido de este documento: se imprime desde el navegador.", "warn"); return navegador(w); }
+    const titulo = String(w.document.title || "");
+    const numero = tipo === "remito" ? (((titulo.match(/REMITO A4 · ([^·]+) ·/) || [])[1]) || ctx.remito || "").trim() : "";
+    const base = "fact-" + tipo + "-" + String(ctx.pedido).replace(/[^A-Za-z0-9]/g, "").slice(0, 10) + "-" + hash(html);
+    const activo = Object.values(st.trabajos).find(j => j.base === base && !FINAL.has(j.estado));
+    if (activo) { aviso("Ya se está imprimiendo " + TIPOS[tipo].rotulo.toLowerCase() + ": esperá a que termine.", "warn"); pintar(); return; }
+    const copias = Object.values(st.trabajos).filter(j => j.base === base && OK.has(j.estado)).length;
+    const j = { op: base + (copias ? "-c" + (copias + 1) : ""), base, tipo, pedido: String(ctx.pedido), cliente: ctx.cliente || "", numero, copia: copias + 1,
+      doc: TIPOS[tipo].rotulo + (ctx.cliente ? " · " + ctx.cliente : "") + (numero ? " · " + numero : "") + (copias ? " · copia " + (copias + 1) : ""), html, estado: "preparando", texto: "Preparando…", t: Date.now(), consultas: 0 };
+    st.trabajos[j.op] = j; bloquear(tipo, true); pintar();
+    enviar(j, w);
+  }
+  async function enviar(j, w) {
+    let ag = null; try { ag = await agente(); } catch (e) { ag = null; }
+    const puede = ag && ag.vivo && ag.nuevo && !ag.pausa && (j.tipo !== "remito" || ag.hojas);
+    if (!puede) {
+      j.estado = "navegador"; j.fin = Date.now();
+      j.texto = !ag || !ag.vivo ? "La PC de la impresora no responde: se imprime desde el navegador (elegí la impresora en el cuadro)."
+        : !ag.nuevo ? "La PC tiene el agente anterior (" + (ag.version || "?") + "): hasta que se actualice al 2026-11-23, se imprime desde el navegador."
+        : ag.pausa ? "La impresión está en pausa por oficina" + (ag.pausaMotivo ? " (" + ag.pausaMotivo + ")" : "") + ": se imprime desde el navegador."
+        : "La PC no tiene configurada la impresora de hojas: el remito se imprime desde el navegador (elegí la Brother en el cuadro).";
+      bloquear(j.tipo, false); pintar(); guardar();
+      if (w) return navegador(w); if (j.html) return imprimirHtml(j.html, j.tipo); return;
+    }
+    let r; try { r = await rpc("qr_imp_pedir", { op: j.op, tipo: j.tipo, pedido: j.pedido, html: j.html, quien: quien(), dispositivo: "facturacion", documento: j.doc }); }
+    catch (e) { r = { ok: false, motivo: "sin conexión (" + e.message + ")" }; }
+    if (!r || !r.ok) {
+      j.fin = Date.now();
+      if (r && r.razon === "en_windows") { j.estado = "retenida"; j.texto = "Hay una impresión de este pedido retenida en la PC: resolvela en Impresora («Continuar» o «Cancelar en la PC») antes de mandar otra. No se envió nada."; }
+      else if (r && r.razon === "pausa") { j.estado = "no_enviada"; j.texto = "No se envió: la impresión está en pausa por oficina" + (r.motivo ? " (" + r.motivo + ")" : "") + "."; j.reintentable = true; }
+      else { j.estado = "no_enviada"; j.texto = "No se envió: " + ((r && r.motivo) || "error") + "."; j.reintentable = true; }
+      bloquear(j.tipo, false); pintar(); guardar(); return;
+    }
+    aplicar(j, r.trabajo, ag); pintar(); guardar();
+    seguir(j);
+  }
+  function aplicar(j, tr, ag) {
+    const e = tr.estado; j.estado = e; j.detalle = tr.detalle || null; j.error = tr.error || null; j.impresa_at = tr.impresa_at || null;
+    const dest = j.tipo === "remito" ? (ag && ag.impresoraHojas ? "«" + ag.impresoraHojas + "»" : "impresora de hojas") : (ag && ag.impresora ? "«" + ag.impresora + "»" : "térmica");
+    const pag = j.detalle && j.detalle.paginas ? " · " + (j.detalle.paginas_impresas || 0) + "/" + j.detalle.paginas + " pág." : "";
+    const M = {
+      solicitada: "En cola · " + dest + ". La PC la toma en segundos.", tomada: "Preparando en la PC…", enviada: "Imprimiendo…" + pag,
+      detenida: "Revisar la impresora: " + (j.error || "trabajo detenido en Windows") + ". No vuelvas a imprimir todavía.",
+      impresa: "Enviada a la impresora ✓ " + hhmm(tr.impresa_at) + " (Windows confirmó la entrega; fijate que haya salido)", confirmada: "Impresa y confirmada ✓",
+      incierta: "Resultado incierto: " + (j.error || "salió de la cola sin constancia") + ". Fijate si salió antes de imprimir de nuevo.",
+      fallida: "No se pudo imprimir: " + (j.error || "falló en la PC") + ".", cancelada: "Cancelada" + (j.detalle && j.detalle.estado_windows ? " en Windows" : "") + ".",
+      vencida: "Venció sin que la PC la tomara.", no_salio: "Marcada como «no salió».", descartada: "Descartada."
+    };
+    j.texto = M[e] || e; j.reintentable = ["fallida", "cancelada", "vencida", "no_salio"].includes(e);
+    if (FINAL.has(e)) { j.fin = Date.now(); bloquear(j.tipo, false); }
+  }
+  async function seguir(j) {
+    const t0 = Date.now(); await espera(6000);
+    while (!FINAL.has(j.estado) && !j.parar && Date.now() - t0 < SEGUIR_MS) {
+      j.consultas++;
+      try { const r = await rpc("qr_imp_trabajo", { id: j.op }); if (r && r.ok) aplicar(j, r.trabajo, interpretar(r.agente, r.pausa)); else if (r && !r.ok) { j.estado = "perdida"; j.texto = r.motivo || "No se encontró la impresión."; } }
+      catch (e) { j.texto = "Sin conexión para consultar el estado; se vuelve a intentar…"; }
+      pintar(); guardar();
+      if (FINAL.has(j.estado)) return;
+      await espera(PASO_MS);
+    }
+    if (!FINAL.has(j.estado) && !j.parar) { j.estado = "perdida"; j.fin = Date.now(); j.texto = "Sigue en curso después de 3 minutos: seguila en Impresora. No vuelvas a imprimir."; bloquear(j.tipo, false); pintar(); guardar(); }
+  }
+  /* Reintento explícito: otra solicitud (op nueva) con el mismo documento. Imprimir por el navegador también es explícito. */
+  function reintentar(op) { const j = st.trabajos[op]; if (!j || !j.html) return; const n = (j.reintentos || 0) + 1; const j2 = Object.assign({}, j, { op: j.base + "-r" + Date.now().toString(36), estado: "preparando", texto: "Preparando…", t: Date.now(), fin: null, consultas: 0, reintentos: n, error: null, detalle: null, reintentable: false }); delete st.trabajos[op]; st.trabajos[j2.op] = j2; st.agenteT = 0; bloquear(j2.tipo, true); pintar(); enviar(j2, null); }
+  function porNavegador(op) { const j = st.trabajos[op]; if (!j || !j.html) return; j.estado = "navegador"; j.texto = "Se mandó al cuadro de impresión del navegador (elegí la impresora)."; j.fin = Date.now(); pintar(); guardar(); imprimirHtml(j.html, j.tipo); }
+  function imprimirHtml(html, tipo) {
+    const viejo = $("qidFrame"); if (viejo) viejo.remove();
+    const f = document.createElement("iframe"); f.id = "qidFrame";
+    f.style.cssText = "position:fixed;left:-9999px;top:0;width:" + (tipo === "remito" ? "210mm" : "100mm") + ";height:" + (tipo === "remito" ? "297mm" : "150mm") + ";border:0";
+    document.body.appendChild(f); const d = f.contentWindow.document; d.open(); d.write(html); d.close();
+    let lanzado = false; const go = () => { if (lanzado) return; lanzado = true; setTimeout(() => { try { f.contentWindow.focus(); navegador(f.contentWindow); } catch (e) {} }, 120); };
+    f.onload = go; if (d.readyState === "complete") go();
+  }
+  function cancelar(op) { const j = st.trabajos[op]; if (!j) return; rpc("qr_imp_cancelar", { id: op, quien: quien(), motivo: "cancelada desde Facturación" }).then(r => { if (r.ok) { j.parar = true; aplicar(j, r.trabajo, st.agente); } else aviso(r.motivo || "No se pudo cancelar", "warn"); pintar(); guardar(); }).catch(e => aviso("Sin conexión para cancelar", "error")); }
+
+  /* ── Botones que disparan cada documento: bloqueados mientras hay uno en curso ── */
+  function bloquear(tipo, on) {
+    document.querySelectorAll(BOTONES[tipo]).forEach(b => {
+      if (on) { if (!b.dataset.qidTxt) { b.dataset.qidTxt = b.innerHTML; b.dataset.qidDis = b.disabled ? "1" : ""; } b.disabled = true; b.setAttribute("aria-busy", "true"); b.classList.add("qid-bloq"); b.innerHTML = "Imprimiendo…"; }
+      else if (b.dataset.qidTxt != null) { b.innerHTML = b.dataset.qidTxt; b.disabled = b.dataset.qidDis === "1"; b.removeAttribute("aria-busy"); b.classList.remove("qid-bloq"); delete b.dataset.qidTxt; delete b.dataset.qidDis; }
+    });
+  }
+  /* Textos de los paneles existentes que decían «elegí la impresora»: ahora sale sola si la PC responde. */
+  function textos() {
+    const ag = st.agente && Date.now() - st.agenteT < 120000 ? st.agente : null;
+    const vivo = ag && ag.vivo && ag.nuevo && !ag.pausa;
+    const R = [[/Rollo térmico · elegí la impresora de etiquetas \(3nstar\)/g, vivo ? "Rollo térmico · sale sola en la térmica (agente de impresión)" : "Rollo térmico · elegí la impresora de etiquetas (3nstar)"],
+               [/Hoja A4 · elegí la impresora de hojas \(Brother\)/g, vivo && ag.hojas ? "Hoja A4 · sale sola en la impresora de hojas" : "Hoja A4 · elegí la impresora de hojas (Brother)"],
+               [/Hoja A4 · elegí la impresora de hojas(?!\s*\()/g, vivo && ag.hojas ? "Hoja A4 · sale sola en la impresora de hojas" : "Hoja A4 · elegí la impresora de hojas"],
+               [/Rollo térmico · elegí la impresora de etiquetas(?!\s*\()/g, vivo ? "Rollo térmico · sale sola en la térmica" : "Rollo térmico · elegí la impresora de etiquetas"]];
+    /* El panel de la secuencia da por «enviado» cuando se cerró el cuadro del navegador; con el agente, lo que vale es la tarjeta. */
+    const porAgente = Object.values(st.trabajos).some(j => Date.now() - j.t < 120000 && j.estado !== "navegador");
+    if (porAgente) R.push([/Enviado a imprimir\. Revisá que haya salido el papel\./g, "Mandado al agente de impresión de esta PC: el estado real está en la tarjeta de abajo a la derecha."]);
+    for (const tipo of ["total", "remito"]) if (Object.values(st.trabajos).some(j => j.tipo === tipo && !FINAL.has(j.estado))) bloquear(tipo, true);
+    for (const el of [$("etqSecPasos"), $("qrImprOverlay")]) {
+      if (!el) continue; let h = el.innerHTML, h2 = h; for (const [re, tx] of R) h2 = h2.replace(re, tx);
+      if (vivo) h2 = h2.replace(/Son <b>dos impresoras distintas<\/b>: en el cuadro de Windows fijate el nombre\s*del trabajo \(<i>REMITO A4<\/i> o <i>ETIQUETAS<\/i>\) antes de dar imprimir\./, "Salen solas por el agente de impresión de esta PC (cada una a su impresora). Si la PC no responde, se abre el cuadro del navegador.");
+      if (h2 !== h) el.innerHTML = h2;
+    }
+    const ov = $("qrImprOverlay"); if (ov && !ov.__qidRem) { ov.__qidRem = true; const m = (ov.textContent || "").match(/Remitos+([A-Z0-9-]+)/); const p = (typeof pedidoActivo !== "undefined" && pedidoActivo) || null; if (!st.ctxPanel && p) st.ctxPanel = { pedido: p.id, cliente: p.cliente_nombre || "", remito: null }; if (st.ctxPanel && m) st.ctxPanel.remito = m[1]; }
+  }
+
+  /* ── Tarjetas de estado ── */
+  function clase(j) { return OK.has(j.estado) ? "ok" : ["fallida", "no_enviada", "cancelada", "vencida", "no_salio"].includes(j.estado) ? "mal" : ["detenida", "incierta", "retenida", "perdida"].includes(j.estado) ? "ojo" : j.estado === "navegador" ? "nav" : ""; }
+  function pintar() {
+    let b = $("qidBarra"); if (!b) { b = document.createElement("div"); b.id = "qidBarra"; b.className = "qid-barra"; b.setAttribute("role", "status"); b.setAttribute("aria-live", "polite"); document.body.appendChild(b); }
+    /* Las que terminaron bien se van solas a los 2 minutos (siguen en el panel Impresora); las que piden atención quedan hasta que Laura las cierre. */
+    const lista = Object.values(st.trabajos).filter(j => !j.oculta && Date.now() - j.t < 2 * 3600000 && !(OK.has(j.estado) && j.fin && Date.now() - j.fin > 120000)).sort((a, c) => c.t - a.t).slice(0, 4);
+    b.innerHTML = lista.map(j => {
+      const activo = !FINAL.has(j.estado);
+      const impresoraPanel = `<a href="./impresora.html" target="_blank" rel="noopener">Abrir Impresora</a>`;
+      const acciones = activo ? (j.estado === "solicitada" ? `<button type="button" data-q="cancelar" data-op="${esc(j.op)}">Cancelar</button>` : j.estado === "detenida" ? impresoraPanel : "")
+        : (j.reintentable && j.html ? `<button type="button" class="prim" data-q="reintentar" data-op="${esc(j.op)}">Reintentar</button>` : "") +
+          (["no_enviada", "fallida", "cancelada", "vencida"].includes(j.estado) && j.html ? `<button type="button" data-q="navegador" data-op="${esc(j.op)}">Imprimir desde el navegador</button>` : "") +
+          (["detenida", "incierta", "retenida", "perdida"].includes(j.estado) ? impresoraPanel : "");
+      return `<div class="qid ${clase(j)}" data-op="${esc(j.op)}" aria-busy="${activo}"><div class="qid-t">${activo ? '<span class="qid-sp" aria-hidden="true"></span>' : ""}<span title="${esc(j.doc)}">${esc(j.doc)}</span>${activo ? "" : `<button type="button" class="qid-x" data-q="ocultar" data-op="${esc(j.op)}" aria-label="Ocultar">×</button>`}</div>
+        <div class="qid-s">${esc(j.texto)}</div>${j.consultas ? `<div class="qid-d">${esc(hhmm(j.t))} · ${j.consultas} consulta${j.consultas === 1 ? "" : "s"} de estado</div>` : ""}${acciones ? `<div class="qid-b">${acciones}</div>` : ""}</div>`;
+    }).join("");
+    b.hidden = !lista.length;
+    try { document.dispatchEvent(new CustomEvent("qid:cambio")); } catch (e) {}
+  }
+  document.addEventListener("click", e => {
+    const a = e.target.closest("#qidBarra [data-q]"); if (!a) return; const op = a.getAttribute("data-op"), q = a.getAttribute("data-q");
+    if (q === "ocultar") { if (st.trabajos[op]) st.trabajos[op].oculta = true; pintar(); guardar(); } else if (q === "reintentar") reintentar(op); else if (q === "navegador") porNavegador(op); else if (q === "cancelar") cancelar(op);
+  });
+  /* Persistencia mínima: si la pantalla se recarga con una impresión en curso, se la sigue (sin el HTML: ya no se reimprime desde acá). */
+  function guardar() { try { const l = Object.values(st.trabajos).filter(j => Date.now() - j.t < 2 * 3600000).map(j => ({ op: j.op, base: j.base, tipo: j.tipo, pedido: j.pedido, cliente: j.cliente, numero: j.numero, doc: j.doc, estado: j.estado, texto: j.texto, t: j.t, fin: j.fin || null, oculta: !!j.oculta, consultas: j.consultas || 0 })); localStorage.setItem(CLAVE, JSON.stringify(l)); } catch (e) {} }
+  function recuperar() { try { const l = JSON.parse(localStorage.getItem(CLAVE) || "[]"); for (const j of l) { st.trabajos[j.op] = j; if (!FINAL.has(j.estado) && Date.now() - j.t < 15 * 60000) { j.texto = "Recuperando el estado…"; seguir(j); } else if (!FINAL.has(j.estado)) { j.estado = "perdida"; j.texto = "Quedó sin seguimiento al recargar: fijate en Impresora."; j.fin = Date.now(); } } } catch (e) {} }
+
+  function iniciar() {
+    instalar(); engancharContexto(); recuperar(); pintar();
+    setInterval(() => { instalar(); engancharContexto(); if ($("qidBarra") && !$("qidBarra").hidden) pintar(); }, 3000);   // sin llamadas: solo repinta las tarjetas
+    /* El contexto del panel «Pedido facturado» se toma en el momento en que el panel aparece (el pedido activo todavía es el que se facturó: la
+       pantalla pasa al siguiente 1,2 s después) y se suelta cuando el panel se cierra. Vale para Habituales solos (la secuencia la abre el módulo
+       de etiquetas sin pasar por alFacturado) y para mixtos (alFacturado agrega el número de remito). Sin esto, un Habituales facturado después
+       de un mixto heredaba el pedido del mixto. */
+    new MutationObserver(() => {
+      const sec = $("etqSecOverlay") || $("qrImprOverlay");
+      if (sec && !sec.__qidCtx) { sec.__qidCtx = true; const p = (typeof pedidoActivo !== "undefined" && pedidoActivo) || null; if (p) { const mismo = st.ctxPanel && String(st.ctxPanel.pedido) === String(p.id); st.ctxPanel = { pedido: p.id, cliente: p.cliente_nombre || "", remito: mismo ? st.ctxPanel.remito : null }; } }
+      if (!sec && st.ctxPanel) st.ctxPanel = null;
+    }).observe(document.body, { childList: true });
+    let tm = null; new MutationObserver(() => { clearTimeout(tm); tm = setTimeout(textos, 60); }).observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
+  window.qrImpDirecta = { estado: () => st, olvidar: () => { st.agenteT = 0; st.agente = null; }, pintar, agente, version: "2026-11-22" };
+})();
+</script>
+<script id="qrChequeoMod">
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════
+   FACTURACIÓN · Chequeo final Queruclor (22/11/2026)
+
+   Depósito prepara y cierra Queruclor con lector; eso no cambia. Acá Laura hace un SEGUNDO chequeo, independiente: por cada
+   artículo Queruclor con cajas preparadas, le pregunta al armador si coincide la cantidad y toca «Confirmar» (uno por uno; no
+   hay «confirmar todos»). «No coincide» abre el detalle de preparación existente (revisar / retirar cajas con motivo); si la
+   preparación cambia, la versión cambia y las confirmaciones afectadas dejan de valer. El servidor guarda quién, cuándo,
+   cuántas cajas y sobre qué versión (migración 053); confirmar no toca stock, cantidades, reservas, etiquetas ni remitos.
+   Sin corroboración vigente no se factura: lo frena esta pantalla y, con la exigencia encendida, también qr_emitir_remito.
+   Lecturas: una por pedido abierto (y otra solo si cambia la versión de la preparación); la confirmación devuelve el estado.
+   Se muestra solo cuando corresponde: pedidos sin Queruclor preparado por lector no ven nada.
+   ══════════════════════════════════════════════════════════════════════════════════════════════════════ */
+(function () {
+  "use strict";
+  if (window.qrChequeo) return;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const pedido = () => (typeof pedidoActivo !== "undefined" && pedidoActivo) || null;
+  const quien = () => { try { return (typeof currentUser !== "undefined" && currentUser) || localStorage.getItem("factUser") || "LAURA"; } catch (e) { return "LAURA"; } };
+  const aviso = (t, tipo) => { try { if (typeof toast === "function") toast(t, tipo || ""); } catch (e) {} };
+  const hhmm = iso => { try { return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+  const st = { pedido: null, version: null, estado: null, cargando: false, error: null, guardando: new Set(), plegar: true };
+  async function rpc(fn, body) {
+    const r = await fetch("/rest/v1/rpc/" + fn, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), cache: "no-store" });
+    let j = null; try { j = await r.json(); } catch (e) {}
+    if (!r.ok) throw new Error((j && (j.message || j.motivo)) || ("error " + r.status));
+    return j;
+  }
+  const prep = () => { try { return window.qrFactPreparado ? { e: qrFactPreparado.estado(), modo: qrFactPreparado.modo() } : null; } catch (e) { return null; } };
+  /* ¿Corresponde el chequeo? Solo con la parte Queruclor preparada y cerrada por lector (sin cajas a revisar) y con cajas preparadas. */
+  function aplica() { const p = pedido(), pr = prep(); return !!(p && pr && pr.e && pr.modo === "preparado" && (pr.e.articulos || []).some(a => Number(a.preparadas) > 0)); }
+  function cambio() { document.dispatchEvent(new CustomEvent("qrchq:cambio")); }
+
+  async function cargar(forzar) {
+    const p = pedido(), pr = prep(); if (!p || !pr || !pr.e) return;
+    const v = pr.e.version;
+    if (!forzar && String(st.pedido) === String(p.id) && st.version === v && st.estado) return;
+    st.cargando = true; st.error = null; pintar();
+    try {
+      const s = await rpc("qr_chequeo_estado", { p_pedido: String(p.id) });
+      if (pedido() && String(pedido().id) === String(p.id)) { st.pedido = p.id; st.version = s.version; st.estado = s; }
+    } catch (e) { st.error = "No se pudo leer el chequeo: " + e.message; }
+    st.cargando = false; pintar(); cambio();
+  }
+  function refrescar() {
+    const p = pedido();
+    if (!p || !aplica()) { const sec = $("mChequeo"); if (sec) sec.remove(); if (!p || String(st.pedido) !== String(p && p.id)) { st.estado = null; st.pedido = p ? p.id : null; st.version = null; } cambio(); return; }
+    cargar(false); pintar();
+  }
+  /* Lo que falta corroborar: vigente = confirmado sobre la versión actual con las mismas cajas. Sin estado cargado, se considera que falta. */
+  function falta() {
+    if (!aplica()) return [];
+    if (!st.estado || String(st.pedido) !== String(pedido().id)) return [{ clave: "?", nombre: "chequeo sin cargar", cajas: 0 }];
+    if (st.estado.remito) return [];
+    return (st.estado.articulos || []).filter(a => !a.vigente).map(a => ({ clave: a.clave, nombre: a.nombre, cajas: a.cajas }));
+  }
+  function contenido(clave) {
+    const pr = prep(); if (!pr || !pr.e) return "";
+    const cajas = (pr.e.cajas || []).filter(c => c.preparada && c.clave === clave);
+    const tot = {}; cajas.forEach(c => (c.contenido || []).forEach(u => { const k = u.nombre || u.ean; tot[k] = (tot[k] || 0) + (Number(u.sueltas) || 0); }));
+    const l = Object.entries(tot).filter(([, n]) => n > 0).map(([k, n]) => n + " " + k);
+    return l.length ? "lleva " + l.join(" + ") : "";
+  }
+  /* Cajas sin lector (registradas a mano en Depósito porque el código no leía): se avisan por artículo y en el encabezado, para mirarlas con más cuidado. */
+  function sinLector(clave) { const pr = prep(); if (!pr || !pr.e) return 0; return (pr.e.cajas || []).filter(c => c.preparada && c.origen === "sin_lector" && (clave == null || c.clave === clave)).length; }
+  /* El detalle «Preparado en Depósito» (módulo existente) repite lo que esta sección ya dice: mientras el chequeo aplica, queda plegado y oculto;
+     «Ver cajas preparadas» y «No coincide» lo abren (ahí están Retirar con motivo y el detalle por caja). Se vuelve a plegar al cambiar de pedido. */
+  function acomodarPreparacion() {
+    const fpp = $("qrPrepFact"); if (!fpp) return;
+    let tg = $("fppToggle");
+    if (st.plegar && tg && tg.getAttribute("aria-expanded") === "true") { st.plegar = false; try { tg.click(); } catch (e) {} tg = $("fppToggle"); }
+    st.plegar = false;
+    const abierto = !!(tg && tg.getAttribute("aria-expanded") === "true");
+    fpp.classList.toggle("m-chq-oculto", !abierto && !fpp.querySelector(".fpp.cambio"));
+  }
+  function pintar() {
+    const p = pedido(); const ip = $("itemsPanel");
+    if (!p || !ip || !aplica()) { const sec = $("mChequeo"); if (sec) sec.remove(); const fpp = $("qrPrepFact"); if (fpp) fpp.classList.remove("m-chq-oculto"); return; }
+    let sec = $("mChequeo");
+    if (!sec) { sec = document.createElement("section"); sec.id = "mChequeo"; sec.className = "m-chq"; sec.setAttribute("role", "region"); sec.setAttribute("aria-label", "Chequeo final Queruclor"); sec.setAttribute("aria-live", "polite"); sec.title = "Preguntale al armador si coinciden las cajas y confirmá de a uno. Confirmar no cambia el armado."; }
+    const ancla = $("qrPrepFact") || $("qrPanel");
+    if (ancla && ancla.parentNode === ip) { if (sec.nextSibling !== ancla) ip.insertBefore(sec, ancla); } else if (sec.parentNode !== ip) ip.appendChild(sec);
+    const s = st.estado && String(st.pedido) === String(p.id) ? st.estado : null;
+    const cerrado = !!(s && s.remito);
+    const arts = s ? (s.articulos || []) : [];
+    const completo = !!s && !cerrado && s.total > 0 && s.corroborados === s.total;
+    const prog = s ? `${s.corroborados} de ${s.total} ${s.total === 1 ? "artículo corroborado" : "artículos corroborados"}` : (st.cargando ? "cargando…" : (st.error || ""));
+    sec.classList.toggle("completo", completo);
+    sec.classList.toggle("cerrado", cerrado);
+    const pr = prep(); const e = pr && pr.e ? pr.e : null; const cajasE = e ? (e.cajas || []) : [];
+    const nPrep = cajasE.filter(c => c.preparada).length, nFalt = cajasE.filter(c => c.faltante).length, nRet = cajasE.filter(c => c.estado === "retirada").length, nSL = sinLector(null);
+    const quienP = (s && s.preparado_por) || (e && e.bloque && (e.bloque.preparacion && e.bloque.preparacion.quien || e.bloque.listo_por)) || "";
+    const cuandoP = e && e.bloque ? (e.bloque.listo_at || (e.bloque.preparacion && e.bloque.preparacion.fecha)) : null;
+    const meta = ["preparó " + esc(quienP || "Depósito") + (cuandoP ? " " + esc(hhmm(cuandoP)) : ""), nPrep + (nPrep === 1 ? " caja" : " cajas"), nSL ? `<b class="m-chq-sl">${nSL} sin lector</b>` : "", nFalt ? nFalt + (nFalt === 1 ? " faltante" : " faltantes") : "", nRet ? nRet + (nRet === 1 ? " retirada" : " retiradas") : ""].filter(Boolean).join(" · ");
+    sec.innerHTML = `<div class="m-chq-h"><div><b>Chequeo final Queruclor</b><span class="m-chq-prog">${esc(prog)}</span><span class="m-chq-meta">${meta}</span><button type="button" class="m-chq-lnk" data-cajas>Ver cajas preparadas</button></div>
+        ${cerrado ? `<small>Remito ${esc(s.remito)} emitido: el chequeo quedó cerrado.</small>` : completo ? "" : `<small>Preguntale al armador si coinciden las cajas y confirmá de a uno. Confirmar no cambia el armado.</small>`}</div>
+      <div class="m-chq-l">${arts.map(a => {
+        const est = a.vigente ? "ok" : a.cambio ? "cambio" : "pend";
+        const txt = a.vigente ? "Corroborado · " + esc(a.confirmado_por || "") + " " + esc(hhmm(a.confirmado_at))
+          : a.cambio ? "La preparación cambió (antes " + esc(a.confirmado_cajas) + " cajas): volver a corroborar"
+          : "Pendiente";
+        const guardando = st.guardando.has(a.clave); const sl = sinLector(a.clave);
+        const det = [a.tipo && a.tipo !== "cerrada" ? esc(a.tipo) : "", esc(contenido(a.clave)), sl ? `<b class="m-chq-sl">${sl} sin lector: mirá esa caja</b>` : "", a.faltantes ? a.faltantes + " faltante" + (a.faltantes === 1 ? "" : "s") + " en Depósito" : "", a.retiradas ? a.retiradas + " retirada" + (a.retiradas === 1 ? "" : "s") : ""].filter(Boolean).join(" · ");
+        return `<div class="m-chq-r ${est}" data-clave="${esc(a.clave)}"><div class="m-chq-n"><b>${esc(a.nombre)}</b>${det ? `<small>${det}</small>` : ""}</div>
+          <div class="m-chq-c">${esc(a.cajas)} ${a.cajas === 1 ? "caja" : "cajas"}</div>
+          <div class="m-chq-e">${txt}</div>
+          <div class="m-chq-b">${cerrado ? "" : (a.vigente ? "" : `<button type="button" class="m-b prim chico" data-ok="${esc(a.clave)}" ${guardando ? 'disabled aria-busy="true"' : ""}>${guardando ? "Guardando…" : "Confirmar"}</button>`) + `<button type="button" class="m-b chico" data-no="${esc(a.clave)}" ${guardando ? "disabled" : ""}>No coincide</button>`}</div></div>`;
+      }).join("")}</div>`;
+    acomodarPreparacion();
+  }
+  function verCajas() {
+    try { qrFactPreparado.abrir(); } catch (e) {}
+    const t = $("fppToggle"); if (t && t.getAttribute("aria-expanded") !== "true") t.click();
+    const host = $("qrPrepFact"); if (host) { host.classList.remove("m-chq-oculto"); host.scrollIntoView({ block: "nearest" }); }
+  }
+  async function confirmar(clave) {
+    const p = pedido(); const s = st.estado; if (!p || !s) return;
+    const a = (s.articulos || []).find(x => x.clave === clave); if (!a || st.guardando.has(clave)) return;
+    st.guardando.add(clave); pintar();
+    let r = null;
+    try { r = await rpc("qr_chequeo_confirmar", { p: { pedido: String(p.id), clave, cajas: a.cajas, version: s.version, quien: quien() } }); }
+    catch (e) { aviso("No se pudo guardar la corroboración: " + e.message, "error"); }
+    st.guardando.delete(clave);
+    if (r && r.estado && pedido() && String(pedido().id) === String(p.id)) { st.estado = r.estado; st.version = r.estado.version; st.pedido = p.id; }
+    if (r && !r.ok) { aviso(r.motivo || "No se pudo corroborar", "warn"); if (r.razon === "cambio") { try { qrFactPreparado.abrir(); } catch (e) {} } }
+    pintar(); cambio();
+  }
+  function noCoincide(clave) {
+    try { qrFactPreparado.abrir(); } catch (e) {}
+    const t = $("fppToggle"); if (t && t.getAttribute("aria-expanded") !== "true") t.click();
+    const host = $("qrPrepFact"); if (host) { host.classList.remove("m-chq-oculto"); host.scrollIntoView({ block: "nearest" }); }
+    aviso("Revisá o retirá cajas en «Preparado en Depósito» (con motivo). Si la preparación cambia, se vuelve a corroborar.", "warn");
+  }
+  function irA() { const sec = $("mChequeo"); if (!sec) return; sec.scrollIntoView({ block: "center" }); sec.classList.add("atencion"); setTimeout(() => sec.classList.remove("atencion"), 1400); const b = sec.querySelector("[data-ok]"); if (b) b.focus(); }
+  document.addEventListener("click", e => {
+    const ok = e.target.closest("#mChequeo [data-ok]"); if (ok) { e.preventDefault(); e.stopPropagation(); confirmar(ok.getAttribute("data-ok")); return; }
+    const no = e.target.closest("#mChequeo [data-no]"); if (no) { e.preventDefault(); e.stopPropagation(); noCoincide(no.getAttribute("data-no")); return; }
+    const vc = e.target.closest("#mChequeo [data-cajas]"); if (vc) { e.preventDefault(); e.stopPropagation(); verCajas(); }
+  }, true);
+
+  /* ── Puerta: sin corroboración vigente no se factura (además del servidor) ── */
+  function envolverFacturar() {
+    const o = window.facturarPedido; if (typeof o !== "function" || o.__chq) return;
+    const w = function () { const f = falta(); if (f.length) { irA(); aviso("Falta corroborar " + f.length + (f.length === 1 ? " artículo" : " artículos") + " de Queruclor con el armador antes de facturar.", "warn"); return; } return o.apply(this, arguments); };
+    w.__chq = true; w.__alf = o.__alf; w.__fv2 = o.__fv2; w._conEtiqueta = o._conEtiqueta; w.__mesa = o.__mesa; for (const k of Object.keys(o)) if (!(k in w)) w[k] = o[k];
+    window.facturarPedido = w;
+  }
+  function enganchar() {
+    const wrap = (n, fn) => { const o = window[n]; if (typeof o !== "function" || o.__chq) return; const w = function () { const r = o.apply(this, arguments); const seguir = () => { try { fn(); } catch (e) { console.warn("[chequeo]", e); } }; if (r && typeof r.then === "function") r.then(seguir, seguir); else seguir(); return r; }; w.__chq = true; for (const k of Object.keys(o)) if (!(k in w)) w[k] = o[k]; w.__alf = o.__alf; w.__fv2 = o.__fv2; w._conEtiqueta = o._conEtiqueta; w.__mesa = o.__mesa; window[n] = w; };
+    wrap("renderItemsF", refrescar);
+    wrap("seleccionar", () => { st.estado = null; st.version = null; st.pedido = pedido() ? pedido().id : null; st.plegar = true; refrescar(); });
+    envolverFacturar();
+  }
+  function iniciar() {
+    enganchar(); setInterval(envolverFacturar, 2500);
+    const ip = $("itemsPanel"); if (ip) { let tm = null; new MutationObserver(m => { if (m.some(x => [...x.addedNodes, ...x.removedNodes].some(n => n.id === "qrPrepFact" || n.id === "qrPanel" || (n.classList && n.classList.contains("item-f"))))) { clearTimeout(tm); tm = setTimeout(refrescar, 120); } }).observe(ip, { childList: true }); }
+    /* El módulo de preparación repinta su panel (#qrPrepFact) cuando llegan cambios por el canal existente: ese repintado dispara la relectura si cambió la versión. */
+    const h = $("qrPrepFact"); if (h) new MutationObserver(() => refrescar()).observe(h, { childList: true });
+    refrescar();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
+  window.qrChequeo = { estado: () => st.estado, falta, aplica, irA, refrescar: () => cargar(true), confirmar, version: "2026-11-22" };
 })();
 </script>
 <script id="qrActualizador" data-sw="./service-worker.js">
