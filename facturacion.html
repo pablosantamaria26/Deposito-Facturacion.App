@@ -5017,10 +5017,37 @@ window.onload = () => {
   const aRevisar = () => S.get("qr_a_revisar", "order=creado.asc", 0) || [];
   const reservasColgadas = dias => S.rpc("qr_reservas_colgadas", { p_dias: dias || 3 }) || [];
 
+  /* 25/11/2026 · Antes de despachar, la reserva SUBE a lo que sale en el remito. Un renglón cambiado o agregado después de que
+     llegó el pedido no tenía reserva y el stock no lo descontaba (QR-2026-000024: Amanecer → Bosque; talco del 001856).
+     Solo donde la reserva es menor o no existe; una reserva ya «entregada» no se toca (no se descuenta dos veces). */
+  function completarReserva(pedidoId, items, quien) {
+    const quiere = {};
+    for (const it of items || []) {
+      if (!it || !it.ean) continue;
+      const q = quiere[String(it.ean)] = quiere[String(it.ean)] || { cajas: 0, unidades: 0 };
+      q.cajas += num(it.cajas); q.unidades += num(it.unidades);
+    }
+    const eans = Object.keys(quiere);
+    if (!eans.length) return { ok: true, completadas: [] };
+    const res = S.get("qr_reservas", "pedido_id=eq." + encodeURIComponent(String(pedidoId)) + "&select=ean,cajas,unidades,estado,vendedor", 0) || [];
+    const por = {}; res.forEach(r => { por[String(r.ean)] = r; });
+    const hechas = [];
+    for (const e of eans) {
+      const q = quiere[e], r = por[e];
+      if (r && r.estado === "entregada") continue;
+      if (r && r.estado === "reservada" && num(r.cajas) >= q.cajas && num(r.unidades) >= q.unidades) continue;
+      if (r && r.estado === "reservada") liberar(pedidoId, e, quien);
+      const x = reservar(pedidoId, [{ ean: e, cajas: q.cajas, unidades: q.unidades }], { vendedor: r ? r.vendedor : null });
+      hechas.push({ ean: e, antes: r ? { cajas: r.cajas, unidades: r.unidades, estado: r.estado } : null, remito: q, reserva: x && x.detalle });
+    }
+    if (hechas.length) console.log("[stock] reserva completada con el remito:", hechas);
+    return { ok: true, completadas: hechas };
+  }
+
   global.Stock = {
     fisico, reservado, disponible, estado, todos,
     recibir, contar, ajustar, devolver,
-    reservar, liberar, despachar, ajustarReserva,
+    reservar, liberar, despachar, ajustarReserva, completarReserva,
     movimientos, aRevisar, reservasColgadas, ucDe,
     _reset: () => { throw new Error("En el sistema compartido el stock no se borra desde una pantalla."); },
     _claves: {}, _remoto: true,
@@ -9552,6 +9579,11 @@ var qrcode = function() {
               const salen = comp.renglones.filter(r => r.ean).map(r => (r.modo === "surtida" || r.modo === "mixta" || r.sueltas || r.cajas == null)
                 ? { ean: r.ean, unidades: Number(r.unidades) || 0 } : { ean: r.ean, cajas: Number(r.cajas) || 0 });
               Stock.ajustarReserva(p.sig, salen, (typeof currentUser !== "undefined" ? currentUser : "LAURA"));
+              /* 25/11/2026 · …y SUBE a lo que sale: el stock descuenta exactamente lo facturado. */
+              if (Stock.completarReserva) {
+                try { Stock.completarReserva(p.sig, salen, (typeof currentUser !== "undefined" ? currentUser : "LAURA")); }
+                catch (e) { console.warn("[stock] no se pudo completar la reserva con el remito:", e); }
+              }
             }
             Stock.despachar(p.sig, (typeof currentUser !== "undefined" ? currentUser : "LAURA"));
           }
