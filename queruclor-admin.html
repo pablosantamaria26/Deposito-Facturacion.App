@@ -2692,8 +2692,20 @@ renderCatKPIs();
     };
   }
 
+  /* margen-real 25/11/2026 */
+  /* Lo que DA un precio ya publicado (el inverso de desglose): con el costo neto y el precio final, cuánto queda.
+     m = utilidad ÷ neto (misma base que el margen objetivo; con IIBB y cheque en 0 es (precio − costo con IVA) ÷ precio).
+     recargo = precio ÷ costo con IVA − 1 (la «utilidad» de la planilla). ganancia = precio − costo con IVA, por unidad. */
+  function real(costoNeto, precioFinal) {
+    const c = config(), cn = Number(costoNeto) || 0, f = Number(precioFinal) || 0, n = f / (1 + IVA);
+    const gIibb = (c.iibbSobre === "final" ? f : n) * (c.iibb || 0);
+    const gCheque = (c.chequeSobre === "final" ? f : n) * (c.cheque || 0);
+    const util = n - cn - gIibb - gCheque;
+    return { neto: n, util, m: n > 0 ? util / n : 0, recargo: cn > 0 ? f / (cn * (1 + IVA)) - 1 : null, ganancia: f - cn * (1 + IVA) };
+  }
+
   global.Precio = {
-    IVA, config, setConfig, simular, margenLista, neto, final, desarmar, desglose, redondear,
+    IVA, config, setConfig, simular, margenLista, neto, final, desarmar, desglose, redondear, real,
     _reset: () => localStorage.removeItem(K_CFG),
   };
 
@@ -2861,9 +2873,14 @@ renderCatKPIs();
          venta NO cambian al subir una lista: acá se ve cuánto aprieta o afloja el costo nuevo en cada lista. */
       const gen = viejo.precioUnit, perf = viejo.listas && viejo.listas.perfumeria ? viejo.listas.perfumeria.precioUnit : null;
       const u = (precio, costo) => precio > 0 && costo > 0 ? precio / (costo * 1.21) - 1 : null;
-      const x = { precioActual: gen, perfActual: perf,
-        utilAntes: u(gen, viejo.costoNeto), utilDespues: u(gen, p.costoNeto),
-        perfAntes: u(perf, viejo.costoNeto), perfDespues: u(perf, p.costoNeto) };
+      /* 25/11/2026 · el precio acompaña al costo (se conserva el margen real): la utilidad queda igual. */
+      const k = viejo.costoNeto > 0 && p.costoNeto > 0 ? p.costoNeto / viejo.costoNeto : 1;
+      const r2c = n => Math.round(n * 100) / 100;
+      const precioNuevo = gen > 0 ? r2c(gen * k) : null, perfNuevo = perf > 0 ? r2c(perf * k) : null;
+      const x = { precioActual: gen, perfActual: perf, precioNuevo, perfNuevo,
+        margenReal: gen > 0 && viejo.costoNeto > 0 ? 1 - viejo.costoNeto * 1.21 / gen : null,
+        utilAntes: u(gen, viejo.costoNeto), utilDespues: u(precioNuevo, p.costoNeto),
+        perfAntes: u(perf, viejo.costoNeto), perfDespues: u(perfNuevo, p.costoNeto) };
       x.bajoPiso = (x.utilDespues != null && x.utilDespues < PISO_UTILIDAD) || (x.perfDespues != null && x.perfDespues < PISO_UTILIDAD);
       cambios.push(Object.assign({}, p, x, {
         costoAnterior: viejo.costoNeto,
@@ -2905,13 +2922,23 @@ renderCatKPIs();
          el suyo, si no la lista nueva le pisa el precio sin avisar. */
       const general = typeof opts.margen === "number" ? opts.margen
         : (global.Precio ? Precio.config().margenObjetivo : undefined);
-      /* 17/11/2026 · Precio fijo (los precios comerciales de Pablo, general y perfumería): subir una lista actualiza SOLO
-         el costo. El precio de venta se conserva tal cual; cambiarlo es una decisión aparte, artículo por artículo. */
-      if (viejo && viejo.precioFijo) {
+      /* 25/11/2026 · POLÍTICA DE PRECIOS DE PABLO: un artículo con precio CONSERVA SU MARGEN REAL. Si la lista le cambia el
+         costo, el precio de venta (General y Perfumería) se mueve en la misma proporción; si no, queda igual. Cambiar el margen
+         es una decisión a mano, artículo por artículo. Reemplaza la regla del 17/11 (el precio fijo no se movía y el margen se
+         achicaba solo). Los artículos sin precio todavía salen con el margen general, como siempre. */
+      if (viejo && viejo.precioUnit > 0) {
         const nuevo = cat[p.ean];
-        nuevo.precioUnit = viejo.precioUnit;
-        nuevo.precioBulto = Math.round(viejo.precioUnit * (nuevo.uc || 1) * 100) / 100;
-        nuevo.precioFijo = true;
+        const cambia = viejo.costoNeto > 0 && nuevo.costoNeto > 0 && Math.abs(viejo.costoNeto - nuevo.costoNeto) > 0.005;
+        const k = cambia ? nuevo.costoNeto / viejo.costoNeto : 1;
+        nuevo.precioUnit = Math.round(viejo.precioUnit * k * 100) / 100;
+        nuevo.precioBulto = Math.round(nuevo.precioUnit * (nuevo.uc || 1) * 100) / 100;
+        if (viejo.precioFijo) nuevo.precioFijo = true;
+        const pf = viejo.listas && viejo.listas.perfumeria;
+        if (cambia && pf && pf.precioUnit > 0) {
+          const pu = Math.round(pf.precioUnit * k * 100) / 100;
+          nuevo.listas = Object.assign({}, viejo.listas, { perfumeria: Object.assign({}, pf, { precioUnit: pu, precioBulto: Math.round(pu * (nuevo.uc || 1) * 100) / 100 }) });
+        }
+        if (cambia) { nuevo.precioAnterior = viejo.precioUnit; nuevo.precioPorCosto = ahora; }
       } else if (typeof general === "number" && cat[p.ean].costoNeto > 0) {
         const nuevo = cat[p.ean];
         nuevo.precioUnit = Math.round(precioVenta(nuevo.costoNeto, margenDe(nuevo, general)) * 100) / 100;
@@ -5085,8 +5112,8 @@ renderCatKPIs();
       `${dif.iguales.length} sin cambios` +
       (dif.ausentes.length ? ` · <span style="color:#b45309">${dif.ausentes.length} ya no vienen en la lista</span>` : "") +
       (dif.sinCosto && dif.sinCosto.length ? ` · <span style="color:#b45309">${dif.sinCosto.length} vienen sin costo (se conservan, marcados «Sin costo»)</span>` : "") +
-      `<br><b style="color:#166534">Tus precios de venta (General y Perfumería) NO cambian:</b> subir la lista actualiza solo los costos. ` +
-      `Cada fila muestra cuánto cambia la utilidad de cada lista con el costo nuevo` +
+      `<br><b style="color:#166534">Cada artículo conserva su margen real:</b> si el costo cambia, el precio de venta (General y Perfumería) se mueve en la misma proporción; si no cambia, queda igual. ` +
+      `Cada fila muestra el precio nuevo` +
       (dif.cambios.filter(c => c.bajoPiso).length ? `; <b style="color:#b91c1c">${dif.cambios.filter(c => c.bajoPiso).length} quedarían por debajo del piso de 11 % sobre costo</b>` : "") + ".";
 
     const filaAlta = p => `<tr style="background:#f0fdf4">
@@ -5100,7 +5127,7 @@ renderCatKPIs();
 
     /* Utilidad = recargo sobre costo con IVA (precio ÷ costo − 1), con el precio de venta que NO cambia. */
     const u1 = x => x == null ? "—" : (x * 100).toFixed(1).replace(".", ",") + "%";
-    const impactoUtil = c => c.utilAntes == null && c.utilDespues == null ? "" : `<small style="display:block;font-weight:600;color:${c.bajoPiso ? "#b91c1c" : "#475569"}">General ${u1(c.utilAntes)} → ${u1(c.utilDespues)}${c.perfDespues != null ? " · Perf. " + u1(c.perfAntes) + " → " + u1(c.perfDespues) : ""}${c.bajoPiso ? " ⚠ bajo el piso" : ""}</small>`;
+    const impactoUtil = c => !(c.precioActual > 0) ? "" : `<small style="display:block;font-weight:600;color:${c.bajoPiso ? "#b91c1c" : "#475569"}">Precio ${fmt(c.precioActual)} → <b>${fmt(c.precioNuevo)}</b>${c.perfNuevo != null ? " · Perf. " + fmt(c.perfActual) + " → <b>" + fmt(c.perfNuevo) + "</b>" : ""} · margen ${u1(c.margenReal)} (se mantiene)${c.bajoPiso ? " ⚠ bajo el piso" : ""}</small>`;
     const filaCambio = c => `<tr>
         <td style="font-weight:600;font-size:12px">${esc(c.nombreCompleto.slice(0, 52))}
           ${c.ucAnterior !== c.uc ? `<span style="background:#d97706;color:#fff;font-size:9px;font-weight:800;padding:1px 6px;border-radius:99px;margin-left:6px">U/C ${c.ucAnterior}→${c.uc}</span>` : ""}</td>
@@ -6327,12 +6354,15 @@ renderCatKPIs();
   function fila(p) {
     const f = Catalogo.buscar(eanRef(p));
     if (!f || !(f.costoNeto > 0)) return null;
-    const m = Catalogo.margenDe(f, general());
-    const d = Precio.desglose(f.costoNeto, m);
+    const objetivo = Catalogo.margenDe(f, general());
+    const d = Precio.desglose(f.costoNeto, objetivo);
+    const precio = f.precioUnit || d.final;
+    /* 25/11/2026 · margen y utilidad REALES: los que da el precio publicado con el costo (antes: el objetivo configurado). */
+    const r = Precio.real ? Precio.real(f.costoNeto, precio) : { m: objetivo, neto: d.neto, util: d.limpio };
     return {
-      p, f, m, propio: typeof f.margenOverride === "number",
-      costo: f.costoNeto, precio: f.precioUnit || d.final, neto: d.neto,
-      util: d.limpio, uc: f.uc || p.uc || 1, vto: f.fechaVto || "",
+      p, f, m: r.m, objetivo, propio: typeof f.margenOverride === "number",
+      costo: f.costoNeto, precio, neto: r.neto,
+      util: r.util, uc: f.uc || p.uc || 1, vto: f.fechaVto || "",
     };
   }
   /* ── Habilitado para los vendedores (catalogo-vendedor.js) ──────────
@@ -6394,7 +6424,7 @@ renderCatKPIs();
   function anotar(cambios) { colaHist.push(...cambios); }
   window.aaAnotar = anotarYa;
   const avisarPub = (estado, eans, txt) => { try { window.dispatchEvent(new CustomEvent("qr:publicacion", { detail: { estado, eans: eans || [], txt: txt || "" } })); } catch (e) {} };
-  const foto = f => f ? { costo: f.costoNeto, margen: Catalogo.margenDe(f, general()), propio: typeof f.margenOverride === "number", precio: f.precioUnit } : {};
+  const foto = f => f ? { costo: f.costoNeto, margen: f.costoNeto > 0 && f.precioUnit > 0 && Precio.real ? Precio.real(f.costoNeto, f.precioUnit).m : Catalogo.margenDe(f, general()), propio: typeof f.margenOverride === "number", precio: f.precioUnit } : {};
   const pctTxt = m => m == null ? "" : (Math.round(m * 1000) / 10).toLocaleString("es-AR") + "%";
 
   function tocar(p, cambio) {
@@ -6404,14 +6434,25 @@ renderCatKPIs();
     for (const ean of eansDe(p)) {
       const f = cat[ean];
       if (!f) continue;
-      const mo0 = f.margenOverride;
+      const mo0 = f.margenOverride, c0 = f.costoNeto;
       cambio(f);
-      /* 17/11/2026 · precio comercial fijo: cambiar el COSTO a mano no mueve el precio; cambiar el MARGEN a propósito sí
-         (el artículo pasa a calcularse por margen). */
-      if (f.precioFijo && f.margenOverride === mo0) continue;
-      if (f.precioFijo) delete f.precioFijo;
-      f.precioUnit = r2(Catalogo.precioVenta(f.costoNeto, Catalogo.margenDe(f, general())));
-      f.precioBulto = r2(f.precioUnit * (f.uc || 1));
+      /* 25/11/2026 · política de Pablo: margen, utilidad o precio cambiados A MANO mandan (el precio sale de lo que escribió);
+         un COSTO corregido a mano conserva el margen real, igual que una lista; lo demás no toca el precio publicado. */
+      if (f.margenOverride !== mo0 || !(f.precioUnit > 0)) {
+        if (f.precioFijo) delete f.precioFijo;
+        f.precioUnit = r2(Catalogo.precioVenta(f.costoNeto, Catalogo.margenDe(f, general())));
+        /* Precio escrito a mano: queda EXACTO lo que se escribió (la cuenta inversa podía dar $1.999,99 por $2.000). */
+        if (f.__precioManual > 0) f.precioUnit = r2(f.__precioManual);
+        f.precioBulto = r2(f.precioUnit * (f.uc || 1));
+      } else if (c0 > 0 && f.costoNeto > 0 && Math.abs(f.costoNeto - c0) > 0.005) {
+        const k = f.costoNeto / c0;
+        f.precioUnit = r2(f.precioUnit * k);
+        f.precioBulto = r2(f.precioUnit * (f.uc || 1));
+        const pf = f.listas && f.listas.perfumeria;
+        if (pf && pf.precioUnit > 0) { const pu = r2(pf.precioUnit * k); f.listas = Object.assign({}, f.listas, { perfumeria: Object.assign({}, pf, { precioUnit: pu, precioBulto: r2(pu * (f.uc || 1)) }) }); }
+      }
+      delete f.__precioManual;
+      if (f.costoNeto > 0 && f.costoNeto !== c0) f.costoFinalIva = r2(f.costoNeto * 1.21);
     }
     Catalogo._guardar(cat);
     /* La tabla vieja del Catálogo lee el array embebido: se lo alinea. */
@@ -6484,7 +6525,7 @@ renderCatKPIs();
     for (let k = 0; k < 60; k++) { const mid = (lo + hi) / 2; if (pv(mid) < objetivo) lo = mid; else hi = mid; }
     const m = Math.round(((lo + hi) / 2) * 1e6) / 1e6;   // con 4 decimales $5.000 daba $5.000,70
     if (!confirmarRaro(p, m)) return pintarTodo();
-    tocar(p, f => { f.margenOverride = m; });
+    tocar(p, f => { f.margenOverride = m; f.__precioManual = objetivo; });
     pintarTodo(i);
   };
 
@@ -7202,8 +7243,10 @@ renderCatKPIs();
     const D = aaDatos;
     const f = Catalogo.buscar(D.eanRef(p));
     if (!f) return null;
-    const m = Catalogo.margenDe(f, D.general());
-    return { f, m, propio: typeof f.margenOverride === "number", dias: D.diasA(f.fechaVto || ""), vto: f.fechaVto || "" };
+    const objetivo = Catalogo.margenDe(f, D.general());
+    /* 25/11/2026 · margen REAL: el que da el precio publicado con el costo (antes mostraba el objetivo configurado). */
+    const real = f.costoNeto > 0 && f.precioUnit > 0 && window.Precio && Precio.real ? Precio.real(f.costoNeto, f.precioUnit) : null;
+    return { f, m: real ? real.m : objetivo, real, objetivo, propio: typeof f.margenOverride === "number", dias: D.diasA(f.fechaVto || ""), vto: f.fechaVto || "" };
   }
 
   /* ── Fila ──────────────────────────────────────────────────────── */
@@ -7218,9 +7261,13 @@ renderCatKPIs();
     let margen = "—";
     if (d && !(costo > 0)) margen = '<span class="vt-nada" title="Sin costo cargado: el margen no se puede calcular.">Sin costo</span>';
     else if (d) {
-      const cls = d.m < g - 0.05 ? "mal" : d.m < g - 0.005 ? "ojo" : d.propio ? "info" : "neutro";
-      margen = `<button type="button" class="vt-link" onclick="vtIrMargen('${esc(p.nombre)}')" title="Cambiar en Precios">
-        <span class="est ${cls}">${pct1(d.m)}</span></button>${d.propio ? '<small class="vt-sub">propio</small>' : ""}`;
+      /* Color del margen REAL contra el objetivo general: rojo 3 puntos o más abajo, ámbar entre 1,5 y 3 abajo, verde cerca,
+         azul 5 puntos o más arriba. Debajo, lo que se gana por unidad (precio − costo con IVA). */
+      const cls = d.m < g - 0.03 ? "mal" : d.m < g - 0.015 ? "ojo" : d.m >= g + 0.05 ? "info" : "bien";
+      const tip = d.real ? "Margen real: precio " + pesos(pu) + " · costo con IVA " + pesos(costo * 1.21) + " · ganás " + pesos(d.real.ganancia) +
+        " por unidad (recargo " + pct1(d.real.recargo) + " sobre el costo) · objetivo general " + pct1(g) + ". Clic: cambiar en Precios." : "Cambiar en Precios";
+      margen = `<button type="button" class="vt-link" onclick="vtIrMargen('${esc(p.nombre)}')" title="${esc(tip)}">
+        <span class="est ${cls}">${pct1(d.m)}</span></button>${d.real ? '<small class="vt-sub">' + pesos(d.real.ganancia) + ' c/u</small>' : ""}`;
     }
     let vence = '<span class="vt-nada">—</span>';
     if (d && d.vto) {
@@ -7464,7 +7511,7 @@ renderCatKPIs();
           <div class="kpi-sub">${conPrecio} con precio publicado${sinCosto ? " · " + sinCosto + " sin costo" : ""}</div></div>
         <div class="kpi ${ocultos ? "ojo" : "bien"}"><div class="kpi-lbl">Visibles para vendedores</div><div class="kpi-val">${activos}</div>
           <div class="kpi-sub">${ocultos ? ocultos + " oculto" + (ocultos === 1 ? "" : "s") : "todos visibles"}</div></div>
-        <div class="kpi ${mProm === null ? "" : mProm < g - 0.005 ? "ojo" : "bien"}" onclick="goTab('precios')"><div class="kpi-lbl">Margen promedio s/venta</div>
+        <div class="kpi ${mProm === null ? "" : mProm < g - 0.005 ? "ojo" : "bien"}" onclick="goTab('precios')"><div class="kpi-lbl">Margen real promedio s/venta</div>
           <div class="kpi-val">${mProm === null ? "—" : pct1(mProm)}</div><div class="kpi-sub">${mProm === null ? "sin costos cargados: no se puede calcular" : (fs.length < conPrecio ? "de " + fs.length + " con costo · " : "") + "objetivo general " + pct1(g)}</div></div>
         <div class="kpi ${vencen === null ? "" : urg ? "mal" : vencen || sinFecha ? "ojo" : "bien"}" ${comerc ? 'onclick="aaVerVencen()"' : ""} title="Vencimiento de la mercadería, según los lotes cargados en Stock."><div class="kpi-lbl">Vencen en ≤30 días</div>
           <div class="kpi-val">${vencen === null ? "—" : vencen}</div><div class="kpi-sub">${subV}</div></div>`;
