@@ -6505,10 +6505,10 @@ renderCatKPIs();
      lista del proveedor lo reemplaza, como a cualquier costo. */
   window.aaCosto = function (i, valor) {
     const p = CATALOGO[i], r = fila(p), c = aNum(valor);
-    if (!(c > 0)) { toastA("Escribí el costo neto por unidad (sin IVA)"); return pintarTodo(); }
+    if (!(c > 0)) { toastA("Escribí el costo por unidad con IVA"); return pintarTodo(); }
     if (r && Math.abs(c / r.costo - 1) > 0.5 &&
-        !confirm(p.nombre + "\n\nEl costo pasa de " + money(r.costo) + " a " + money(c) + ". ¿Es correcto?")) return pintarTodo();
-    tocar(p, f => { f.costoNeto = r2(c); });
+        !confirm(p.nombre + "\n\nEl costo con IVA pasa de " + money(r.costo * 1.21) + " a " + money(c * 1.21) + ". ¿Es correcto?")) return pintarTodo();
+    tocar(p, f => { f.costoNeto = Math.round(c * 1e6) / 1e6; });
     pintarTodo(i);
   };
 
@@ -8500,9 +8500,9 @@ renderCatKPIs();
 
       <section><h3>Condiciones comerciales</h3>
         <div class="af-grid">
-          <label class="af-campo"><span>Costo neto por unidad</span>
-            <input class="af-in" data-guarda="enter" inputmode="decimal" value="${f.costoNeto ? String(f.costoNeto).replace(".", ",") : ""}"
-              onchange="afCosto(this.value)" onkeydown="if(event.key==='Enter')this.blur()"><small>sin IVA · la próxima lista del proveedor lo reemplaza</small></label>
+          <label class="af-campo"><span>Costo por unidad con IVA</span>
+            <input class="af-in" data-guarda="enter" inputmode="decimal" value="${f.costoNeto ? String(Math.round(f.costoNeto * 1.21 * 100) / 100).replace(".", ",") : ""}"
+              onchange="afCosto(this.value)" onkeydown="if(event.key==='Enter')this.blur()"><small>IVA incluido, como la columna R · el precio conserva el margen · la próxima lista lo reemplaza</small></label>
           <label class="af-campo"><span>Precio final por unidad</span>
             <input class="af-in" data-guarda="enter" inputmode="decimal" value="${f.precioUnit ? String(f.precioUnit).replace(".", ",") : ""}"
               onchange="afPrecio(this.value)" onkeydown="if(event.key==='Enter')this.blur()"><small>con IVA · ajusta el margen solo</small></label>
@@ -8556,7 +8556,13 @@ renderCatKPIs();
   /* ── Acciones: todas pasan por las funciones de siempre ─────────── */
   const tras = fn => { aviso = ""; try { fn(); } finally { setTimeout(pintar, 60); } };
   window.afActivo = v => tras(() => aaHabilitar(idx(), !!v));
-  window.afCosto = v => tras(() => aaCosto(idx(), v));
+  /* 25/11/2026 · se escribe CON IVA y se guarda en neto (÷ 1,21), como todo el catálogo. */
+  window.afCosto = v => tras(() => {
+    let t = String(v == null ? "" : v).trim().replace(/[$\s]/g, "");
+    if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+    const c = t === "" ? NaN : Number(t);
+    aaCosto(idx(), c > 0 ? String(Math.round(c / 1.21 * 1e6) / 1e6) : v);
+  });
   window.afPrecio = v => tras(() => aaPrecio(idx(), v));
   window.afOferta = (que, k) => tras(() => {
     const o = ofertas[k], p = CATALOGO[idx()];
