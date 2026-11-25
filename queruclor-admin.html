@@ -206,20 +206,121 @@
   }
   var T0_PAGINA = Date.now();
   var enArranque = function () { return Date.now() - T0_PAGINA < 12000; };
-  var SOLO_LECTURA = /^qr_(pendientes|comisiones_abierto|comision_abierta_de|liquidaciones|bloques_sin_tomar|cliente_lista_de|cliente_lista_todos|cliente_lista_historial|lotes_de|lotes_resumen|recepcion_previa|conteo_estado)$/;
+  /* Todas las funciones que el Admin llama y que la base declara «stable» (no escriben; revisado contra las migraciones
+     el 25/11/2026). Las demás siguen como escrituras: esperan y vacían la memoria. */
+  var SOLO_LECTURA = /^qr_(pendientes|comisiones_abierto|comision_abierta_de|liquidaciones|bloques_sin_tomar|cliente_lista_de|cliente_lista_todos|cliente_lista_historial|lotes_de|lotes_resumen|recepcion_previa|conteo_estado|premio_configs|premio_reglamento|bultos_destino|a_cobrar_entrega|reservas_colgadas|saldo|saldo_anterior)$/;
+  /* lecturas-sin-congelar 25/11/2026 */
+  /* Ver produccion/admin-lecturas-parche.js. «Usar lo que hay y renovar por detrás»: nada congela la pantalla salvo la
+     PRIMERA lectura de algo nunca visto (y eso se precarga al abrir). */
+  var FRESCO = 15000, enVuelo = {}, LECTURAS_K = "qr_admin_lecturas_v1";
+  /* qr_avisos regenera las alertas de cobranza (repetible): se recuerda 30 s y NO vacía la memoria. */
+  var LECTURA_CON_EFECTO = { qr_avisos: 30000 };
+  function pedirAsync(metodo, url, cuerpo) {
+    var h = conToken({ "Content-Type": "application/json" }); if (GEN) h["X-QR-Gen"] = GEN;
+    return _fetch(ORIGEN + url, { method: metodo, headers: h, cache: "no-store", body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo) })
+      .then(function (r) {
+        vigilarToken(r.status);
+        if (r.status >= 500) { marcar(true); throw new Error("servidor " + r.status); }
+        marcar(false);
+        if (!r.ok) throw new Error("error " + r.status);
+        return r.text();
+      }).then(function (t) { return t ? JSON.parse(t) : null; });
+  }
+  function renovar(k) {
+    var c = cache[k];
+    if (!c || !c.url || enVuelo[k]) return;
+    enVuelo[k] = true;
+    pedirAsync(c.metodo, c.url, c.cuerpo).then(function (v) {
+      var cambio = JSON.stringify(c.v) !== JSON.stringify(v);
+      cache[k] = { t: Date.now(), v: v, metodo: c.metodo, url: c.url, cuerpo: c.cuerpo };
+      if (cambio) datosNuevos();
+    }).catch(function () {}).then(function () { delete enVuelo[k]; });
+  }
+  function anotarLectura(k, metodo, url, cuerpo) {
+    try {
+      var m = JSON.parse((g0 || Storage.prototype.getItem).call(localStorage, LECTURAS_K) || "{}"), hoy = Date.now();
+      m[k] = { m: metodo, u: url, c: cuerpo, t: hoy };
+      for (var x in m) if (hoy - (m[x].t || 0) > 14 * 864e5) delete m[x];
+      s0.call(localStorage, LECTURAS_K, JSON.stringify(m));
+    } catch (e) {}
+  }
+  function leer(k, metodo, url, cuerpo, fresco) {
+    var c = cache[k];
+    if (c && c.url) { if (Date.now() - c.t >= fresco) renovar(k); return c.v; }
+    var v = enRafaga(k, function () { return xhr(metodo, url, cuerpo); });
+    cache[k] = { t: Date.now(), v: v, metodo: metodo, url: url, cuerpo: cuerpo };
+    anotarLectura(k, metodo, url, cuerpo);
+    return v;
+  }
+  /* Al abrir: lo que este equipo leyó en los últimos 14 días, en segundo plano y de a 8. Arranca YA (este adaptador es lo
+     primero de la página): mientras el navegador procesa el resto del archivo, las respuestas van llegando, y las lecturas
+     del arranque las encuentran en memoria. */
+  function precargar() {
+    /* Corre antes de que este adaptador guarde g0 y reemplace getItem (más abajo): se usa el original del navegador. */
+    var m = {}; try { m = JSON.parse((g0 || Storage.prototype.getItem).call(localStorage, LECTURAS_K) || "{}"); } catch (e) {}
+    var cola = Object.keys(m).filter(function (k) { return !cache[k]; }), activos = 0;
+    (function siguiente() {
+      while (activos < 8 && cola.length) {
+        (function (k) {
+          var d = m[k]; activos++;
+          pedirAsync(d.m, d.u, d.c).then(function (v) { if (!cache[k]) cache[k] = { t: Date.now(), v: v, metodo: d.m, url: d.u, cuerpo: d.c }; })
+            .catch(function () {}).then(function () { activos--; siguiente(); });
+        })(cola.shift());
+      }
+    })();
+  }
+  if (PROD) precargar();
+  /* Llegó algo distinto: se redibuja la pantalla activa, sin interrumpir lo que se está haciendo. */
+  var timerNuevo = null, pendiente = false, ultimoTab = "", ultimoRepinte = 0;
+  function capaAbierta() {
+    /* El cartel del token (#qrPanelToken) no cuenta: no tapa nada y puede quedar abierto. */
+    var els = document.querySelectorAll('#avPanel.abierto, #afCapa.on, #abCapa, [role="dialog"], [aria-modal="true"]');
+    for (var i = 0; i < els.length; i++) {
+      var e = els[i], cs = getComputedStyle(e), r = e.getBoundingClientRect();
+      if (cs.display !== "none" && cs.visibility !== "hidden" && +cs.opacity > 0.05 && r.width > 0 && r.height > 0 && r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight) return true;
+    }
+    return false;
+  }
+  function editando() {
+    var a = document.activeElement;
+    return !!(a && a !== document.body && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable));
+  }
+  function datosNuevos() { clearTimeout(timerNuevo); timerNuevo = setTimeout(repintar, 250); }
+  function repintar() {
+    var p = document.querySelector(".panel.active");
+    if (document.hidden || !p || editando() || capaAbierta() || Date.now() - ultimaAccion < 1200) { pendiente = true; return; }
+    var tab = p.id.replace(/^tab-/, "");
+    /* La misma pantalla, como mucho una vez cada 20 s (hay lecturas que traen la hora y cambian siempre). */
+    if (tab === ultimoTab && Date.now() - ultimoRepinte < 20000) { pendiente = true; return; }
+    ultimoTab = tab; ultimoRepinte = Date.now();
+    pendiente = false;
+    try { window.qrRepintando = true; if (typeof window.goTab === "function") window.goTab(tab); }
+    catch (e) { console.warn("[lecturas] repintar", e); }
+    finally { window.qrRepintando = false; }
+    try { window.dispatchEvent(new CustomEvent("qr:datos-nuevos")); } catch (e) {}
+  }
+  var ultimaAccion = 0;
+  ["pointerdown", "keydown", "wheel", "touchstart"].forEach(function (ev) { window.addEventListener(ev, function () { ultimaAccion = Date.now(); }, { passive: true, capture: true }); });
+  setInterval(function () { if (pendiente) repintar(); }, 1500);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden && pendiente) setTimeout(repintar, 300); });
+  /* Un aviso de cambios marca como viejo lo afectado (se renueva por detrás la próxima vez que se mire). */
+  function marcarViejo(tablas) {
+    for (var k in cache) {
+      var t = /^G ([\w]+)\?/.exec(k);
+      if (!t || tablas[t[1]]) cache[k].t = 0;
+    }
+  }
   window.QRSrv = {
     rpc: function (fn, args) {
-      if (SOLO_LECTURA.test(fn)) return enRafaga("R " + fn + " " + JSON.stringify(args || {}), function () { return xhr("POST", "/rest/v1/rpc/" + fn, args || {}); });
+      var k = "R " + fn + " " + JSON.stringify(args || {});
+      if (SOLO_LECTURA.test(fn)) return leer(k, "POST", "/rest/v1/rpc/" + fn, args || {}, FRESCO);
+      if (LECTURA_CON_EFECTO[fn]) return leer(k, "POST", "/rest/v1/rpc/" + fn, args || {}, LECTURA_CON_EFECTO[fn]);
       var r = xhr("POST", "/rest/v1/rpc/" + fn, args || {}); cache = {}; rafaga = {}; return r;
     },
-    /* Lecturas con memoria corta: una pantalla pregunta el stock de cada
-       tarjeta varias veces por dibujo; con esto es una sola consulta. */
+    /* ttl explícito (lo pide quien necesita algo más nuevo): pasado ese tiempo se renueva por detrás. */
     get: function (tabla, qs, ttl) {
-      var k = tabla + "?" + (qs || ""), ahora = Date.now();
-      if (cache[k] && ahora - cache[k].t < (ttl == null ? (enArranque() ? 12000 : 1500) : ttl)) return cache[k].v;
-      var v = enRafaga("G " + k, function () { return xhr("GET", "/rest/v1/" + tabla + (qs ? "?" + qs : "")); });
-      cache[k] = { t: Date.now(), v: v };   // desde la respuesta: la demora de la red no se come la vigencia
-      return v;
+      var k = "G " + tabla + "?" + (qs || "");
+      return leer(k, "GET", "/rest/v1/" + tabla + (qs ? "?" + qs : ""), undefined, ttl == null ? FRESCO : Math.min(ttl, FRESCO));
     },
     olvidar: function () { cache = {}; rafaga = {}; },
     subir: function (ruta, archivo) { return _fetch(ORIGEN + ruta, { method: "PUT", headers: conToken({}), body: archivo }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ("error " + r.status)); return j; }); }); },
@@ -241,7 +342,7 @@
         if (desdeCambios >= 0 && j.cambios && j.cambios.length) {
           var hubo = {};
           j.cambios.forEach(function (c) { hubo[c.tabla] = true; });
-          cache = {};
+          marcarViejo(hubo);
           oyentesCambios.forEach(function (o) {
             var t = o.tablas.filter(function (x) { return hubo[x]; });
             if (t.length) try { o.fn(t); } catch (e) { console.warn("[cambios]", e); }
@@ -256,11 +357,22 @@
   var COMPARTIDAS = /^(qr_rend_ml_v1|qr_despacho_v1|qr_empresa_v1|qr_logo_v1|qr_papelera_v1|qr_pin_ajustes_v1|qr_precio_config_v1|qr_margen_rubros_v1|qr_historial_precios_v1|qr_compras_cfg_v1|qr_demanda_v1|qr_demanda_rubros_v1|qr_demanda_crit_v1|qr_etq_impresas_v1|etiquetas_total_impresa_v1|etiquetas_habituales_v1|etiquetas_cabos_v1)$/;
   var S = Storage.prototype, g0 = S.getItem, s0 = S.setItem, r0 = S.removeItem;
   var kvCache = {};
+  var KV_COPIA = "qr_kvcopia|", kvEnVuelo = {};
+  /* borrar: solo cuando la clave se BORRA en el servidor; un valor vacío también se recuerda (si no, se espera cada vez). */
+  function guardarCopiaKv(k, v, borrar) { try { if (borrar) r0.call(localStorage, KV_COPIA + k); else if (v == null || String(v).length < 150000) s0.call(localStorage, KV_COPIA + k, JSON.stringify({ v: v })); } catch (e) {} }
+  function renovarKv(k) {
+    if (kvEnVuelo[k]) return; kvEnVuelo[k] = true;
+    _fetch(ORIGEN + "/local/kv/" + k, { cache: "no-store", headers: conToken({}) }).then(function (r) { if (!r.ok) throw new Error(r.status); marcar(false); return r.json(); })
+      .then(function (j) { var v = j ? j.valor : null, c = kvCache[k]; var cambio = !c || c.v !== v; kvCache[k] = { t: Date.now(), v: v }; guardarCopiaKv(k, v); if (cambio && c) datosNuevos(); })
+      .catch(function () {}).then(function () { delete kvEnVuelo[k]; });
+  }
   S.getItem = function (k) {
     if (this !== window.localStorage || !COMPARTIDAS.test(k)) return g0.call(this, k);
     var c = kvCache[k];
-    if (c && Date.now() - c.t < (enArranque() ? 12000 : 800)) return c.v;
-    try { var v = enRafaga("K " + k, function () { return xhr("GET", "/local/kv/" + k).valor; }); kvCache[k] = { t: Date.now(), v: v }; return v; }
+    if (c) { if (Date.now() - c.t >= FRESCO) renovarKv(k); return c.v; }
+    var copia = null; try { copia = g0.call(localStorage, KV_COPIA + k); } catch (e) {}
+    if (copia != null) { try { kvCache[k] = { t: 0, v: JSON.parse(copia).v }; renovarKv(k); return kvCache[k].v; } catch (e) {} }
+    try { var v = enRafaga("K " + k, function () { return xhr("GET", "/local/kv/" + k).valor; }); kvCache[k] = { t: Date.now(), v: v }; guardarCopiaKv(k, v); return v; }
     catch (e) { return c ? c.v : null; }
   };
   S.setItem = function (k, v) {
@@ -272,11 +384,11 @@
     try { x.send(String(v)); } catch (e) { marcar(true); throw new Error("Sin conexión con el servidor: no se guardó."); }
     if (x.status === 409) { avisoGeneracion(); throw new Error("Esta pantalla es de antes de renovar el entorno: no se guardó. Recargala."); }
     if (x.status !== 200) { marcar(true); throw new Error("El servidor no guardó " + k); }
-    kvCache[k] = { t: Date.now(), v: String(v) }; delete rafaga["K " + k];
+    kvCache[k] = { t: Date.now(), v: String(v) }; delete rafaga["K " + k]; guardarCopiaKv(k, String(v));
   };
   S.removeItem = function (k) {
     if (this !== window.localStorage || !COMPARTIDAS.test(k)) return r0.call(this, k);
-    xhr("DELETE", "/local/kv/" + k); delete kvCache[k]; delete rafaga["K " + k];
+    xhr("DELETE", "/local/kv/" + k); delete kvCache[k]; delete rafaga["K " + k]; guardarCopiaKv(k, null, true);
   };
 
   /* ── fetch: Supabase, Worker y Forms van al servidor local ──────── */
@@ -8668,8 +8780,7 @@ renderCatKPIs();
   function cargar() {
     if (!conBase()) { error = "El tablero necesita conexión con el servidor."; return; }
     try {
-      QRSrv.olvidar();
-      filas = QRSrv.get("qr_tablero_stock", "select=*", 0) || [];
+      filas = QRSrv.get("qr_tablero_stock", "select=*", 0) || [];   /* 25/11/2026: sin olvidar() — lo último y renovación por detrás */
       try { vencAS = new Map((QRSrv.rpc("qr_lotes_resumen", {}) || []).map(l => [l.ean, l])); } catch (e) { vencAS = null; }
       cargado = new Date(); error = "";
     } catch (e) {
