@@ -9065,6 +9065,158 @@ body.dep-celu #qrLector .lq-res.vacio{ padding:8px 10px; font-size:13.5px }
   body.dep-pc .det-footer .btn-armar{ width:auto !important; min-width:340px; flex:0 0 auto }
 }
 </style>
+<script id="qrGuardiaArmado">
+/* ═══ Depósito · pedidos mixtos: Habituales y Queruclor se cierran cada uno una sola vez (25/11/2026 · incidente 001850 + pedido de Pablo) ════
+   El defecto: en un pedido mixto la pantalla bloqueaba «Marcar como armado» al dibujar el pedido, pero al tildar un artículo la app base lo
+   volvía a habilitar (actualizarProgreso pone disabled = false DESPUÉS del bloqueo): se podía cerrar el pedido con Queruclor sin preparar.
+   Cómo queda (pedido de Pablo: sin pasos redundantes):
+     · Mixto con Queruclor PENDIENTE: el botón de Habituales dice «✅ LISTO HABITUALES · pasa solo a Facturación cuando Queruclor esté lista».
+       Un toque marca la parte Habituales lista (si quedan artículos sin tildar, pregunta y van como faltantes). El pedido sigue en Depósito.
+     · Cuando la parte Queruclor queda lista en el celular, el SERVIDOR pasa el pedido a «armado» solo (migración 056): nadie vuelve a
+       Habituales a confirmar. La pantalla que lo tenga abierto dice «Pedido completo: pasó a Facturación».
+     · Mixto con Queruclor YA lista: el mismo toque de Habituales lo manda a Facturación, como siempre.
+     · completarPedido nunca cierra un pedido con Queruclor sin lista (y no marca faltantes en ese intento). El servidor tiene la misma regla.
+   Sin Queruclor, pedidos de faltantes y solo-Queruclor: como siempre (el solo-Queruclor espera «Queruclor listo», como ya hacía). */
+(function () {
+  "use strict";
+  if (window.__qrGuardiaArmadoCargada) return;   // (no usar window.qrGuardiaArmado: es el id de la etiqueta del módulo y el navegador lo crea solo)
+  window.__qrGuardiaArmadoCargada = true;
+  const $ = id => document.getElementById(id);
+  const ped = () => (typeof pedidoActivo !== "undefined" && pedidoActivo) || null;
+  const its = () => (typeof itemsActivos !== "undefined" && Array.isArray(itemsActivos) ? itemsActivos : []);
+  const yo = () => (typeof armadorActual !== "undefined" && armadorActual) || "";
+  const aviso = (t, tipo) => { try { if (typeof toast === "function") toast(t, tipo || ""); } catch (e) {} };
+  const norm = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().replace(/\s+/g, " ").toLowerCase();   // mismo criterio que la base (034)
+  const mismo = (a, b) => (window.qrMismoNombre ? qrMismoNombre(a, b) : (!!a && !!b && norm(a) !== "" && norm(a) === norm(b)));
+  const est = (p, b) => { try { return Bloques.estado(p.id, b) || {}; } catch (e) { return {}; } };
+  const deBloque = b => its().filter(i => { try { return Bloques.bloqueDe(i) === b; } catch (e) { return false; } });
+  /* Situación del pedido abierto respecto de Queruclor. null = no aplica (sin Queruclor, faltantes, ya armado, sin datos). */
+  function situacion() {
+    const p = ped(); if (!p || p.estado === "armado" || p.es_pedido_faltante || !window.Bloques) return null;
+    let bs; try { bs = Bloques.bloques(its()); } catch (e) { return null; }
+    if (bs.indexOf("queruclor") < 0) return null;
+    const q = est(p, "queruclor"), mixto = bs.indexOf("habituales") >= 0, h = mixto ? est(p, "habituales") : {};
+    const hab = mixto ? deBloque("habituales") : [];
+    return { p, mixto, qrLista: !!q.listo, qrEspera: !!(q.esperando_desde && !q.tomado_por), habLista: !!h.listo, habTomadoPor: h.tomado_por || null,
+      hab, habTildados: hab.filter(i => i.armado).length };
+  }
+  function faltaQr() { const s = situacion(); return s && !s.qrLista ? { espera: s.qrEspera } : null; }
+  /* Lo que tiene que mostrar el botón. null = no tocar (lo maneja la app como siempre). */
+  function deseado() {
+    const s = situacion(); if (!s) return null;
+    const total = its().length, arm = its().filter(i => i.armado).length, falt = total - arm;
+    const base = total === 0 ? "✅ ENVIAR SIN ITEMS" : arm === 0 ? "✅ ENVIAR (todo faltante)" : falt > 0 ? `✅ ARMAR (${falt} faltante${falt > 1 ? "s" : ""})` : "✅ MARCAR COMO ARMADO";
+    if (!s.mixto) return s.qrLista ? null : { disabled: true, espera: true, texto: s.qrEspera ? "⏸ Queruclor esperando ingreso · no se despacha todavía" : "⏳ falta terminar Queruclor" };
+    const otro = s.habTomadoPor && !mismo(s.habTomadoPor, yo());
+    if (s.qrLista) {
+      /* Queruclor lista: Habituales se cierra como siempre (todo tildado y el botón), salvo que la parte la tenga tomada otra persona. */
+      if (s.habLista) return { disabled: false, texto: base };
+      if (otro) return null;
+      return s.hab.length && s.habTildados === s.hab.length ? { disabled: false, texto: base } : null;
+    }
+    if (s.habLista) return { disabled: true, espera: true, texto: "✅ Habituales lista · pasa sola a Facturación cuando Queruclor esté lista" };
+    if (otro) return { disabled: true, espera: true, texto: "⏳ la parte Habituales la tiene " + s.habTomadoPor };
+    if (!s.habTildados) return { disabled: true, espera: true, texto: "⏳ falta terminar Queruclor" };
+    const sin = s.hab.length - s.habTildados;
+    return { disabled: false, habListo: true, texto: "✅ LISTO HABITUALES" + (sin ? ` (${sin} faltante${sin > 1 ? "s" : ""})` : "") + " · pasa sola a Facturación cuando Queruclor esté lista" };
+  }
+  let escribiendo = false;
+  function aplicar() {
+    const btn = $("btnArmar"), d = deseado(); if (!btn || !d || escribiendo) return;
+    if (btn.disabled === d.disabled && btn.textContent === d.texto && btn.classList.contains("qr-esperando") === !!d.espera) return;   // solo si difiere
+    escribiendo = true;
+    try { btn.disabled = d.disabled; btn.textContent = d.texto; btn.classList.toggle("qr-esperando", !!d.espera); btn.classList.toggle("qr-hab-listo", !!d.habListo); }
+    finally { escribiendo = false; }
+  }
+  /* Vigía: el botón lo repintan varios módulos (y no siempre por las funciones envueltas). Se corrige solo si difiere de lo que corresponde. */
+  function vigilar() {
+    const b = $("btnArmar"); if (!b || b.__qrVigia) return; b.__qrVigia = true;
+    new MutationObserver(() => { if (!escribiendo) { try { aplicar(); } catch (e) {} } }).observe(b, { attributes: true, attributeFilter: ["disabled"], childList: true, characterData: true, subtree: true });
+  }
+  /* Hoja propia (sin confirm()). */
+  function preguntar(titulo, texto, ok) {
+    return new Promise(res => {
+      const v = document.createElement("div"); v.className = "qrg-velo";
+      v.innerHTML = `<div class="qrg-hoja" role="dialog" aria-modal="true"><h3>${titulo}</h3><p>${texto}</p><div class="qrg-bts"><button type="button" class="qrg-b no">Volver</button><button type="button" class="qrg-b si">${ok}</button></div></div>`;
+      v.addEventListener("click", ev => { if (ev.target === v || ev.target.closest(".no")) { v.remove(); res(false); } else if (ev.target.closest(".si")) { v.remove(); res(true); } });
+      document.body.appendChild(v); setTimeout(() => { const b = v.querySelector(".si"); if (b) b.focus(); }, 30);
+    });
+  }
+  let marcando = false;
+  async function marcarHabituales() {
+    const s = situacion(); if (!s || !s.mixto || s.qrLista || s.habLista || marcando) return;
+    if (!yo()) return aviso("Primero poné tu nombre", "error");
+    const sin = s.hab.filter(i => !i.armado);
+    if (sin.length && !(await preguntar("¿Habituales lista con faltantes?", `${sin.length} artículo${sin.length > 1 ? "s" : ""} de Habituales sin tildar ${sin.length > 1 ? "van" : "va"} como faltante${sin.length > 1 ? "s" : ""}.`, "Sí, marcar lista"))) return;
+    marcando = true;
+    try {
+      if (sin.length && typeof sbPatch === "function") { await Promise.all(sin.map(i => sbPatch("items_pedido", `id=eq.${i.id}`, { es_faltante: true }))); sin.forEach(i => { i.es_faltante = true; }); }
+      if (!s.habTomadoPor) { const r = Bloques.tomar(s.p.id, "habituales", yo()); if (r && r.ok === false) throw new Error(r.motivo || "no se pudo tomar la parte Habituales"); }
+      const r2 = Bloques.marcarListo(s.p.id, "habituales", yo());
+      if (r2 && r2.ok === false) throw new Error(r2.motivo || "no se pudo marcar lista");
+      aviso("✅ Habituales lista. El pedido pasa solo a Facturación cuando Queruclor esté lista.", "ok");
+      try { window.renderItems(); } catch (e) {}
+      setTimeout(() => { try { const p = ped(); if (p && String(p.id) === String(s.p.id) && p.estado !== "armado" && typeof volverALista === "function") volverALista(); } catch (e) {} }, 1800);
+    } catch (x) { aviso("No se marcó: " + x.message + ". Probá de nuevo.", "error"); }
+    finally { marcando = false; aplicar(); }
+  }
+  window.qrGuardia = { situacion, faltaQr, deseado, aplicar, marcarHabituales };
+  const envolver = (nombre, despues) => {
+    const prev = window[nombre]; if (typeof prev !== "function" || prev.__guardiaQr) return;
+    const env = function () {
+      const r = prev.apply(this, arguments);
+      if (r && typeof r.then === "function") r.then(() => { try { despues(); } catch (e) {} }, () => {});
+      else { try { despues(); } catch (e) {} }
+      return r;
+    };
+    env.__guardiaQr = true; Object.keys(prev).forEach(k => { try { env[k] = prev[k]; } catch (e) {} });
+    window[nombre] = env;
+  };
+  const tras = () => { vigilar(); aplicar(); };
+  envolver("actualizarProgreso", tras);
+  envolver("renderItems", tras);
+  envolver("aplicarToggle", tras);
+  /* El botón: con Queruclor pendiente, en un mixto marca Habituales lista; nunca cierra el pedido sin Queruclor. */
+  const prevCompletar = window.completarPedido;
+  if (typeof prevCompletar === "function" && !prevCompletar.__guardiaQr) {
+    const env = function () {
+      const s = situacion();
+      if (s && !s.qrLista) {
+        if (s.mixto && !s.habLista && s.habTildados) return marcarHabituales();
+        aplicar();
+        aviso(s.qrEspera ? "Queruclor está esperando ingreso: el pedido no se despacha todavía." : s.mixto && s.habLista ? "Habituales ya está lista: el pedido pasa solo a Facturación cuando Queruclor esté lista." : "Falta terminar la parte Queruclor (en el celular). El pedido no se marca armado hasta que Queruclor esté lista.", s.mixto && s.habLista ? "" : "error");
+        return;
+      }
+      return prevCompletar.apply(this, arguments);
+    };
+    env.__guardiaQr = true; window.completarPedido = env;
+  }
+  /* Cuando el servidor cierra el pedido solo (las dos partes listas), la pantalla que lo tiene abierto lo dice bien. */
+  const prevRemoto = window.pedidoCambioRemoto;
+  if (typeof prevRemoto === "function" && !prevRemoto.__guardiaQr) {
+    const env = function (rec) {
+      const p = ped();
+      if (rec && p && String(rec.id) === String(p.id) && rec.estado === "armado" && p.estado !== "armado" && !(typeof _enviando !== "undefined" && _enviando)) {
+        p.estado = "armado";
+        aviso("✅ Pedido completo (Habituales y Queruclor listas): pasó a Facturación", "ok");
+        setTimeout(() => { try { const q = ped(); if (q && String(q.id) === String(rec.id) && typeof volverALista === "function") volverALista(); } catch (e) {} }, 2200);
+        return;
+      }
+      return prevRemoto.apply(this, arguments);
+    };
+    env.__guardiaQr = true; window.pedidoCambioRemoto = env;
+  }
+  const css = document.createElement("style");
+  css.textContent = ".qrg-velo{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:10060;padding:16px}" +
+    ".qrg-hoja{background:#fff;color:#0f172a;border-radius:14px;padding:18px;width:min(440px,100%);display:grid;gap:10px;box-shadow:0 20px 50px rgba(0,0,0,.25)}" +
+    ".qrg-hoja h3{margin:0;font-size:18px}.qrg-hoja p{margin:0;font-size:15px;line-height:1.45}.qrg-bts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}" +
+    ".qrg-b{min-height:44px;padding:8px 16px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;border:2px solid #cbd5e1;background:#fff;color:#0f172a}" +
+    ".qrg-b.si{background:#0f7a43;border-color:#0f7a43;color:#fff}.qrg-b:focus-visible{outline:3px solid #2563eb;outline-offset:2px}" +
+    "#btnArmar.qr-hab-listo:not(:disabled){white-space:normal;line-height:1.25}";
+  (document.head || document.documentElement).appendChild(css);
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", tras); else tras();
+})();
+</script>
 <script id="qrActualizador" data-sw="./service-worker.js">
 /* ═══════════════════════════════════════════════════════════════════
    ACTUALIZADOR COMÚN (19/11/2026) — Reparto, Caja, Depósito, Facturación y Admin.

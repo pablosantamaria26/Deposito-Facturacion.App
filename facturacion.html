@@ -2107,6 +2107,40 @@ body.compacta:not(.m-comoda) #app #itemsPanel .m-chq-r, body.m-densa #app #items
   #app #itemsPanel .m-chq ~ #qrPanel .qrp-monto .qrp-de { display:none; }
 }
 </style>
+<style id="fcCss">
+/* Facturación · Queruclor: aviso, devolver a Depósito y etiquetas de cada caja (25/11/2026) */
+#app #itemsPanel .fc-sec, #itemsPanel .fc-sec { margin: 10px 0; display: grid; gap: 8px; }
+.fc-alerta { border: 2px solid #b45309; background: #fff4dd; color: #5a3500; border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.4; display: grid; gap: 10px; }
+.fc-alerta .fc-b { justify-self: start; }
+.fc-det { border: 1.5px solid #cbd5e1; border-radius: 12px; background: #fff; color: #0f172a; }
+.fc-det > summary { cursor: pointer; padding: 10px 14px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; list-style: none; }
+.fc-det > summary::-webkit-details-marker { display: none; }
+.fc-det > summary span { color: #475569; font-size: 13px; }
+.fc-cuerpo { padding: 0 14px 12px; display: grid; gap: 8px; }
+.fc-fila { display: flex; align-items: center; gap: 10px; justify-content: space-between; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+.fc-art { display: grid; gap: 2px; min-width: 0; }
+.fc-art b { font-size: 14px; overflow-wrap: anywhere; }
+.fc-art span { font-size: 12.5px; color: #475569; }
+.fc-pie { display: flex; gap: 8px; flex-wrap: wrap; }
+.fc-b { min-height: 40px; padding: 8px 14px; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; border: 2px solid transparent; white-space: nowrap; }
+.fc-b.ok { background: #0f7a43; color: #fff; }
+.fc-b.warn { background: #b45309; color: #fff; }
+.fc-b.ghost { background: #fff; color: #0f172a; border-color: #cbd5e1; }
+.fc-b[disabled] { opacity: .55; cursor: progress; }
+.fc-b:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+.fc-ult { font-size: 13px; color: #0b3d24; background: #e7f6ee; border-radius: 8px; padding: 6px 10px; }
+.fc-ult.mal { color: #7f1d1d; background: #fee2e2; }
+.fc-nota { font-size: 12px; color: #64748b; }
+.fc-vacio { padding: 24px; text-align: center; color: #475569; font-size: 15px; }
+.fc-velo { position: fixed; inset: 0; background: rgba(15, 23, 42, .45); display: flex; align-items: center; justify-content: center; z-index: 10050; padding: 16px; }
+.fc-hoja { background: #fff; color: #0f172a; border-radius: 14px; padding: 18px; width: min(460px, 100%); display: grid; gap: 10px; box-shadow: 0 20px 50px rgba(0, 0, 0, .25); }
+.fc-hoja h3 { margin: 0; font-size: 18px; }
+.fc-hoja p { margin: 0; font-size: 14px; line-height: 1.45; color: #334155; }
+.fc-op { display: flex; gap: 8px; align-items: center; font-size: 14px; padding: 4px 0; }
+.fc-txt { min-height: 40px; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 8px 10px; font-size: 14px; }
+.fc-bts { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+@media (max-width: 760px) { .fc-fila { flex-wrap: wrap; } .fc-fila .fc-b { width: 100%; } }
+</style>
 </head>
 <body>
 
@@ -2594,8 +2628,8 @@ async function seleccionar(id) {
     pedidoActivo = ps[0];
     itemsActivos = items;
 
-    // Pasar a en_facturacion si estaba armado
-    if (pedidoActivo.estado === "armado") {
+    // Pasar a en_facturacion si estaba armado (25/11/2026: salvo que falte preparar Queruclor en Depósito: así no desaparece de su lista)
+    if (pedidoActivo.estado === "armado" && !(window.qrContingencia && await qrContingencia.faltaQr(pedidoActivo, itemsActivos))) {
       await sbPatch("pedidos", `id=eq.${id}`, { estado: "en_facturacion" });
       pedidoActivo.estado = "en_facturacion";
       await cargarPedidos();
@@ -13856,6 +13890,624 @@ var qrcode = function() {
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
   window.qrChequeo = { estado: () => st.estado, falta, aplica, irA, refrescar: () => cargar(true), confirmar, version: "2026-11-22" };
+})();
+</script>
+<script id="qrEtiquetasCaja">
+/* Módulo de etiquetas de DEPÓSITO embebido por facturacion-contingencia-parche.js (25/11/2026): global.EtiquetasCaja. No editar acá. */
+/* ═══════════════════════════════════════════════════════════════════
+   ETIQUETAS DE BULTO — la tira se imprime ANTES de ir al estante
+
+   La ZD220 es USB y vive en la PC de facturación, así que no se puede
+   imprimir desde despacho. La salida es pre-imprimir: el armador pasa
+   por la PC, se lleva la tira, y cada etiqueta es una caja que tiene que
+   bajar. **Etiqueta que sobra = caja que no estaba.**
+
+   SIN NUMERACIÓN «1 de 3» — decisión de Pablo, y con razón: si una
+   etiqueta se pierde o se rompe, reimprimirla no puede generar un bulto
+   nuevo ni un número distinto. Todas las etiquetas de un mismo artículo
+   en un mismo pedido son IDÉNTICAS Y INTERCAMBIABLES — no hay «cuál
+   copia es cuál», así que reimprimir es solo pedir otra copia, nunca
+   hay que reconstruir cuál se perdió.
+
+   ESTA ES LA ÚNICA LÍNEA CON ETIQUETA POR BULTO (acordado 19/9/2026).
+   Mercado Limpio va SIN etiqueta adhesiva: sigue el papel con el nombre
+   del cliente adentro de la bolsa, como siempre. Lo que las une es UNA
+   etiqueta de total por pedido, que se imprime en facturación
+   (`facturacion-etiquetas.js`) cuando Laura dice cuántas bolsas armó.
+
+   LO QUE DICE DE TOTAL: acá, en depósito, todavía no se sabe cuántas
+   bolsas de Mercado Limpio va a armar Laura — eso se cuenta después.
+   Por eso esta etiqueta dice «CAJAS DEL PEDIDO: N», que es lo único
+   cierto en este momento. El total combinado (cajas + bolsas de Mercado
+   Limpio) va en la etiqueta de total, que se imprime al final.
+
+   LA MARCA, NO «QUERUCLOR» (pedido de Pablo, 21/9/2026): la franja dice
+   la marca de la caja que se despacha (ODEX, QUERUBIN…). «Queruclor» es
+   el nombre de la línea de la empresa y nadie lo conoce por ese nombre.
+   La marca viaja en el renglón del pedido; en pedidos viejos que no la
+   traen se busca en la lista del proveedor por código de barras.
+
+   EL CÓDIGO DE BARRAS es "ML-" + pedido.id, SIEMPRE el mismo para todas
+   las cajas del mismo pedido — no lleva sufijo de bulto porque ya no
+   hay bultos numerados. Reimprimir da exactamente el mismo código. Se
+   usa `pedido.id` y no `numero_diario` porque este último se reinicia
+   cada día y una etiqueta de devolución tiene que valer para siempre.
+   La leyenda «ESCANEAME SI FUI DEVUELTO» dice para qué sirve (la
+   apertura automática de la nota de crédito todavía no está
+   construida — el código ya lleva el dato listo).
+
+   SURTIDAS (16/10/2026, autorizado por Pablo): van en la MISMA tira, una
+   etiqueta por caja, con su código ML-<pedido>-<nnn> y lo que lleva
+   adentro según la composición que armó el vendedor. Si el renglón no lo
+   dice (pedido viejo), la etiqueta lo aclara y muestra el total del
+   pedido: no se inventa el contenido de una caja. Imprimir o reimprimir
+   no mueve stock ni genera despacho.
+
+   DISEÑO: mismo lenguaje que `facturacion-etiquetas.js` (y que el modelo
+   de Pablo): marco redondeado, bloques con ícono, franja negra angosta
+   — el único negro sólido que se permite, una tira fina y no un fondo
+   completo, para no castigar el cabezal térmico.
+
+   MEDIDA: 100 × 150 mm. Se evaluó 100 × 60 (19/9/2026) para ahorrar
+   rollo y NO conviene: Pablo pagó $38.500 por 1.800 de 100×150
+   ($21,39 c/u) y las 100×60 de Mercado Libre salían $21,70 (pack de
+   8.000) a $26,20 (500 u) — igual o más caras. Achicar la etiqueta no
+   baja el costo porque casi todo es troquel y liner, no papel.
+   ═══════════════════════════════════════════════════════════════════ */
+(function (global) {
+
+  const esc = s => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  const CFG_KEY = "qr_etq_cfg_v1";
+  const cfg = Object.assign(
+    { ancho: 100, alto: 150, whatsappOficina: "5491133395487" },
+    (() => { try { return JSON.parse(localStorage.getItem(CFG_KEY) || "{}"); } catch (e) { return {}; } })()
+  );
+  const guardarCfg = () => localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
+  if (cfg.whatsappOficina === "5491100000000") cfg.whatsappOficina = "5491133395487";
+  /* Migración: durante la prueba de 100×60 se guardó alto:60 en el
+     navegador, y Object.assign prefiere lo guardado — sin esto el 150
+     nuevo nunca entraría. No hay pantalla para elegir tamaño, así que
+     no se pisa nada que alguien haya elegido a propósito. */
+  if (cfg.alto === 60) { cfg.alto = 150; guardarCfg(); }
+
+  function fechaHoy() {
+    return new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  }
+
+  /* ── Un renglón por ARTÍCULO de Queruclor (no por caja) ──────────────
+     Si el pedido lleva 9 cajas del mismo artículo, hay un solo renglón
+     con `cajas: 9` — todas las copias son la misma identificación
+     repetida, no 9 papeles distintos que había que numerar. */
+
+  /* 16/11/2026 — Packs con etiqueta para artículos que se venden por unidad (Pablo): tamaño del pack por EAN del envase. */
+  const PACKS_QR = { "7791905002390": 6, "7791905023265": 6, "7791905002376": 6, "7791905023258": 6,   // insecticidas aerosol (caja 12)
+                     "7791905002383": 12, "7791905002338": 12,                                          // espirales Mata Mosquitos (caja 48)
+                     "7791905002413": 12 };                                                            // cebo Mata Cucaracha (caja 24)
+  /* Reparte un renglón de sueltas en cajas enteras + packs. Lo que no cierra un pack queda suelto (sin etiqueta). */
+  function packsDe(qr, unidades) {
+    const tam = PACKS_QR[String(qr && qr.ean)] || 0, uc = Number(qr && qr.uc) || 0, u = Number(unidades) || 0;
+    if (!tam || !u) return null;
+    const cajas = uc > 0 ? Math.floor(u / uc) : 0, resto = u - cajas * uc, packs = Math.floor(resto / tam);
+    return { tam: tam, cajas: cajas, packs: packs, sueltas: resto - packs * tam };
+  }
+  function articulosDe(pedido, items) {
+    if (!global.QRParse) return [];
+    const porEan = new Map(), surtidas = [];
+
+    (items || []).forEach((it, idx) => {
+      const qr = QRParse.parseQueruclor(it.descripcion);
+      if (!qr) return;
+      if (qr.modo === "sueltas") {
+        /* Packs (16/11/2026): cajas enteras → caja cerrada; packs → bulto propio con etiqueta «MEDIA CAJA / PACK». */
+        if (it.es_faltante) return;
+        const pk = packsDe(qr, it.cantidad_real != null ? it.cantidad_real : it.cantidad);
+        if (!pk) return;
+        const marcaP = global.EtiquetaComun ? global.EtiquetaComun.marcaDe(qr.marca, qr.ean) : (qr.marca || "");
+        if (pk.cajas > 0) {
+          const kc = qr.ean || qr.nombre, pc = porEan.get(kc);
+          if (pc) pc.cajas += pk.cajas; else porEan.set(kc, { articulo: qr.nombre, ean: qr.ean || "", uc: qr.uc || "", cajas: pk.cajas, marca: marcaP });
+        }
+        if (pk.packs > 0) {
+          const uno = [{ ean: qr.ean, unidades: pk.tam }];
+          surtidas.push({ articulo: qr.nombre, ean: qr.ean || "", uc: pk.tam, cajas: pk.packs, tipo: "surtida", pack: pk.tam, ucCaja: qr.uc || "",
+            clave: "P|" + (it.id != null ? it.id : idx), marca: marcaP,
+            variantes: [{ ean: qr.ean, nombre: qr.nombre, unidades: pk.packs * pk.tam }],
+            porCaja: Array.from({ length: pk.packs }, () => uno.map(u => ({ ean: u.ean, que: qr.nombre, unidades: u.unidades }))), falta: null,
+            composicion: Array.from({ length: pk.packs }, () => uno.map(u => ({ ean: u.ean, unidades: u.unidades }))) });
+        }
+        return;
+      }
+      const cajas = Number(it.cantidad_real != null ? it.cantidad_real : it.cantidad) || 0;
+      if (!cajas) return;
+
+      /* SURTIDAS (16/10/2026): van en la misma tira, una etiqueta por caja,
+         cada una con su código y lo que lleva adentro si el renglón lo dice.
+         Un renglón surtido marcado faltante no se etiqueta (no se arma). */
+      if (qr.modo === "surtida" || qr.modo === "mixta") {
+        if (it.es_faltante) return;
+        const pc = QRParse.composicionPorCaja ? QRParse.composicionPorCaja(qr, cajas) : { ok: false, motivo: "" };
+        surtidas.push({
+          articulo: qr.nombre, ean: qr.ean || "", uc: qr.uc || "", cajas, tipo: qr.modo,
+          clave: "S|" + (it.id != null ? it.id : idx),
+          marca: global.EtiquetaComun ? global.EtiquetaComun.marcaDe(qr.marca, qr.ean) : (qr.marca || ""),
+          variantes: qr.detalle.filter(d => d.ean).map(d => ({ ean: d.ean, nombre: d.que, unidades: qr.modo === "mixta" ? d.cuanto * cajas : d.cuanto })),
+          porCaja: pc.ok ? pc.porCaja : null, falta: pc.ok ? null : pc.motivo,
+          composicion: pc.ok && pc.porCaja ? pc.porCaja.map(c => c.map(u => ({ ean: u.ean, unidades: u.unidades }))) : null,
+        });
+        return;
+      }
+      const key = qr.ean || qr.nombre;
+      const prev = porEan.get(key);
+      if (prev) prev.cajas += cajas;
+      else porEan.set(key, { articulo: qr.nombre, ean: qr.ean || "", uc: qr.uc || "", cajas,
+        marca: global.EtiquetaComun ? global.EtiquetaComun.marcaDe(qr.marca, qr.ean) : (qr.marca || "") });
+    });
+    return [...porEan.values(), ...surtidas];
+  }
+  const claveDe = a => a.clave || a.ean;
+
+  /* Cuántas cajas cerradas de Queruclor tiene el pedido en total — lo
+     necesita facturación para sumar el total combinado, y la UI de
+     depósito para saber si hay algo para imprimir. */
+  function contarCajasQueruclor(items) {
+    return articulosDe({}, items).reduce((s, a) => s + a.cajas, 0);
+  }
+  /* Bultos (cajas enteras + packs) de un renglón de sueltas: la misma regla que qr_sueltas_bultos en la base (046). */
+  function cajasDeSueltas(ean, unidades, uc) {
+    const pk = packsDe({ ean: ean, uc: uc }, unidades);
+    return pk ? pk.cajas + pk.packs : 0;
+  }
+
+  /* ── HTML de UNA etiqueta de caja ─────────────────────────────────
+     Encabezado, cliente, datos, códigos y pie son de `EtiquetaComun`
+     (los comparte con la etiqueta de total). Acá va lo propio: la franja
+     con la MARCA y el artículo, y cuántas cajas lleva el pedido. */
+  /* `contenido` (solo surtidas): [{nombre|que, sueltas|unidades}] de ESTA
+     caja, o null si el renglón no permite saberlo (pedido viejo): ahí la
+     etiqueta lo dice y muestra el total del pedido, sin inventar. */
+  function etiquetaArticulo(pedido, art, totalCajas, logo, qrWa, codigoTexto, bc, contenido) {
+    const C = global.EtiquetaComun;
+    const cliente = pedido.cliente_nombre || ("Cliente " + (pedido.cliente_id || ""));
+    const marca = art.marca ? esc(art.marca) + " · " : "";
+    const ic = global.Iconos ? global.Iconos.icon("caja", "8mm") : "";
+    const surtida = !!art.tipo;
+    const linea = l => l.map(u => (u.sueltas != null ? u.sueltas : u.unidades) + " " + esc(u.nombre || u.que || u.ean)).join(" + ");
+    const detalle = art.pack ? `Cód. ${esc(art.ean)} &nbsp;|&nbsp; ${esc(art.pack)} envases (la caja trae ${esc(art.ucCaja)})`
+      : !surtida ? `Cód. ${esc(art.ean)} &nbsp;|&nbsp; Caja x ${esc(art.uc)}`
+      : contenido && contenido.length ? `<b>Lleva:</b> ${linea(contenido)}`
+      : `Sin detalle por caja · el pedido lleva ${linea(art.variantes || [])} en ${art.cajas} caja${art.cajas === 1 ? "" : "s"}`;
+    return `
+      <div class="etq"${String(cliente).length > 42 || String(art.articulo).length > 60 || (contenido && contenido.length > 3) ? " data-compacta" : ""}>
+        ${C.encabezado(logo)}
+        ${C.filaCliente(cliente)}
+        ${C.filaDatos(pedido.cliente_id || "—", fechaHoy(), pedido.vendedor || "—")}
+
+        <div class="fila-caja">
+          <div class="bultoband">
+            <div class="bb-tit">${marca}${art.pack ? (Number(art.ucCaja) === 2 * Number(art.pack) ? "MEDIA CAJA · " + esc(art.pack) + " u." : "PACK · " + esc(art.pack) + " u.") : surtida ? "CAJA SURTIDA" : "CAJA CERRADA"}</div>
+            <div class="bb-art">
+              <div class="bb-art-n${String(art.articulo).length > 60 ? " muylargo" : String(art.articulo).length > 34 ? " largo" : ""}">${esc(art.articulo)}</div>
+              <div class="bb-art-c">${detalle}</div>
+            </div>
+          </div>
+          <div class="cajas-pedido">
+            ${ic}
+            <div class="cp-e">CAJAS<br>DEL PEDIDO</div>
+            <div class="cp-n">${totalCajas}</div>
+          </div>
+        </div>
+        <div class="hr"></div>
+
+        ${C.codigos(bc, codigoTexto, qrWa, ["DEVOLUCIÓN DE CAJAS", "Código para gestión interna"], /^ML-.+-\d{3,}$/.test(codigoTexto) && global.QR ? QR.svg(codigoTexto, { mm: 0.5, nivel: "H" }) : "", cfg.ancho)}
+        ${C.pie(pedido.codigo_corto || pedido.id)}
+      </div>`;
+  }
+
+  /* ── HTML de la tira: una sección por artículo, con sus copias ─────
+     `porArticulo` viene SIEMPRE de `articulosDe()` — un renglón por
+     artículo, con `.cajas` = cuántas copias de esa etiqueta hacen falta.
+
+     `totalPedido` es lo que la etiqueta dice como «CAJAS DEL PEDIDO».
+     Casi siempre es la suma de las copias, pero en una REIMPRESIÓN se
+     imprime 1 sola copia y la etiqueta tiene que seguir diciendo el
+     total de todo el pedido — si no, saldría distinta de la original. */
+  /* ── Identidad de cada caja ───────────────────────────────────────
+     El código de barras de cada caja es ÚNICO: ML-<pedido>-<nnn>. Lo
+     genera y lo guarda la base (qr_bultos_preparar), ligado al pedido, al
+     cliente y al artículo de esa caja; volver a pedirlo devuelve los
+     mismos códigos. Así una devolución sabe qué caja es y no la cuenta
+     dos veces aunque se escanee dos veces o desde dos equipos.
+     Sin base compartida se sigue imprimiendo «ML-<pedido>» como antes.
+     El QR de contacto con Administración NO cambia.
+
+     08/11/2026: con el id interno (uuid) el código no entraba legible a
+     ningún ancho (medido, igual que pasaba en la etiqueta de TOTAL — ver
+     bitácora) y el lector solo lee barras, no QR. Se manda además
+     `p_codigo_corto` (6 cifras, `pedidos.codigo_corto` — migración 025):
+     la migración 026 lo usa SOLO para armar el texto visible del código
+     («ML-<codigoCorto>-<nnn>»); `p_pedido` (el uuid) sigue siendo la
+     clave real con la que la base identifica, bloquea y liga cada caja
+     — eso no cambia. Si el pedido todavía no tiene código corto (viejo,
+     sin la migración aplicada), cae al uuid de siempre: ni se rompe ni
+     cambia nada. */
+  function prepararBultos(pedido, arts, quien, imprimiendo) {
+    if (!(global.QR_LOCAL && global.QRSrv)) return null;
+    const paramsBultos = {
+      p_pedido: String(pedido.id), p_arts: arts.map(a => a.tipo
+        ? { clave: a.clave, tipo: a.tipo, ean: a.ean, nombre: a.articulo, cajas: a.cajas, uc: a.uc, variantes: a.variantes, composicion: a.composicion }
+        : { ean: a.ean, nombre: a.articulo, cajas: a.cajas }),
+      p_cliente_id: String(pedido.cliente_id || ""), p_cliente_nombre: pedido.cliente_nombre || "",
+      p_quien: quien || "", p_imprimir: !!imprimiendo,
+    };
+    /* Mientras las migraciones 025–026 no estén aplicadas en el servidor real,
+       la función todavía tiene 6 parámetros: mandarle un 7mo aunque sea null
+       hace que PostgREST no la encuentre (probado: error PGRST202) y deja de
+       poder preparar cajas. Por eso esta clave SOLO se manda si el pedido ya
+       trae codigo_corto — que no va a pasar hasta que la migración esté. */
+    if (pedido.codigo_corto) paramsBultos.p_codigo_corto = pedido.codigo_corto;
+    const lista = global.QRSrv.rpc("qr_bultos_preparar", paramsBultos);
+    /* Códigos por artículo (cerradas) o por renglón (surtidas), y lo que la
+       base registró que lleva cada caja: la etiqueta dice exactamente eso. */
+    const porClave = {};
+    Object.defineProperty(porClave, "__info", { value: {}, enumerable: false });
+    (lista || []).forEach(b => {
+      const k = b.clave || b.ean;
+      (porClave[k] = porClave[k] || []).push(b.codigo);
+      porClave.__info[b.codigo] = b;
+    });
+    return porClave;
+  }
+
+  /* 20/11/2026: lo mismo, sin trabar la pantalla (QRSrv.rpcAsync). Devuelve una promesa con la misma forma. */
+  async function prepararBultosAsync(pedido, arts, quien, imprimiendo) {
+    if (!(global.QR_LOCAL && global.QRSrv && global.QRSrv.rpcAsync)) return prepararBultos(pedido, arts, quien, imprimiendo);
+    const lista = await global.QRSrv.rpcAsync("qr_bultos_preparar", {
+      p_pedido: String(pedido.id), p_arts: arts.map(a => a.tipo
+        ? { clave: a.clave, tipo: a.tipo, ean: a.ean, nombre: a.articulo, cajas: a.cajas, uc: a.uc, variantes: a.variantes, composicion: a.composicion }
+        : { ean: a.ean, nombre: a.articulo, cajas: a.cajas }),
+      p_cliente_id: String(pedido.cliente_id || ""), p_cliente_nombre: pedido.cliente_nombre || "",
+      p_quien: quien || "", p_imprimir: !!imprimiendo, p_codigo_corto: pedido.codigo_corto || null });
+    const porClave = {};
+    Object.defineProperty(porClave, "__info", { value: {}, enumerable: false });
+    (lista || []).forEach(b => { const k = b.clave || b.ean; (porClave[k] = porClave[k] || []).push(b.codigo); porClave.__info[b.codigo] = b; });
+    return porClave;
+  }
+
+  function htmlTira(porArticulo, pedido, totalPedido, bultos) {
+    const w = cfg.ancho, h = cfg.alto;
+    /* Sin base compartida (QR_LOCAL apagado) no hay `qr_bultos_preparar` que
+       asigne un código por caja: se sigue imprimiendo un solo código para
+       todo el artículo, como siempre — pero con el código corto en vez del
+       uuid, para que entre legible (mismo motivo que arriba). */
+    const codigoPedido = "ML-" + (pedido.codigo_corto || pedido.id);
+    const bc = global.Code128;
+    const logo = global.LogoSVG ? LogoSVG.lockup("15mm") : "";
+
+    const totalQueruclor = totalPedido != null
+      ? totalPedido
+      : porArticulo.reduce((s, a) => s + a.cajas, 0);
+
+    const waTexto = encodeURIComponent("Hola, consulta sobre el pedido " + (pedido.codigo_corto || pedido.id));
+    const waUrl = "https://wa.me/" + cfg.whatsappOficina + "?text=" + waTexto;
+    const qrWa = global.QR ? QR.svg(waUrl, { mm: 0.5 }) : "";
+
+    const info = (bultos && bultos.__info) || {};
+    const cuerpo = porArticulo.map(a => {
+      const piezas = [];
+      const codigos = (bultos && bultos[claveDe(a)]) || [];
+      for (let n = 0; n < a.cajas; n++) {
+        if (a.soloIdx && a.soloIdx.indexOf(n) < 0) continue; // 16/11/2026: solo las cajas elegidas
+        const cod = codigos[n];
+        /* Surtida: con código, lo que la base registró para ESA caja; sin
+           base, la composición del renglón (si la hay). */
+        const contenido = !a.tipo ? null
+          : cod && info[cod] ? (info[cod].contenido_estado === "por_caja" ? info[cod].contenido : null)
+          : a.porCaja ? a.porCaja[n] || null : null;
+        piezas.push(etiquetaArticulo(pedido, a, totalQueruclor, logo, qrWa, cod || codigoPedido, bc, contenido));
+      }
+      return piezas.join("");
+    }).join("");
+
+    return `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <title>ETIQUETAS ${w}x${h}mm · ${esc(pedido.cliente_nombre || "")}</title>
+      <style>
+        ${global.EtiquetaComun.css(w, h, bc)}
+
+        .fila-caja{ display:flex; align-items:stretch; gap:2.5mm }
+        .bultoband{ flex:1; min-width:0 }
+        .bb-tit{ background:#000; color:#fff; font-size:12px; font-weight:900; letter-spacing:.09em;
+          padding:1.7mm 3mm; border-radius:1.6mm 1.6mm 0 0 }
+        .bb-art{ border:0.375mm solid #000; border-top:0; border-radius:0 0 1.6mm 1.6mm; padding:2.4mm 3mm 2.6mm }
+        .bb-art-n{ font-size:15.5px; font-weight:900; line-height:1.22; overflow-wrap:anywhere }
+        .bb-art-n.largo{ font-size:13px } .bb-art-n.muylargo{ font-size:11.5px }
+        .bb-art-c{ font-size:9.5px; font-weight:600; margin-top:1.8mm; overflow-wrap:anywhere }
+        .bb-art-c b{ font-weight:900 }
+        .cajas-pedido{ width:27mm; flex-shrink:0; display:flex; flex-direction:column; align-items:center;
+          justify-content:center; text-align:center; gap:.8mm; border-left:0.25mm solid #000; padding-left:1.5mm }
+        .cp-e{ font-size:8px; font-weight:900; letter-spacing:.08em; line-height:1.3 }
+        .cp-n{ font-size:36px; font-weight:900; line-height:1 }
+      </style></head><body>${cuerpo}</body></html>`;
+  }
+
+  /* ── Imprimir ─────────────────────────────────────────────────────
+     En un iframe con tamaño real: uno de 0x0 hace que Chrome calcule mal
+     el alto de página y las etiquetas salen corridas. */
+  function imprimir(html) {
+    const viejo = document.getElementById("etqFrame");
+    if (viejo) viejo.remove();
+    const f = document.createElement("iframe");
+    f.id = "etqFrame";
+    f.style.cssText = "position:fixed;left:-9999px;top:0;width:" + cfg.ancho + "mm;height:" + cfg.alto + "mm;border:0";
+    document.body.appendChild(f);
+    const d = f.contentWindow.document;
+    d.open(); d.write(html); d.close();
+    /* onload Y el chequeo inmediato pueden dispararse los dos: sin el seguro
+       saldrían dos cuadros de impresión seguidos. */
+    let lanzado = false;
+    const go = () => { if (lanzado) return; lanzado = true; setTimeout(() => { f.contentWindow.focus(); f.contentWindow.print(); }, 150); };
+    f.onload = go;
+    if (d.readyState === "complete") go();
+  }
+
+  /* ── Reimprimir UNA copia de un artículo puntual ─────────────────────
+     No "genera un bulto nuevo": es la misma identificación de siempre,
+     una vez más. Para eso alcanza con armar la tira con cajas:1. */
+  /* `clave` = EAN (cerrada) o «S|renglón» (surtida). `info` = la caja tal
+     como la tiene la base (con su contenido): la reimpresión dice lo mismo. */
+  function reimprimirArticulo(pedido, items, clave, codigo, info) {
+    const arts = articulosDe(pedido, items);
+    const art = arts.find(a => claveDe(a) === clave) || arts[0];
+    if (!art) return null;
+    /* El total que dice la etiqueta sigue siendo el del pedido entero,
+       no 1: es la misma etiqueta de siempre, no una nueva. Y con el MISMO
+       código de caja: reimprimir no crea un bulto ni mueve stock. */
+    const total = arts.reduce((s, a) => s + a.cajas, 0);
+    let b = null;
+    if (codigo) {
+      b = { [claveDe(art)]: [codigo] };
+      Object.defineProperty(b, "__info", { value: info ? { [codigo]: info } : {}, enumerable: false });
+    }
+    /* Sin la caja de la base no se sabe cuál de las surtidas es: no se le
+       pone la composición de otra. */
+    return htmlTira([Object.assign({}, art, { cajas: 1, porCaja: null })], pedido, total, b);
+  }
+
+  global.EtiquetasCaja = {
+    articulosDe, contarCajasQueruclor, htmlTira, imprimir, prepararBultos, prepararBultosAsync, cajasDeSueltas,
+    reimprimirArticulo, claveDe, cfg, guardarCfg,
+  };
+  if (typeof module !== "undefined" && module.exports) module.exports = global.EtiquetasCaja;
+
+})(typeof window !== "undefined" ? window : globalThis);
+
+</script>
+<script id="qrContingenciaMod">
+/* ═══ Facturación · Queruclor: aviso «falta preparar», «Devolver a Depósito» y etiquetas de cada caja por artículo (25/11/2026) ════════════
+   Incidente 001850 (Cervetti 10181, 24/11): el pedido llegó a Facturación con las cajas de Queruclor sin preparar y sin etiquetas, y desde
+   acá no había forma de imprimirlas ni de devolverlo a Depósito.
+   1 · Aviso: si el pedido tiene Queruclor y la parte Queruclor no está lista en Depósito, se avisa arriba (y al abrirlo NO se lo saca de la
+       lista de Depósito: el parche cambia la condición de «pasar a en facturación»).
+   2 · «Devolver a Depósito»: vuelve a «pendiente» (lo armado y lo revisado se conservan) y queda anotado quién y por qué (pedidos_eventos).
+   3 · Etiquetas de cada caja, por artículo: la MISMA etiqueta de Depósito (su módulo, embebido como EtiquetasCaja) y el MISMO circuito de
+       impresión (qr_imp_pedir → agente de la PC). Si las cajas todavía no tienen código, se lo da el servidor (qr_bultos_preparar, igual que
+       Depósito al imprimir la tira). Lo nunca impreso sale como «tira» (solo esas cajas); reponer una ya impresa es una «reimpresión» de
+       UNA caja con motivo, que autoriza oficina: quien la pide desde acá es oficina y la autoriza en el mismo paso. Siempre con motivo.
+   No afirma «impresa»: «Pedida a la impresora» es lo que respondió el servidor; el resto lo cuenta la PC (pantalla «Impresora»).
+   Consultas: 1 qr_prep_estado al abrir el pedido (y cuando cambian qr_bultos / qr_bloques); nada en reposo. */
+(function () {
+  "use strict";
+  if (window.qrContingencia) return;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const aviso = (t, tipo) => { try { if (typeof toast === "function") toast(t, tipo || ""); } catch (e) {} };
+  const quien = () => { try { return (typeof currentUser !== "undefined" && currentUser) || localStorage.getItem("factUser") || "LAURA"; } catch (e) { return "LAURA"; } };
+  const pedido = () => (typeof pedidoActivo !== "undefined" && pedidoActivo) || null;
+  const items = () => (typeof itemsActivos !== "undefined" && Array.isArray(itemsActivos) ? itemsActivos : []);
+  const esQr = it => { try { return !!(window.QRParse && QRParse.parseQueruclor(it.descripcion)); } catch (e) { return false; } };
+  const opNuevo = () => "fc-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  const st = { pid: null, estado: null, cargando: false, error: null, ocupado: false, ultimo: null };
+
+  async function llamar(fn, body) {
+    const r = await fetch("/rest/v1/rpc/" + fn, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), cache: "no-store" });
+    let j = null; try { j = await r.json(); } catch (e) {}
+    if (!r.ok) throw new Error((j && (j.message || j.motivo)) || ("error " + r.status));
+    return j;
+  }
+  async function leer(p) { const e = await llamar("qr_prep_estado", { p_pedido: String(p.id) }); return e || null; }
+  /* ¿Falta la parte Queruclor? false si el pedido no tiene Queruclor, es de faltantes o la parte está lista. Ante un error de lectura,
+     no frena nada (false) pero lo dice en el panel. */
+  async function faltaQr(p, its) {
+    if (!p || p.es_pedido_faltante || !(its || []).some(esQr)) return false;
+    try { const e = await leer(p); if (pedido() && String(pedido().id) === String(p.id)) { st.pid = p.id; st.estado = e; } return !(e && e.bloque && e.bloque.listo); }
+    catch (x) { st.error = "No se pudo consultar Queruclor: " + x.message; return false; }
+  }
+  /* ── Datos por artículo ── */
+  const E = () => window.EtiquetasCaja;
+  function articulos(p, its) { try { return E() ? E().articulosDe(p, its) : []; } catch (e) { return []; } }
+  function cajasDe(e) { return ((e && e.cajas) || []).filter(c => c.estado === "activo" && !c.faltante); }
+  function resumen(p, its, e) {
+    const arts = articulos(p, its), cajas = cajasDe(e);
+    return arts.map(a => {
+      const k = E().claveDe(a), mias = cajas.filter(c => String(c.clave || c.ean) === String(k) || (!c.clave && String(c.ean) === String(a.ean))).sort((x, y) => x.n - y.n);
+      return { a, k, cajas: mias, total: a.cajas, impresas: mias.filter(c => Number(c.impresiones) > 0).length };
+    });
+  }
+  /* Los códigos de las cajas, del servidor (qr_bultos_preparar), con los MISMOS parámetros que manda Depósito al imprimir la tira y el mismo
+     mapa { clave: [códigos] } con __info { código: caja }. Se pide acá, asincrónico: el QRSrv de Facturación no tiene la versión async. */
+  async function prepararCodigos(p, arts) {
+    const lista = await llamar("qr_bultos_preparar", { p_pedido: String(p.id),
+      p_arts: arts.map(a => a.tipo ? { clave: a.clave, tipo: a.tipo, ean: a.ean, nombre: a.articulo, cajas: a.cajas, uc: a.uc, variantes: a.variantes, composicion: a.composicion } : { ean: a.ean, nombre: a.articulo, cajas: a.cajas }),
+      p_cliente_id: String(p.cliente_id || ""), p_cliente_nombre: p.cliente_nombre || "", p_quien: quien(), p_imprimir: false, p_codigo_corto: p.codigo_corto || null });
+    const porClave = {}; Object.defineProperty(porClave, "__info", { value: {}, enumerable: false });
+    (Array.isArray(lista) ? lista : []).forEach(b => { const k = b.clave || b.ean; (porClave[k] = porClave[k] || []).push(b.codigo); porClave.__info[b.codigo] = b; });
+    return porClave;
+  }
+  /* La tira de SOLO esas cajas: misma etiqueta y mismo código que Depósito (igual a htmlDeCodigos de la impresión segura). */
+  function htmlDeCodigos(p, arts, bultos, codigos) {
+    const total = arts.reduce((s, a) => s + a.cajas, 0), set = new Set(codigos), sel = [];
+    arts.forEach(a => { const cs = bultos[E().claveDe(a)] || [], idx = []; for (let n = 0; n < a.cajas; n++) if (set.has(cs[n])) idx.push(n); if (idx.length) sel.push(Object.assign({}, a, { soloIdx: idx })); });
+    return { html: E().htmlTira(sel, p, total, bultos), n: sel.reduce((s, a) => s + a.soloIdx.length, 0) };
+  }
+
+  /* ── Hojas propias (nunca confirm/prompt) ── */
+  function hoja(o) {
+    return new Promise(res => {
+      const v = document.createElement("div"); v.id = "fcHoja"; v.className = "fc-velo";
+      const opciones = (o.opciones || []).map((t, i) => `<label class="fc-op"><input type="radio" name="fcMot" value="${esc(t)}"${i === 0 ? " checked" : ""}> ${esc(t)}</label>`).join("");
+      v.innerHTML = `<div class="fc-hoja" role="dialog" aria-modal="true" aria-labelledby="fcHojaT"><h3 id="fcHojaT">${esc(o.titulo)}</h3><p>${o.texto}</p>${opciones}
+        <input id="fcMotTxt" class="fc-txt" maxlength="160" placeholder="${esc(o.campo || "Detalle (opcional)")}"><div class="fc-bts"><button type="button" class="fc-b ghost" data-x>Cancelar</button><button type="button" class="fc-b ${o.peligro ? "warn" : "ok"}" data-si>${esc(o.ok)}</button></div></div>`;
+      document.body.appendChild(v);
+      const cerrar = r => { v.remove(); res(r); };
+      v.addEventListener("click", ev => {
+        if (ev.target === v || ev.target.closest("[data-x]")) return cerrar(null);
+        if (ev.target.closest("[data-si]")) {
+          const sel = v.querySelector("input[name=fcMot]:checked"), txt = ($("fcMotTxt").value || "").trim();
+          const motivo = [sel ? sel.value : "", txt].filter(Boolean).join(" · ");
+          if (!motivo) { $("fcMotTxt").focus(); return; }
+          cerrar(motivo);
+        }
+      });
+      setTimeout(() => { const b = v.querySelector("[data-si]"); if (b) b.focus(); }, 30);
+    });
+  }
+
+  /* ── Devolver a Depósito ── */
+  async function devolver() {
+    const p = pedido(); if (!p || st.ocupado) return;
+    if (p.facturado_at || p.estado === "facturado") return aviso("Este pedido ya está facturado: no se devuelve a Depósito desde acá.", "error");
+    const motivo = await hoja({ titulo: "Devolver el pedido a Depósito", texto: "Vuelve a la lista de Depósito como <b>pendiente</b>. Lo ya armado y lo que revisaste quedan guardados. Cuando Depósito lo termine, vuelve a aparecer acá.",
+      opciones: ["Falta preparar Queruclor", "Falta o sobra mercadería", "Otro"], ok: "Devolver a Depósito", peligro: true });
+    if (!motivo) return;
+    st.ocupado = true; pintar();
+    const antes = p.estado;
+    try {
+      await sbPatch("pedidos", `id=eq.${p.id}&estado=in.(armado,en_facturacion)&facturado_at=is.null`, { estado: "pendiente" });
+      const ahora = (await sbGet("pedidos", `id=eq.${p.id}&select=estado`))[0];
+      if (!ahora || ahora.estado !== "pendiente") throw new Error("el servidor no lo cambió (estado: " + (ahora ? ahora.estado : "?") + ")");
+      try { await sbInsert("pedidos_eventos", { pedido_id: p.id, tipo: "devuelto_a_deposito", de: antes, a: "pendiente", quien: quien(), motivo }); } catch (e) {}
+      aviso("Devuelto a Depósito (" + (p.codigo_corto || "") + "): vuelve a aparecer acá cuando lo terminen.", "ok");
+      if (typeof cargarPedidos === "function") { try { await cargarPedidos(); } catch (e) {} }
+      pedidoActivo = null; itemsActivos = [];
+      const ip = $("itemsPanel"); if (ip) ip.innerHTML = `<div class="fc-vacio">Pedido ${esc(p.codigo_corto || "")} devuelto a Depósito · ${esc(motivo)}</div>`;
+    } catch (x) { aviso("No se devolvió: " + x.message, "error"); }
+    st.ocupado = false; pintar();
+  }
+
+  /* ── Etiquetas de cada caja ── */
+  async function imprimir(clave) {
+    const p = pedido(); if (!p || st.ocupado) return;
+    if (!E()) return aviso("Falta el módulo de etiquetas de Depósito en esta pantalla: no se puede imprimir desde acá.", "error");
+    const its = items(), arts = articulos(p, its); if (!arts.length) return aviso("Este pedido no tiene cajas de Queruclor para etiquetar.", "error");
+    const motivo = await hoja({ titulo: clave ? "Imprimir las etiquetas de este artículo" : "Imprimir las etiquetas que faltan", texto: "Salen por la impresora de etiquetas de la PC, con el mismo código de caja que usa Depósito. Queda registrado quién las pidió y por qué.",
+      opciones: ["Depósito no pudo imprimirlas", "Se rompió o se perdió una etiqueta", "Otro"], ok: "Imprimir" });
+    if (!motivo) return;
+    st.ocupado = true; pintar();
+    try {
+      let bultos; try { bultos = await prepararCodigos(p, arts); } catch (x) { throw new Error("no se obtuvieron los códigos de las cajas (" + x.message + ")"); }
+      if (!bultos || !Object.keys(bultos).length) throw new Error("el servidor no devolvió los códigos de las cajas");
+      const e = await leer(p); st.estado = e; st.pid = p.id;
+      /* qr_prep_estado da las impresiones por N° de caja; los códigos los da prepararBultos (con el N° de cada uno en __info). */
+      const impresasN = new Set(cajasDe(e).filter(c => Number(c.impresiones) > 0).map(c => Number(c.n)));
+      const info = bultos.__info || {}, nDe = c => Number((info[c] || {}).n);
+      const elegidos = (clave ? arts.filter(a => E().claveDe(a) === clave) : arts);
+      const codigos = [].concat(...elegidos.map(a => (bultos[E().claveDe(a)] || []).slice(0, a.cajas))).filter(c => c && !impresasN.has(nDe(c)));
+      if (!codigos.length) { aviso("Esas etiquetas ya están impresas. Para una que se rompió o se perdió, usá «Reponer una».", "warn"); return; }
+      const sub = htmlDeCodigos(p, arts, bultos, codigos);
+      const r = await llamar("qr_imp_pedir", { p: { op: opNuevo(), pedido: String(p.id), tipo: "tira", codigos, etiquetas: sub.n, html: sub.html, quien: quien(), dispositivo: "facturacion", motivo } });
+      if (!r || !r.ok) throw new Error((r && r.motivo) || "no se pudo pedir");
+      st.ultimo = { texto: "Pedida a la impresora: " + sub.n + (sub.n === 1 ? " etiqueta" : " etiquetas") + " · " + motivo, id: r.trabajo && r.trabajo.id };
+      aviso("Pedida a la impresora · " + sub.n + (sub.n === 1 ? " etiqueta" : " etiquetas"), "ok");
+    } catch (x) { aviso("No se imprimió: " + x.message, "error"); st.ultimo = { texto: "No se imprimió: " + x.message, error: true }; }
+    finally { st.ocupado = false; try { st.estado = await leer(p); } catch (e) {} pintar(); }
+  }
+  async function reponer(clave) {
+    const p = pedido(); if (!p || st.ocupado || !E()) return;
+    const fila = resumen(p, items(), st.estado).find(f => f.k === clave); if (!fila) return;
+    const impresas = fila.cajas.filter(c => Number(c.impresiones) > 0); if (!impresas.length) return imprimir(clave);
+    let caja = impresas[0];
+    if (impresas.length > 1) {
+      const elegida = await hoja({ titulo: "¿Qué caja se repone?", texto: "Se repone UNA etiqueta por vez, con el mismo código de esa caja.", opciones: impresas.map(c => "Caja N° " + String(c.n).padStart(3, "0")), ok: "Elegir" });
+      if (!elegida) return; const n = Number((elegida.match(/N° (\d+)/) || [])[1]); caja = impresas.find(c => c.n === n) || caja;
+    }
+    const motivo = await hoja({ titulo: "Reponer la etiqueta de la caja N° " + String(caja.n).padStart(3, "0"), texto: "Una copia con el mismo código. La reposición la autoriza oficina: la pedís vos y queda autorizada a tu nombre.",
+      opciones: ["Se rompió o se perdió", "Salió mal impresa", "Otro"], ok: "Reponer" });
+    if (!motivo) return;
+    st.ocupado = true; pintar();
+    try {
+      const arts = articulos(p, items()); const bultos = await prepararCodigos(p, arts);
+      const info = bultos.__info || {}, codigo = Object.keys(info).find(c => Number(info[c].n) === Number(caja.n));
+      if (!codigo) throw new Error("no se encontró el código de la caja N° " + caja.n);
+      const sub = htmlDeCodigos(p, arts, bultos, [codigo]);
+      const op = opNuevo();
+      const r = await llamar("qr_imp_pedir", { p: { op, pedido: String(p.id), tipo: "reimpresion", codigos: [codigo], etiquetas: sub.n, html: sub.html, quien: quien(), dispositivo: "facturacion", motivo } });
+      if (!r || !r.ok) throw new Error((r && r.motivo) || "no se pudo pedir");
+      const id = (r.trabajo && r.trabajo.id) || op;
+      if (r.trabajo && r.trabajo.estado === "autorizacion") {
+        const a = await llamar("qr_imp_autorizar", { p: { id, aprobar: true, quien: quien() } });
+        if (!a || !a.ok) throw new Error("quedó pedida pero sin autorizar: " + ((a && a.motivo) || "?"));
+      }
+      st.ultimo = { texto: "Reposición de la caja N° " + String(caja.n).padStart(3, "0") + " autorizada por " + quien() + " y pedida a la impresora · " + motivo, id };
+      aviso("Reposición pedida a la impresora", "ok");
+    } catch (x) { aviso("No se repuso: " + x.message, "error"); st.ultimo = { texto: "No se repuso: " + x.message, error: true }; }
+    finally { st.ocupado = false; try { st.estado = await leer(p); } catch (e) {} pintar(); }
+  }
+
+  /* ── Pantalla ── */
+  function pintar() {
+    const p = pedido(), ip = $("itemsPanel"), viejo = $("mContingencia");
+    if (!p || !ip || p.estado === "facturado" || !items().some(esQr)) { if (viejo) viejo.remove(); return; }
+    const sec = viejo || document.createElement("section");
+    if (!viejo) { sec.id = "mContingencia"; sec.className = "fc-sec"; sec.setAttribute("aria-label", "Queruclor: etiquetas y devolución a Depósito"); }
+    const e = st.estado && String(st.pid) === String(p.id) ? st.estado : null;
+    const lista = !!(e && e.bloque && e.bloque.listo);
+    const filas = e && E() ? resumen(p, items(), e) : [];
+    const faltanTotal = filas.reduce((s, f) => s + Math.max(0, f.total - f.impresas), 0);
+    const dis = st.ocupado ? " disabled" : "";
+    const alerta = e && !lista && !p.es_pedido_faltante
+      ? `<div class="fc-alerta" role="alert"><b>⚠️ Falta preparar Queruclor en Depósito.</b> Las cajas de Queruclor de este pedido no se prepararon en el celular${filas.some(f => f.cajas.length) ? "" : " y no tienen etiquetas"}. Lo correcto es devolverlo a Depósito; si hace falta seguir igual, podés imprimir las etiquetas desde acá.
+         <button type="button" class="fc-b warn" data-devolver${dis}>↩ Devolver a Depósito</button></div>` : "";
+    const filasHtml = filas.map(f => {
+      const todas = f.total > 0 && f.impresas >= f.total;
+      const estado = f.cajas.length ? `${f.impresas} de ${f.total} ${f.total === 1 ? "etiqueta impresa" : "etiquetas impresas"}` : `${f.total} ${f.total === 1 ? "caja" : "cajas"} · sin etiqueta`;
+      return `<div class="fc-fila"><div class="fc-art"><b>${esc(f.a.articulo || f.a.nombre || f.k)}</b><span>${esc(estado)}</span></div>
+        ${todas ? `<button type="button" class="fc-b ghost" data-reponer="${esc(f.k)}"${dis}>🔁 Reponer una</button>` : `<button type="button" class="fc-b ok" data-imprimir="${esc(f.k)}"${dis}>🏷️ Imprimir</button>`}</div>`;
+    }).join("");
+    sec.innerHTML = alerta + `<details class="fc-det"${e && !lista ? " open" : ""}><summary><b>🏷️ Etiquetas de cada caja (Queruclor)</b><span>${e ? (faltanTotal ? faltanTotal + " sin imprimir" : "todas impresas") : (st.error ? esc(st.error) : "consultando…")}</span></summary>
+      <div class="fc-cuerpo">${filasHtml || (e ? '<div class="fc-nota">Sin cajas de Queruclor para etiquetar.</div>' : "")}
+      <div class="fc-pie">${faltanTotal ? `<button type="button" class="fc-b ok" data-imprimir=""${dis}>Imprimir todas las que faltan</button>` : ""}${lista ? `<button type="button" class="fc-b ghost" data-devolver${dis}>↩ Devolver a Depósito</button>` : ""}</div>
+      ${st.ultimo ? `<div class="fc-ult${st.ultimo.error ? " mal" : ""}">${esc(st.ultimo.texto)}</div>` : ""}
+      <div class="fc-nota">Solo para imprevistos: lo normal es que Depósito imprima las etiquetas al preparar. Reponer una ya impresa queda autorizado a tu nombre.</div></div></details>`;
+    const ancla = $("mChequeo") || $("qrPrepFact") || $("qrPanel");
+    if (ancla && ancla.parentNode === ip) { if (sec.nextSibling !== ancla) ip.insertBefore(sec, ancla); } else if (sec.parentNode !== ip) ip.insertBefore(sec, ip.firstChild);
+  }
+  async function refrescar(forzar) {
+    const p = pedido(); if (!p || !items().some(esQr)) { pintar(); return; }
+    if (!forzar && String(st.pid) === String(p.id) && st.estado) { pintar(); return; }
+    if (String(st.pid) !== String(p.id)) { st.estado = null; st.ultimo = null; st.error = null; }
+    st.cargando = true; pintar();
+    try { const e = await leer(p); if (pedido() && String(pedido().id) === String(p.id)) { st.pid = p.id; st.estado = e; st.error = null; } }
+    catch (x) { st.error = "No se pudo consultar Queruclor: " + x.message; }
+    st.cargando = false; pintar();
+  }
+  document.addEventListener("click", ev => {
+    const d = ev.target.closest("#mContingencia [data-devolver]"); if (d) { ev.preventDefault(); devolver(); return; }
+    const i = ev.target.closest("#mContingencia [data-imprimir]"); if (i) { ev.preventDefault(); imprimir(i.getAttribute("data-imprimir") || null); return; }
+    const r = ev.target.closest("#mContingencia [data-reponer]"); if (r) { ev.preventDefault(); reponer(r.getAttribute("data-reponer")); }
+  });
+  function enganchar() {
+    const wrap = (n, fn) => { const o = window[n]; if (typeof o !== "function" || o.__fc) return; const w = function () { const r = o.apply(this, arguments); const seguir = () => { try { fn(); } catch (e) { console.warn("[contingencia]", e); } }; if (r && typeof r.then === "function") r.then(seguir, seguir); else seguir(); return r; }; w.__fc = true; for (const k of Object.keys(o)) if (!(k in w)) w[k] = o[k]; window[n] = w; };
+    wrap("renderItemsF", () => refrescar(false));
+    wrap("seleccionar", () => refrescar(true));
+  }
+  function iniciar() {
+    enganchar();
+    try { if (window.QRSrv && QRSrv.escuchar) QRSrv.escuchar(["qr_bultos", "qr_bloques"], () => { if (pedido()) refrescar(true); }); } catch (e) {}
+    refrescar(true);
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
+  window.qrContingencia = { faltaQr, refrescar: () => refrescar(true), imprimir, reponer, devolver, estado: () => st.estado, version: "2026-11-25" };
 })();
 </script>
 <script id="qrActualizador" data-sw="./service-worker.js">
