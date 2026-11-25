@@ -6892,7 +6892,7 @@ renderCatKPIs();
       <div class="aa-fila ${r.propio ? "propio" : ""} ${h ? "" : "oculto"}" id="${pref || "aa-f-"}${i}">
         <div class="aa-nom">
           <b>${esc(r.p.nombre)}</b>
-          <i>${esc(r.p.marca)} · costo ${money(r.costo)} · <strong>${money(r.precio)}</strong>/u final</i>
+          <i>${esc(r.p.marca)} · costo c/IVA ${money(r.costo * 1.21)} · <strong>${money(r.precio)}</strong>/u final</i>
           ${chipVto(r)}
           ${hab}
         </div>
@@ -7279,7 +7279,7 @@ renderCatKPIs();
     return `<tr class="vt-fila ${activo ? "" : "vt-inactivo"}" data-key="${esc(key)}" onclick="vtFicha('${esc(key)}', event)" title="Abrir la ficha">
       <td><img class="tbl-img" src="${img}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
       <td><div class="vt-nom">${esc(p.nombre)}</div><div class="vt-marca">${esc(p.marca)} · <span class="vt-cat">${esc(p.cat.toLowerCase())}</span>${p.tipo === "familia" ? " · " + p.variantes.length + " aromas" : ""}</div></td>
-      <td class="vt-num vt-gris">${pesos(costo)}</td>
+      <td class="vt-num vt-gris" title="Sin IVA: ${pesos(costo)} (columna P)">${pesos(costo * 1.21)}</td>
       <td class="vt-num vt-fuerte">${pesos(pu)}</td>
       <td class="vt-num vt-gris">${pesos(pu * p.uc)}<small class="vt-sub">${p.uc} u. por caja</small></td>
       <td>${margen}</td>
@@ -7459,7 +7459,7 @@ renderCatKPIs();
 
     const thead = document.querySelector("#tab-catalogo thead tr");
     if (thead) thead.innerHTML = `<th></th><th>Producto</th>
-      <th class="vt-num">Costo neto</th><th class="vt-num">Precio c/u</th><th class="vt-num">Precio caja</th>
+      <th class="vt-num" title="Costo final por unidad, IVA incluido (columna R de la lista)">Costo c/IVA</th><th class="vt-num">Precio c/u</th><th class="vt-num">Precio caja</th>
       <th>Margen</th><th title="Fecha cargada a mano para sugerir ofertas. El vencimiento de la mercadería está en Stock.">Vence (comercial)</th><th style="text-align:center">Disponible<br><small>cajas</small></th><th style="text-align:center">Activo</th>`;
 
     window.renderCatRow = fila;
