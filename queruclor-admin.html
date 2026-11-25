@@ -1373,6 +1373,19 @@ td[align=right]{text-align:right; font-variant-numeric:tabular-nums}
 })(typeof window !== "undefined" ? window : globalThis);
 </script>
 <!-- VENCIMIENTOS:FIN -->
+<style id="qrAdminOfertasSyncCss">
+  /* ── Ofertas y sincronización (25/11/2026) ── */
+  #tab-ofertas .of-buscar{ width:100%; margin-bottom:8px; box-sizing:border-box }
+  #tab-ofertas .of-info{ margin-top:6px; font-size:12px; color:var(--g,#64748b); line-height:1.4 }
+  #tab-ofertas #of-producto{ width:100%; max-width:100%; box-sizing:border-box }
+  #ofertas-tbody .of-nota{ margin-top:4px; font-size:11.5px; font-weight:600; line-height:1.35; white-space:normal }
+  #ofertas-tbody .of-nota.mal{ color:#b91c1c }
+  #ofertas-tbody .of-nota.venc{ color:#92400e }
+  #ofertas-tbody .of-nota.prox{ color:#1d4ed8 }
+  /* Restos del Admin original: stock falso guardado solo en esta PC (no es el stock real). */
+  button[onclick^="resetStock"], button[onclick^="guardarTodo"]{ display:none !important }
+  @media (max-width:600px){ #tab-ofertas .of-buscar, #tab-ofertas #of-producto{ font-size:16px } }
+</style>
 </head>
 <body>
 <div class="layout">
@@ -2067,7 +2080,7 @@ function toggleVolumen(){
 function updOfertaPrecio(){
   const pct=parseFloat(document.getElementById('of-pct').value)||0;
   const key=document.getElementById('of-producto').value;
-  const prod=CATALOGO.find(p=>getKey(p)===key);
+  const prod=(window.qrOfProd?qrOfProd(key):CATALOGO.find(p=>getKey(p)===key));
   if(!prod||!pct){ document.getElementById('of-preview').style.display='none'; return; }
   const pv=prod.precioUnit;
   const desc=pv*(pct/100);
@@ -2085,7 +2098,8 @@ function crearOferta(){
   const fin=document.getElementById('of-fin').value;
   const minb=parseInt(document.getElementById('of-minbultos').value)||0;
   if(!pct||pct<=0){ toast('⚠️ Ingresá un descuento válido'); return; }
-  const prod=CATALOGO.find(p=>getKey(p)===key);
+  const prod=(window.qrOfProd?qrOfProd(key):CATALOGO.find(p=>getKey(p)===key));
+  if(!prod){ toast('⚠️ Elegí un artículo de la lista: solo los que están a la venta'); return; }
   ofertas.push({id:Date.now(),key,nombre:prod.nombre,tipo,pct,ribbon,inicio,fin,minBultos:minb,activa:true,creada:new Date().toISOString()});
   localStorage.setItem(OFERT_K,JSON.stringify(ofertas));
   renderOfertas();
@@ -3015,7 +3029,7 @@ renderCatKPIs();
     let r;
     try { r = await fetch(API, { cache: "no-store" }); }
     catch (e) { return { estado: "sin-servidor" }; }
-    if (!r.ok) return { estado: "sin-publicar" };
+    if (!r.ok) return { estado: r.status === 404 ? "sin-publicar" : "sin-servidor" };
 
     const datos = await r.json();
     if (!datos || !datos.productos) return { estado: "sin-publicar" };
@@ -3358,7 +3372,7 @@ renderCatKPIs();
     let r;
     try { r = await fetch(API, { cache: "no-store" }); }
     catch (e) { return { estado: "sin-servidor", cambio: false }; }
-    if (!r.ok) return { estado: "sin-publicar", cambio: false };
+    if (!r.ok) return { estado: r.status === 404 ? "sin-publicar" : "sin-servidor", cambio: false };
 
     const datos = await r.json();
     if (!datos || !Array.isArray(datos.ofertas)) return { estado: "sin-publicar", cambio: false };
@@ -8398,7 +8412,7 @@ renderCatKPIs();
     goTab("ofertas");
     setTimeout(() => {
       const s = $("of-producto");
-      if (s) { s.value = aaDatos.keyDe(p); s.dispatchEvent(new Event("change")); }
+      if (s) { s.value = window.qrOfClaveDe ? qrOfClaveDe(p) : aaDatos.keyDe(p); s.dispatchEvent(new Event("change")); }
       const c = $("of-pct"); if (c) { c.focus(); c.scrollIntoView({ block: "center", behavior: "smooth" }); }
     }, 150);
   };
@@ -9567,7 +9581,7 @@ renderCatKPIs();
     let r;
     try { r = await fetch(API, { cache: "no-store" }); }
     catch (e) { return { estado: "sin-servidor", cambio: false }; }
-    if (!r.ok) return { estado: "sin-publicar", cambio: false };
+    if (!r.ok) return { estado: r.status === 404 ? "sin-publicar" : "sin-servidor", cambio: false };
     const datos = await r.json();
     if (!datos || !Array.isArray(datos.vendedores)) return { estado: "sin-publicar", cambio: false };
 
@@ -15192,6 +15206,226 @@ renderCatKPIs();
   setInterval(revisar, CADA_MS);
   document.addEventListener("visibilitychange", function () { if (!document.hidden) revisar(); });
   window.qrRevisarActualizacion = revisar;
+})();
+
+</script>
+<script id="qrAdminOfertasSync">
+/* ═══════════════════════════════════════════════════════════════════
+   ADMIN · OFERTAS Y SINCRONIZACIÓN ENTRE EQUIPOS (25/11/2026, auditoría del Admin)
+
+   Lo inserta produccion/admin-ofertas-sync-parche.js (no editar en queruclor-admin.html).
+
+   1. El selector de «Nueva oferta» lista EXACTAMENTE lo que ve el vendedor: la misma lista curada que la app de
+      Pedidos publicada (la copia el parche, con sus familias, p. ej. los limpiadores Odex pack/gatillo) y la misma
+      regla (QRVendedor.armar + campo `vendible`). Antes salía la lista fija del Admin: 32 pausados de más, faltaban
+      los habilitados que no están en la lista curada, y las familias tenían otra clave (la oferta no le llegaba).
+      Con buscador y agrupado por rubro; se rearma al entrar a Ofertas y cuando el catálogo cambia.
+   2. Las ofertas en memoria (`ofertas`, cargada una sola vez al abrir) se ponen al día con lo publicado al abrir,
+      al entrar a Ofertas y ANTES de crear/pausar/borrar: así este equipo nunca publica una lista vieja que borre lo
+      que se cargó desde el otro (PC ↔ iPhone).
+   3. La tabla de ofertas avisa si el vendedor NO la ve (artículo pausado, clave vieja) y si ya venció.
+   4. Al volver a la pantalla (y cada 60 s con la pantalla a la vista) se trae lo publicado desde el otro equipo:
+      ofertas y catálogo («¿hay algo nuevo?» primero: /api/version, liviano). Nunca con una publicación propia en
+      curso o fallida: no se pisa un cambio de este equipo que todavía no salió.
+   ═══════════════════════════════════════════════════════════════════ */
+(function () {
+  "use strict";
+  if (window.qrOfSync) return;
+  const CURADO = [{"tipo":"producto","ean":"7791905024248","nombre":"Lavandina Aditivada En Gel 700ml","marca":"ODEX","cat":"LAVANDINAS","uc":18,"precioUnit":1733.15,"precioBulto":31196.7,"costoNeto":1095.75},{"tipo":"producto","ean":"7791905024057","nombre":"Lavandina Aditivada Lavanda 1L","marca":"ODEX","cat":"LAVANDINAS","uc":15,"precioUnit":1065.28,"precioBulto":15979.2,"costoNeto":673.51},{"tipo":"producto","ean":"7791905024064","nombre":"Lavandina Aditivada Lavanda 2L","marca":"ODEX","cat":"LAVANDINAS","uc":8,"precioUnit":1965.45,"precioBulto":15723.6,"costoNeto":1242.62},{"tipo":"producto","ean":"7791905024071","nombre":"Lavandina Aditivada Lavanda 4L","marca":"ODEX","cat":"LAVANDINAS","uc":3,"precioUnit":3850.79,"precioBulto":11552.37,"costoNeto":2434.59},{"tipo":"producto","ean":"7791905003663","nombre":"Lavandina Aditivada Ropa Blanca 1L","marca":"QUERUBIN","cat":"LAVANDINAS","uc":15,"precioUnit":1295.37,"precioBulto":19430.55,"costoNeto":818.97},{"tipo":"producto","ean":"7791905000723","nombre":"Lavandina Aditivada Ropa Blanca 2L","marca":"QUERUBIN","cat":"LAVANDINAS","uc":8,"precioUnit":2449.23,"precioBulto":19593.84,"costoNeto":1548.48},{"tipo":"producto","ean":"7791905023203","nombre":"Lavandina Común 1L","marca":"ODEX","cat":"LAVANDINAS","uc":15,"precioUnit":856.47,"precioBulto":12847.05,"costoNeto":541.49},{"tipo":"producto","ean":"7791905023210","nombre":"Lavandina Común 2L","marca":"ODEX","cat":"LAVANDINAS","uc":8,"precioUnit":1633.63,"precioBulto":13069.04,"costoNeto":1032.83},{"tipo":"producto","ean":"7791905023227","nombre":"Lavandina Común 4L","marca":"ODEX","cat":"LAVANDINAS","uc":3,"precioUnit":3194.06,"precioBulto":9582.18,"costoNeto":2019.39},{"tipo":"producto","ean":"7791905000020","nombre":"Lavandina Concentrada 1L","marca":"QUERUBIN","cat":"LAVANDINAS","uc":15,"precioUnit":1042.16,"precioBulto":15632.4,"costoNeto":658.89},{"tipo":"producto","ean":"7791905000037","nombre":"Lavandina Concentrada 2L","marca":"QUERUBIN","cat":"LAVANDINAS","uc":8,"precioUnit":2008.82,"precioBulto":16070.56,"costoNeto":1270.04},{"tipo":"producto","ean":"7791905000372","nombre":"Lavandina Concentrada 4L","marca":"QUERUBIN","cat":"LAVANDINAS","uc":3,"precioUnit":3872.75,"precioBulto":11618.25,"costoNeto":2448.48},{"tipo":"producto","ean":"7791905023791","nombre":"Limpiapisos Amoniaco 900ml","marca":"ODEX","cat":"LIMPIAPISOS","uc":12,"precioUnit":1505.61,"precioBulto":18067.32,"costoNeto":951.9},{"tipo":"familia","familiaKey":"limpiapisos-odex-1800","nombre":"Limpiapisos ODEX 1800ml","marca":"ODEX","cat":"LIMPIAPISOS","uc":6,"precioUnit":1583.52,"precioBulto":9501.12,"imagenPrincipal":"7791905023852","variantes":[{"ean":"7791905023852","nombre":"Amanecer Marino"},{"ean":"7791905023883","nombre":"Bebé"},{"ean":"7791905023906","nombre":"Bosque"},{"ean":"7791905023937","nombre":"Floral"},{"ean":"7791905023968","nombre":"Lavanda"},{"ean":"7791905023999","nombre":"Limón"}]},{"tipo":"familia","familiaKey":"limpiapisos-odex-4l","nombre":"Limpiapisos ODEX 4L","marca":"ODEX","cat":"LIMPIAPISOS","uc":3,"precioUnit":4188.83,"precioBulto":12566.49,"imagenPrincipal":"7791905023869","variantes":[{"ean":"7791905023869","nombre":"Amanecer Marino"},{"ean":"7791905024019","nombre":"Bebé"},{"ean":"7791905023944","nombre":"Floral"},{"ean":"7791905023975","nombre":"Lavanda"},{"ean":"7791905024002","nombre":"Limón"}]},{"tipo":"familia","familiaKey":"limpiapisos-odex-900","nombre":"Limpiapisos ODEX 900ml","marca":"ODEX","cat":"LIMPIAPISOS","uc":12,"precioUnit":944.32,"precioBulto":11331.84,"imagenPrincipal":"7791905023845","variantes":[{"ean":"7791905023845","nombre":"Amanecer Marino"},{"ean":"7791905023876","nombre":"Bebé"},{"ean":"7791905023890","nombre":"Bosque"},{"ean":"7791905023920","nombre":"Floral"},{"ean":"7791905023951","nombre":"Lavanda"},{"ean":"7791905023982","nombre":"Limón"}]},{"tipo":"producto","ean":"7791905024811","nombre":"Detergente Ultra Limón 250ml","marca":"ODEX","cat":"DETERGENTES","uc":12,"precioUnit":1220.32,"precioBulto":14643.84,"costoNeto":771.53},{"tipo":"producto","ean":"7791905024828","nombre":"Detergente Ultra Limón 500ml","marca":"ODEX","cat":"DETERGENTES","uc":12,"precioUnit":2153.29,"precioBulto":25839.48,"costoNeto":1361.38},{"tipo":"producto","ean":"7791905024835","nombre":"Detergente Ultra Limón 750ml","marca":"ODEX","cat":"DETERGENTES","uc":12,"precioUnit":3015.35,"precioBulto":36184.2,"costoNeto":1906.4},{"tipo":"producto","ean":"7791905023548","nombre":"Lavavajillas Biodegradable 750ml","marca":"VENCEDOR","cat":"DETERGENTES","uc":12,"precioUnit":1192.71,"precioBulto":14312.52,"costoNeto":754.07},{"tipo":"producto","ean":"7791905003328","nombre":"Líquido Lavar Ropa 1.5L Botella","marca":"QUERUBIN","cat":"LAVARROPAS","uc":6,"precioUnit":3364.73,"precioBulto":20188.38,"costoNeto":2127.29},{"tipo":"producto","ean":"7791905003366","nombre":"Líquido Lavar Ropa 3L D-Pack","marca":"QUERUBIN","cat":"LAVARROPAS","uc":4,"precioUnit":7390.07,"precioBulto":29560.28,"costoNeto":4672.23},{"tipo":"producto","ean":"7791905003878","nombre":"Líquido Lavar Ropa 3L D-Pack","marca":"NETIC","cat":"LAVARROPAS","uc":4,"precioUnit":4408.91,"precioBulto":17635.64,"costoNeto":2787.45},{"tipo":"producto","ean":"7791905003311","nombre":"Líquido Lavar Ropa 800ml Botella","marca":"QUERUBIN","cat":"LAVARROPAS","uc":12,"precioUnit":2457.85,"precioBulto":29494.2,"costoNeto":1553.93},{"tipo":"producto","ean":"7791905003830","nombre":"Líquido Lavar Ropa 800ml Botella","marca":"NETIC","cat":"LAVARROPAS","uc":12,"precioUnit":1513.37,"precioBulto":18160.44,"costoNeto":956.8},{"tipo":"producto","ean":"7791905001393","nombre":"Líquido Lavar Ropa 800ml D-Pack","marca":"QUERUBIN","cat":"LAVARROPAS","uc":12,"precioUnit":2386.93,"precioBulto":28643.16,"costoNeto":1509.09},{"tipo":"producto","ean":"7791905003861","nombre":"Líquido Lavar Ropa 800ml D-Pack","marca":"NETIC","cat":"LAVARROPAS","uc":12,"precioUnit":1500.17,"precioBulto":18002.04,"costoNeto":948.46},{"tipo":"producto","ean":"7791905002789","nombre":"Polvo Lavar Baja Espuma 3kg","marca":"QUERUBIN","cat":"LAVARROPAS","uc":1,"precioUnit":9268.97,"precioBulto":9268.97,"costoNeto":5860.13},{"tipo":"producto","ean":"7791905001614","nombre":"Polvo Lavar Baja Espuma 400g","marca":"QUERUBIN","cat":"LAVARROPAS","uc":30,"precioUnit":1311.91,"precioBulto":39357.3,"costoNeto":829.43},{"tipo":"producto","ean":"7791905001621","nombre":"Polvo Lavar Baja Espuma 800g","marca":"QUERUBIN","cat":"LAVARROPAS","uc":24,"precioUnit":2624.03,"precioBulto":62976.72,"costoNeto":1659},{"tipo":"producto","ean":"7791905003823","nombre":"Polvo Lavar Regular 1.5kg","marca":"QUERUBIN","cat":"LAVARROPAS","uc":12,"precioUnit":4673.28,"precioBulto":56079.36,"costoNeto":2954.59},{"tipo":"producto","ean":"7791905002819","nombre":"Polvo Lavar Regular 3kg","marca":"QUERUBIN","cat":"LAVARROPAS","uc":1,"precioUnit":9268.97,"precioBulto":9268.97,"costoNeto":5860.13},{"tipo":"producto","ean":"7791905001645","nombre":"Polvo Lavar Regular 400g","marca":"QUERUBIN","cat":"LAVARROPAS","uc":30,"precioUnit":1311.91,"precioBulto":39357.3,"costoNeto":829.43},{"tipo":"producto","ean":"7791905001652","nombre":"Polvo Lavar Regular 800g","marca":"QUERUBIN","cat":"LAVARROPAS","uc":24,"precioUnit":2624.03,"precioBulto":62976.72,"costoNeto":1659},{"tipo":"producto","ean":"7791905022749","nombre":"Suavizante Celeste D-Pack 3L","marca":"WOODY","cat":"LAVARROPAS","uc":4,"precioUnit":4867.64,"precioBulto":19470.56,"costoNeto":3077.48},{"tipo":"producto","ean":"7791905000426","nombre":"Suavizante Celeste D-Pack 900ml","marca":"WOODY","cat":"LAVARROPAS","uc":12,"precioUnit":1625.13,"precioBulto":19501.56,"costoNeto":1027.46},{"tipo":"familia","familiaKey":"limpiador-pack-odex-450","nombre":"Limpiador Doy Pack ODEX 450ml","marca":"ODEX","cat":"LIMPIADORES","uc":24,"precioUnit":1318.93,"precioBulto":31654.32,"imagenPrincipal":"7791905004387","varNombre":"producto","variantes":[{"ean":"7791905004387","nombre":"Antigrasa"},{"ean":"7791905004363","nombre":"Vidrios"}]},{"tipo":"familia","familiaKey":"limpiador-gatillo-odex-500","nombre":"Limpiador Gatillo ODEX 500ml","marca":"ODEX","cat":"LIMPIADORES","uc":12,"precioUnit":2561.6,"precioBulto":30739.2,"imagenPrincipal":"7791905004394","varNombre":"producto","variantes":[{"ean":"7791905004394","nombre":"Antigrasa"},{"ean":"7791905004370","nombre":"Vidrios"}]},{"tipo":"producto","ean":"7791905004400","nombre":"Limpia Baño Doy Pack 450ml","marca":"ODEX","cat":"LIMPIADORES","uc":24,"precioUnit":1318.93,"precioBulto":31654.32,"costoNeto":833.87},{"tipo":"producto","ean":"7791905004417","nombre":"Limpia Baño Gatillo 500ml","marca":"ODEX","cat":"LIMPIADORES","uc":12,"precioUnit":2561.6,"precioBulto":30739.2,"costoNeto":1619.52},{"tipo":"producto","ean":"7791905023036","nombre":"Limpiador Cremoso Original 500ml","marca":"ODEX","cat":"LIMPIADORES","uc":12,"precioUnit":2303.84,"precioBulto":27646.08,"costoNeto":1456.56},{"tipo":"producto","ean":"7791905004486","nombre":"Polvo Limpiador Original 400g","marca":"ODEX","cat":"LIMPIADORES","uc":12,"precioUnit":2161.18,"precioBulto":25934.16,"costoNeto":1366.36},{"tipo":"familia","familiaKey":"desinfectante-aerosol-odex","nombre":"Desinfectante Aerosol ODEX 360ml","marca":"ODEX","cat":"DESINFECTANTES","uc":12,"precioUnit":2679.65,"precioBulto":32155.8,"imagenPrincipal":"7791905004516","variantes":[{"ean":"7791905004516","nombre":"Original"},{"ean":"7791905004523","nombre":"Lavanda"},{"ean":"7791905004530","nombre":"Bebé"}]},{"tipo":"producto","ean":"7791905002413","nombre":"Cebo Mata Cucaracha x8","marca":"CUCA TRAP","cat":"INSECTICIDAS","uc":24,"precioUnit":7869.6,"precioBulto":188870.4,"costoNeto":4975.41},{"tipo":"producto","ean":"7791905002338","nombre":"Espiral Mata Mosquitos Perfumados x12","marca":"MOSQUI TRAP","cat":"INSECTICIDAS","uc":48,"precioUnit":1984.77,"precioBulto":95268.96,"costoNeto":1254.83},{"tipo":"producto","ean":"7791905002383","nombre":"Espiral Mata Mosquitos x12","marca":"MOSQUI TRAP","cat":"INSECTICIDAS","uc":48,"precioUnit":1826.77,"precioBulto":87684.96,"costoNeto":1154.94},{"tipo":"producto","ean":"7791905002390","nombre":"Insecticida Mata Cucarachas 380ml","marca":"CUCA TRAP","cat":"INSECTICIDAS","uc":12,"precioUnit":3646.16,"precioBulto":43753.92,"costoNeto":2305.22},{"tipo":"producto","ean":"7791905023265","nombre":"Insecticida Mata Cucarachas Ultra 380ml","marca":"CUCA TRAP","cat":"INSECTICIDAS","uc":12,"precioUnit":4059.56,"precioBulto":48714.72,"costoNeto":2566.58},{"tipo":"producto","ean":"7791905002376","nombre":"Insecticida Mata Moscas/Mosquitos 370ml","marca":"MOSQUI TRAP","cat":"INSECTICIDAS","uc":12,"precioUnit":3311.43,"precioBulto":39737.16,"costoNeto":2093.59},{"tipo":"producto","ean":"7791905023258","nombre":"Insecticida Mata Moscas/Mosquitos Ultra 370ml","marca":"MOSQUI TRAP","cat":"INSECTICIDAS","uc":12,"precioUnit":3643.32,"precioBulto":43719.84,"costoNeto":2303.42},{"tipo":"producto","ean":"7791905023784","nombre":"Repelente Mosquitos 143ml","marca":"AKTIOL","cat":"INSECTICIDAS","uc":12,"precioUnit":2799.88,"precioBulto":33598.56,"costoNeto":1770.17},{"tipo":"producto","ean":"7791905024897","nombre":"Repelente Mosquitos 165ml","marca":"AKTIOL","cat":"INSECTICIDAS","uc":12,"precioUnit":3443.85,"precioBulto":41326.2,"costoNeto":2177.31},{"tipo":"producto","ean":"7791905002345","nombre":"Tableta Mata Mosquitos x12","marca":"MOSQUI TRAP","cat":"INSECTICIDAS","uc":20,"precioUnit":2066.88,"precioBulto":41337.6,"costoNeto":1306.75},{"tipo":"producto","ean":"7791905002352","nombre":"Tableta Mata Mosquitos x24","marca":"MOSQUI TRAP","cat":"INSECTICIDAS","uc":20,"precioUnit":3646.33,"precioBulto":72926.6,"costoNeto":2305.32},{"tipo":"producto","ean":"7791905004424","nombre":"Talco Pédico 100g","marca":"AKTIOL","cat":"PERFUMERIA","uc":12,"precioUnit":1828.37,"precioBulto":21940.44,"costoNeto":1155.95},{"tipo":"producto","ean":"7791905004431","nombre":"Talco Pédico 200g","marca":"AKTIOL","cat":"PERFUMERIA","uc":12,"precioUnit":3020.44,"precioBulto":36245.28,"costoNeto":1909.62}];
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const norm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const aviso = t => { if (typeof window.toast === "function") toast(t, 4200); };
+  const hoyISO = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+  const keyDe = p => p.tipo === "familia" ? String(p.familiaKey) : String(p.ean);
+  const eansDe = p => p.tipo === "familia" ? (p.variantes || []).map(v => String(v.ean)) : [String(p.ean)];
+  const RUBRO = { LAVANDINAS: "Lavandinas", LIMPIAPISOS: "Limpiapisos", DETERGENTES: "Detergentes", LAVARROPAS: "Lavarropas", INSECTICIDAS: "Insecticidas",
+    DESINFECTANTES: "Desinfectantes", LIMPIADORES: "Limpiadores", AMBIENTE: "Ambiente", PERFUMERIA: "Perfumería", OTROS: "Otros" };
+
+  /* ── La lista del vendedor ─────────────────────────────────────── */
+  function listaVendedor(todos) {
+    if (!CURADO || !window.QRVendedor || !window.Catalogo) return [];
+    /* Copia: armar() deja en los objetos curados solo las variantes visibles. */
+    return QRVendedor.armar(JSON.parse(JSON.stringify(CURADO)), Catalogo.todos(), todos ? { todos: true } : undefined);
+  }
+  function precioDe(p) {
+    for (const e of eansDe(p)) { const f = Catalogo.buscar(e); if (f && f.precioUnit > 0) return f.precioUnit; }
+    return Number(p.precioUnit) || 0;
+  }
+  function opciones() {
+    return listaVendedor().map(p => ({
+      key: keyDe(p), nombre: p.nombre, marca: String(p.marca || "").toUpperCase(), cat: p.cat || QRVendedor.categoria(p.nombre),
+      precioUnit: precioDe(p), aromas: p.tipo === "familia" ? (p.variantes || []).length : 0, eans: eansDe(p),
+    })).sort((a, b) => a.cat.localeCompare(b.cat) || a.nombre.localeCompare(b.nombre, "es"));
+  }
+  /* Lo usan crearOferta() y updOfertaPrecio() (parche de texto): solo un artículo a la venta. */
+  window.qrOfProd = key => {
+    const o = opciones().find(x => x.key === String(key));
+    return o ? { nombre: o.nombre, marca: o.marca, precioUnit: o.precioUnit } : null;
+  };
+  /* Desde la ficha del artículo («Nueva oferta»): la clave del vendedor para ese artículo del Admin. */
+  window.qrOfClaveDe = p => {
+    const es = new Set(eansDe(p));
+    const t = listaVendedor(true).find(x => eansDe(x).some(e => es.has(e)));
+    const b = $("ofBuscar"); if (b && b.value) { b.value = ""; pintarSelector(); }
+    if (!t) { aviso("⚠️ Ese artículo no está en la lista del vendedor."); return ""; }
+    if (!t._habilitado) { aviso("⚠️ " + t.nombre + " está pausado: habilitalo en Catálogo para que el vendedor vea la oferta."); return ""; }
+    return keyDe(t);
+  };
+
+  /* ── Selector con buscador ─────────────────────────────────────── */
+  function montarBuscador() {
+    const sel = $("of-producto");
+    if (!sel || $("ofBuscar")) return;
+    const b = document.createElement("input");
+    b.id = "ofBuscar"; b.type = "search"; b.className = "form-inp of-buscar"; b.autocomplete = "off"; b.spellcheck = false;
+    b.placeholder = "Buscar artículo: nombre, marca o código";
+    b.setAttribute("aria-label", "Buscar artículo para la oferta");
+    sel.parentNode.insertBefore(b, sel);
+    const info = document.createElement("div"); info.id = "ofInfo"; info.className = "of-info";
+    sel.insertAdjacentElement("afterend", info);
+    let t = null;
+    b.addEventListener("input", () => { clearTimeout(t); t = setTimeout(pintarSelector, 120); });
+    b.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); sel.focus(); } });
+  }
+  function pintarSelector() {
+    const sel = $("of-producto");
+    if (!sel || !window.QRVendedor || !window.Catalogo) return;
+    montarBuscador();
+    const q = norm(($("ofBuscar") || {}).value);
+    const antes = sel.value;
+    const ops = opciones();
+    const vis = q ? ops.filter(o => norm(o.nombre + " " + o.marca + " " + o.eans.join(" ") + " " + o.key).includes(q)) : ops;
+    if (!vis.length) sel.innerHTML = '<option value="">' + (ops.length ? "Ningún artículo a la venta coincide con la búsqueda" : "No hay artículos a la venta") + "</option>";
+    else {
+      let h = "", cat = null;
+      for (const o of vis) {
+        if (o.cat !== cat) { if (cat !== null) h += "</optgroup>"; cat = o.cat; h += '<optgroup label="' + esc(RUBRO[cat] || cat) + '">'; }
+        h += '<option value="' + esc(o.key) + '">' + esc(o.nombre) + (o.marca ? " · " + esc(o.marca) : "") + (o.aromas > 1 ? " (" + o.aromas + " aromas)" : "") + "</option>";
+      }
+      sel.innerHTML = h + "</optgroup>";
+    }
+    sel.value = vis.some(o => o.key === antes) ? antes : (vis[0] ? vis[0].key : "");
+    const info = $("ofInfo");
+    if (info) info.textContent = ops.length + " artículos a la venta: los mismos que ve el vendedor" + (q ? " · " + vis.length + " coinciden" : "") + ". Los pausados no aparecen.";
+    if (sel.value !== antes && typeof window.updOfertaPrecio === "function") try { updOfertaPrecio(); } catch (e) {}
+  }
+  window.qrOfPintarSelector = pintarSelector;
+
+  /* ── Ofertas al día con lo publicado ───────────────────────────── */
+  let enCurso = null;
+  function sincronizar() {
+    if (enCurso) return enCurso;
+    enCurso = (async () => {
+      let r = null;
+      try { r = window.Ofertas ? await Ofertas.traer() : null; } catch (e) {}
+      const antes = JSON.stringify(ofertas);
+      if (window.Ofertas) ofertas = Ofertas._leer();
+      return { r, cambio: antes !== JSON.stringify(ofertas) };
+    })().finally(() => { enCurso = null; });
+    return enCurso;
+  }
+  window.qrOfSincronizar = sincronizar;
+
+  let ocupado = false;
+  function marcarOcupado(si) {
+    document.querySelectorAll('#tab-ofertas button[onclick^="crearOferta"]').forEach(b => { b.disabled = si; b.textContent = si ? "Sincronizando…" : "Crear oferta"; });
+  }
+  ["crearOferta", "toggleOferta", "eliminarOferta"].forEach(n => {
+    const orig = window[n];
+    if (typeof orig !== "function" || orig.__ofSync) return;
+    const w = async function () {
+      const a = [].slice.call(arguments);
+      if (ocupado) return;
+      ocupado = true; marcarOcupado(true);
+      try {
+        const id = n === "crearOferta" ? null : ((ofertas[a[0]] || {}).id);
+        await sincronizar();
+        if (n !== "crearOferta") {
+          const i = ofertas.findIndex(o => o.id === id);
+          if (id == null || i < 0) { renderOfertas(); aviso("⚠️ Esa oferta ya no está: se cambió desde el otro equipo. La lista quedó al día."); return; }
+          a[0] = i;
+        }
+        return orig.apply(this, a);
+      } finally { ocupado = false; marcarOcupado(false); }
+    };
+    w.__ofSync = true;
+    window[n] = w;
+  });
+
+  /* ── La tabla dice si el vendedor la ve ────────────────────────── */
+  function anotar() {
+    const tb = $("ofertas-tbody");
+    if (!tb || !ofertas.length) return;
+    const todos = new Map(listaVendedor(true).map(p => [keyDe(p), p]));
+    const hoy = hoyISO(), n = ofertas.length;
+    [...tb.children].forEach((tr, i) => {
+      const o = ofertas[n - 1 - i], td = tr.firstElementChild;
+      if (!o || !td) return;
+      const p = todos.get(String(o.key));
+      let txt = "", cls = "mal";
+      if (!p) txt = "El vendedor no la ve: ese artículo no está en su lista (clave vieja). Borrala y creala de nuevo.";
+      else if (!p._habilitado) txt = "El vendedor no la ve: el artículo está pausado.";
+      else if (o.activa && o.fin && o.fin < hoy) { txt = "Vencida: terminó el " + o.fin.split("-").reverse().join("/") + "."; cls = "venc"; }
+      else if (o.activa && o.inicio && o.inicio > hoy) { txt = "Empieza el " + o.inicio.split("-").reverse().join("/") + "."; cls = "prox"; }
+      if (txt) td.insertAdjacentHTML("beforeend", '<div class="of-nota ' + cls + '">' + esc(txt) + "</div>");
+    });
+  }
+  const renderOrig = window.renderOfertas;
+  if (typeof renderOrig === "function") {
+    window.renderOfertas = function () { const r = renderOrig.apply(this, arguments); try { anotar(); } catch (e) { console.warn("[ofertas]", e); } return r; };
+  }
+
+  /* ── Entrar a Ofertas ──────────────────────────────────────────── */
+  function alEntrar() {
+    pintarSelector();
+    sincronizar().then(x => { if (x.cambio) renderOfertas(); });
+  }
+  function engancharTab() {
+    const orig = window.goTab;
+    if (typeof orig !== "function" || orig.__ofSync) return;
+    const w = function (t) { const r = orig.apply(this, arguments); if (t === "ofertas") try { alEntrar(); } catch (e) { console.warn("[ofertas]", e); } return r; };
+    for (const k of Object.keys(orig)) w[k] = orig[k];
+    w.__ofSync = true;
+    window.goTab = w;
+  }
+  engancharTab();
+  document.addEventListener("DOMContentLoaded", engancharTab);
+
+  /* ── Al abrir ──────────────────────────────────────────────────── */
+  (window.ofertasListas || Promise.resolve()).then(() => {
+    if (window.Ofertas) ofertas = Ofertas._leer();
+    if (typeof window.renderOfertas === "function") renderOfertas();
+  });
+  (window.catalogoListo || Promise.resolve()).then(() => setTimeout(pintarSelector, 0));
+
+  /* ── Lo del otro equipo (PC ↔ iPhone) ──────────────────────────── */
+  let ultimo = Date.now();
+  async function traerDelOtro(forzado) {
+    /* Volver a la pantalla: enseguida (3 s alcanzan para que «focus» y «visibilitychange» juntos sean una sola vez).
+       El repaso periódico: cada 55-60 s. */
+    if (document.hidden || Date.now() - ultimo < (forzado ? 3000 : 55000)) return;
+    ultimo = Date.now();
+    const ofErr = (($("of-estado") || {}).textContent || "").indexOf("NO se publicaron") >= 0;
+    if (!ofErr && !ocupado) {
+      const x = await sincronizar();
+      if (x.cambio) { renderOfertas(); aviso("Ofertas al día con lo cargado desde el otro equipo."); }
+    }
+    /* Catálogo: nunca con un cambio propio guardándose o sin publicar. */
+    if (document.querySelector(".aa-estado.pend, .aa-estado.err") || !window.Catalogo) return;
+    const r = await Catalogo.traer().catch(() => null);
+    if (r && r.estado === "actualizado") {
+      if (window.aaPintar) try { aaPintar(); } catch (e) {}
+      if (typeof window.renderCatTabla === "function") try { renderCatTabla(); } catch (e) {}
+      pintarSelector();
+      aviso("Catálogo al día con lo cambiado desde el otro equipo.");
+    }
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) traerDelOtro(true); });
+  window.addEventListener("focus", () => traerDelOtro(true));
+  setInterval(() => traerDelOtro(false), 60000);
+
+  window.qrOfSync = { listaVendedor, opciones, sincronizar, pintarSelector, traerDelOtro };
 })();
 
 </script>
