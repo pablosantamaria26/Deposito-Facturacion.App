@@ -212,7 +212,7 @@
   /* lecturas-sin-congelar 25/11/2026 */
   /* Ver produccion/admin-lecturas-parche.js. «Usar lo que hay y renovar por detrás»: nada congela la pantalla salvo la
      PRIMERA lectura de algo nunca visto (y eso se precarga al abrir). */
-  var FRESCO = 15000, enVuelo = {}, LECTURAS_K = "qr_admin_lecturas_v1";
+  var FRESCO = 15000, enVuelo = {}, LECTURAS_K = "qr_admin_lecturas_v2";
   /* qr_avisos regenera las alertas de cobranza (repetible): se recuerda 30 s y NO vacía la memoria. */
   var LECTURA_CON_EFECTO = { qr_avisos: 30000 };
   function pedirAsync(metodo, url, cuerpo) {
@@ -236,15 +236,19 @@
       if (cambio) datosNuevos();
     }).catch(function () {}).then(function () { delete enVuelo[k]; });
   }
+  /* lecturas-arranque 26/11/2026 */
+  /* Se anota solo lo leído en los primeros 20 s de ESTA apertura (lo que la pantalla lee igual al arrancar), máx. 40 claves, y
+     reemplaza lo anterior: la precarga pide eso y nada más. Ver produccion/lecturas-precarga-arranque-parche.js. */
+  var T_ABRE = Date.now(), lectArranque = {}, nLectArranque = 0, timerLect = null;
+  try { Storage.prototype.removeItem.call(localStorage, "qr_admin_lecturas_v1"); } catch (e) {}
   function anotarLectura(k, metodo, url, cuerpo) {
-    try {
-      var m = JSON.parse((g0 || Storage.prototype.getItem).call(localStorage, LECTURAS_K) || "{}"), hoy = Date.now();
-      m[k] = { m: metodo, u: url, c: cuerpo, t: hoy };
-      for (var x in m) if (hoy - (m[x].t || 0) > 14 * 864e5) delete m[x];
-      s0.call(localStorage, LECTURAS_K, JSON.stringify(m));
-    } catch (e) {}
+    if (window.QR_IMP_PAGINA || Date.now() - T_ABRE > 20000 || lectArranque[k] || nLectArranque >= 40) return;
+    lectArranque[k] = { m: metodo, u: url, c: cuerpo, t: Date.now() }; nLectArranque++;
+    clearTimeout(timerLect);
+    timerLect = setTimeout(function () { try { (s0 || Storage.prototype.setItem).call(localStorage, LECTURAS_K, JSON.stringify(lectArranque)); } catch (e) {} }, Math.max(500, 21000 - (Date.now() - T_ABRE)));
   }
   function leer(k, metodo, url, cuerpo, fresco) {
+    anotarLectura(k, metodo, url, cuerpo);
     var c = cache[k];
     if (c && c.url) { if (Date.now() - c.t >= fresco) renovar(k); return c.v; }
     var v = enRafaga(k, function () { return xhr(metodo, url, cuerpo); });
@@ -269,7 +273,7 @@
       }
     })();
   }
-  if (PROD) precargar();
+  if (PROD && !window.QR_IMP_PAGINA) precargar();
   /* Llegó algo distinto: se redibuja la pantalla activa, sin interrumpir lo que se está haciendo. */
   var timerNuevo = null, pendiente = false, ultimoTab = "", ultimoRepinte = 0;
   function capaAbierta() {
@@ -15567,7 +15571,7 @@ renderCatKPIs();
   let ultimo = Date.now();
   async function traerDelOtro(forzado) {
     /* Volver a la pantalla: enseguida (3 s alcanzan para que «focus» y «visibilitychange» juntos sean una sola vez).
-       El repaso periódico: cada 55-60 s. */
+       (No hay repaso periódico: ver abajo.) */
     if (document.hidden || Date.now() - ultimo < (forzado ? 3000 : 55000)) return;
     ultimo = Date.now();
     const ofErr = (($("of-estado") || {}).textContent || "").indexOf("NO se publicaron") >= 0;
@@ -15585,9 +15589,10 @@ renderCatKPIs();
       aviso("Catálogo al día con lo cambiado desde el otro equipo.");
     }
   }
+  /* Solo al volver a la pantalla (pasar del iPhone a la PC dispara focus/visibilitychange). Sin repaso periódico
+     (25/11/2026): cada minuto sumaba una lectura a Supabase con el Admin abierto, y el plan es gratuito. */
   document.addEventListener("visibilitychange", () => { if (!document.hidden) traerDelOtro(true); });
   window.addEventListener("focus", () => traerDelOtro(true));
-  setInterval(() => traerDelOtro(false), 60000);
 
   window.qrOfSync = { listaVendedor, opciones, sincronizar, pintarSelector, traerDelOtro };
 })();

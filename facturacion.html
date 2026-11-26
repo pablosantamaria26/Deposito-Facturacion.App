@@ -193,7 +193,7 @@
   var cache = {};
   /* fact-lecturas 25/11/2026 */
   /* Ver produccion/facturacion-lecturas-parche.js. Nada congela la pantalla salvo la PRIMERA lectura de algo nunca visto. */
-  var FRESCO = 10000, enVuelo = {}, LECTURAS_K = "qr_fact_lecturas_v1";
+  var FRESCO = 10000, enVuelo = {}, LECTURAS_K = "qr_fact_lecturas_v2";
   var SOLO_LECTURA = /^qr_(a_cobrar_entrega|bloques_sin_tomar|bulto_info|chequeo_estado|cliente_alta_ficha|comision_abierta_de|comisiones_abierto|dev_bandeja|dev_pedido|liquidaciones|nc_documento|pendientes|prep_estado|reservas_colgadas|saldo|saldo_anterior|cliente_lista_de|lotes_de|lotes_resumen|recepcion_previa|conteo_estado)$/;
   var SIEMPRE_FRESCO = /^qr_(imp_estado|imp_trabajo)$/;   // seguimiento de impresiones: el dato del momento, sin vaciar la memoria
   function pedirAsync(metodo, url, cuerpo) {
@@ -207,42 +207,65 @@
     enVuelo[k] = true;
     pedirAsync(c.metodo, c.url, c.cuerpo).then(function (v) {
       var cambio = JSON.stringify(c.v) !== JSON.stringify(v);
-      cache[k] = { t: Date.now(), v: v, metodo: c.metodo, url: c.url, cuerpo: c.cuerpo };
+      cache[k] = { t: Date.now(), v: v, metodo: c.metodo, url: c.url, cuerpo: c.cuerpo }; copiaL(k);
       if (cambio) datosNuevos();
     }).catch(function () {}).then(function () { delete enVuelo[k]; });
   }
+  /* lecturas-arranque 26/11/2026 */
+  /* Se anota solo lo leído en los primeros 20 s de ESTA apertura (lo que la pantalla lee igual al arrancar), máx. 40 claves, y
+     reemplaza lo anterior: la precarga pide eso y nada más. Ver produccion/lecturas-precarga-arranque-parche.js. */
+  var T_ABRE = Date.now(), lectArranque = {}, nLectArranque = 0, timerLect = null;
+  try { Storage.prototype.removeItem.call(localStorage, "qr_fact_lecturas_v1"); } catch (e) {}
   function anotarLectura(k, metodo, url, cuerpo) {
-    try {
-      var gi = g0 || Storage.prototype.getItem, si = s0 || Storage.prototype.setItem;
-      var m = JSON.parse(gi.call(localStorage, LECTURAS_K) || "{}"), hoy = Date.now();
-      m[k] = { m: metodo, u: url, c: cuerpo, t: hoy };
-      for (var x in m) if (hoy - (m[x].t || 0) > 14 * 864e5) delete m[x];
-      si.call(localStorage, LECTURAS_K, JSON.stringify(m));
-    } catch (e) {}
+    if (window.QR_IMP_PAGINA || Date.now() - T_ABRE > 20000 || lectArranque[k] || nLectArranque >= 40) return;
+    lectArranque[k] = { m: metodo, u: url, c: cuerpo, t: Date.now() }; nLectArranque++;
+    clearTimeout(timerLect);
+    timerLect = setTimeout(function () { try { (s0 || Storage.prototype.setItem).call(localStorage, LECTURAS_K, JSON.stringify(lectArranque)); } catch (e) {} }, Math.max(500, 21000 - (Date.now() - T_ABRE)));
   }
   /* estricto (quien pidió ttl 0, p. ej. el estado de preparación que habilita Facturar): lo de memoria vale solo si tiene
      menos de 30 s; si no, se lee en el momento. La precarga de la lista lo mantiene al día, así que casi nunca espera. */
   function leer(k, metodo, url, cuerpo, fresco, estricto) {
+    anotarLectura(k, metodo, url, cuerpo);
     var c = cache[k];
     if (c && c.url && !(estricto && Date.now() - c.t > 30000)) { if (Date.now() - c.t >= fresco) renovar(k); return c.v; }
     var v = xhr(metodo, url, cuerpo);
     cache[k] = { t: Date.now(), v: v, metodo: metodo, url: url, cuerpo: cuerpo };
-    anotarLectura(k, metodo, url, cuerpo);
+    anotarLectura(k, metodo, url, cuerpo); copiaL(k);
     return v;
   }
   /* Al abrir: lo leído por este equipo en los últimos 14 días, por detrás y de a 6 (arranca ya: este adaptador va primero). */
   function precargar() {
     var m = {}; try { m = JSON.parse((g0 || Storage.prototype.getItem).call(localStorage, LECTURAS_K) || "{}"); } catch (e) {}
-    var cola = Object.keys(m).filter(function (k) { return !cache[k]; }), activos = 0;
+    var cola = Object.keys(m).filter(function (k) { return !cache[k] || !cache[k].t; }), activos = 0;
     (function sig() {
       while (activos < 6 && cola.length) (function (k) {
         var d = m[k]; activos++;
-        pedirAsync(d.m, d.u, d.c).then(function (v) { if (!cache[k]) cache[k] = { t: Date.now(), v: v, metodo: d.m, url: d.u, cuerpo: d.c }; })
+        pedirAsync(d.m, d.u, d.c).then(function (v) { if (!cache[k] || !cache[k].t) { cache[k] = { t: Date.now(), v: v, metodo: d.m, url: d.u, cuerpo: d.c }; copiaL(k); } })
           .catch(function () {}).then(function () { activos--; sig(); });
       })(cola.shift());
     })();
   }
-  if (PROD) precargar();
+  /* Copia en el equipo de las lecturas chicas (ver produccion/facturacion-arranque-parche.js). */
+  var COPIA_L = "qr_fact_lect_copia_v1";
+  function copiaL(k) {
+    try {
+      var c = cache[k]; if (!c || !c.url) return;
+      var j = JSON.stringify(c.v); if (j.length > 30000) return;
+      var gi = g0 || Storage.prototype.getItem, si = s0 || Storage.prototype.setItem;
+      var m = JSON.parse(gi.call(localStorage, COPIA_L) || "{}");
+      m[k] = { v: c.v, metodo: c.metodo, url: c.url, cuerpo: c.cuerpo, t: Date.now() };
+      var txt = JSON.stringify(m);
+      while (txt.length > 200000) { var viejo = Object.keys(m).sort(function (a, b) { return (m[a].t || 0) - (m[b].t || 0); })[0]; if (!viejo) break; delete m[viejo]; txt = JSON.stringify(m); }
+      si.call(localStorage, COPIA_L, txt);
+    } catch (e) {}
+  }
+  (function sembrarCopias() {
+    try {
+      var m = JSON.parse((g0 || Storage.prototype.getItem).call(localStorage, COPIA_L) || "{}");
+      for (var k in m) if (!cache[k] && m[k] && m[k].url) cache[k] = { t: 0, v: m[k].v, metodo: m[k].metodo, url: m[k].url, cuerpo: m[k].cuerpo };
+    } catch (e) {}
+  })();
+  /* 26/11/2026: sin precarga (ver produccion/lecturas-precarga-arranque-parche.js). */
   /* Llegó algo distinto: se redibuja el pedido abierto, sin interrumpir. */
   var timerNuevo = null, pendiente = false, ultimoRepinte = 0, ultimaAccion = 0;
   ["pointerdown", "keydown", "wheel", "touchstart"].forEach(function (ev) { window.addEventListener(ev, function () { ultimaAccion = Date.now(); }, { passive: true, capture: true }); });
@@ -345,7 +368,8 @@
     catch (e) { return c ? c.v : null; }
   };
   /* Al abrir, las claves de etiquetas se piden por detrás (así al facturar ya están). */
-  if (PROD) ["etiquetas_habituales_v1", "etiquetas_cabos_v1", "etiquetas_total_impresa_v1"].forEach(function (k) { if (!kvCache[k]) renovarKv(k); });
+  /* Por adelantado solo si este equipo todavía no tiene copia (con copia, la primera lectura no congela). */
+  if (PROD && !window.QR_IMP_PAGINA) ["etiquetas_habituales_v1", "etiquetas_cabos_v1", "etiquetas_total_impresa_v1"].forEach(function (k) { try { if (!kvCache[k] && (g0 || Storage.prototype.getItem).call(localStorage, KV_COPIA + k) == null) renovarKv(k); } catch (e) {} });
   S.setItem = function (k, v) {
     if (this !== window.localStorage || !COMPARTIDAS.test(k)) return s0.call(this, k, v);
     var x = new XMLHttpRequest();
@@ -543,7 +567,7 @@
   <meta name="theme-color" content="#1d4ed8" />
   <link rel="manifest" href="./manifest-facturacion.webmanifest"/>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <!-- 25/11/2026: sin supabase-js (Facturación no la usa: fetch propio + WebSocket propio). Ver produccion/facturacion-arranque-parche.js -->
 
 <style>
   :root {
@@ -2209,6 +2233,8 @@ body.compacta:not(.m-comoda) #app #itemsPanel .m-chq-r, body.m-densa #app #items
   #app #itemsPanel .m-chq ~ #qrPanel .qrp-monto { font-size:15px; }
   #app #itemsPanel .m-chq ~ #qrPanel .qrp-monto .qrp-de { display:none; }
 }
+/* 25/11/2026: corroborado al instante mientras el servidor contesta. */
+.m-chq-r.guardando .m-chq-e{ opacity:.75; font-style:italic }
 </style>
 <style id="fcCss">
 /* Facturación · Queruclor: aviso, devolver a Depósito y etiquetas de cada caja (25/11/2026) */
@@ -2384,7 +2410,7 @@ body.compacta:not(.m-comoda) #app #itemsPanel .m-chq-r, body.m-densa #app #items
 </div>
 
 <!-- Modal: nombre de usuario -->
-<div class="modal-over" id="modalNombre" style="display:flex;">
+<div class="modal-over" id="modalNombre" style="display:flex;"><script>/* fact-arranque 25/11/2026 */ try { if (localStorage.getItem("factUser")) document.getElementById("modalNombre").style.display = "none"; } catch (e) {}</script>
   <div class="modal-box">
     <div class="modal-title">👋 ¿Cómo te llamás?</div>
     <div class="modal-sub">Tu nombre queda guardado para registrar las facturas.</div>
@@ -2672,8 +2698,6 @@ async function cargarPedidos() {
       _pedidosHash = hash;
       pedidosAll = data;
       renderLista();
-      /* 25/11/2026 (fluidez): el estado de preparación de Queruclor de todos estos pedidos, en una consulta por detrás. */
-      try { if (window.QRSrv && QRSrv.precargarPorClave) QRSrv.precargarPorClave("qr_bloques", "pedido_id", data.map(p => p.id)); } catch (e) {}
     }
   } catch(e) { setConn("offline"); }
 }
@@ -4031,7 +4055,9 @@ function iniciarApp() {
   }, 30000);
 }
 
-window.onload = () => {
+/* 25/11/2026: arranca cuando el código está listo (no espera fuentes ni imágenes); el setTimeout deja engancharse primero a los
+   módulos que esperan DOMContentLoaded, como antes con window.onload. */
+const _arranqueFact = () => {
   localStorage.setItem("app_type", "facturacion");
   hideLoader();
   initDark();
@@ -4051,6 +4077,7 @@ window.onload = () => {
     });
   }
 };
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(_arranqueFact, 0)); else setTimeout(_arranqueFact, 0);
 </script>
 <script>
 /* backend-local.js no va en el sistema compartido: responde el servidor */
@@ -13888,7 +13915,11 @@ var qrcode = function() {
   const quien = () => { try { return (typeof currentUser !== "undefined" && currentUser) || localStorage.getItem("factUser") || "LAURA"; } catch (e) { return "LAURA"; } };
   const aviso = (t, tipo) => { try { if (typeof toast === "function") toast(t, tipo || ""); } catch (e) {} };
   const hhmm = iso => { try { return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
-  const st = { pedido: null, version: null, estado: null, cargando: false, error: null, guardando: new Set(), plegar: true };
+  /* 25/11/2026 (fluidez, PC de Laura): «Confirmar» se ve corroborado AL INSTANTE (optimista) y se puede seguir con el siguiente;
+     el servidor contesta por detrás. Las respuestas de varias confirmaciones seguidas pueden llegar desordenadas (cada una trae
+     una foto del estado): lo confirmado en esta sesión se sigue mostrando corroborado y, cuando no queda ninguna en camino, UNA
+     lectura deja el estado exacto. Facturar sigue esperando al servidor (falta() no mira lo optimista). */
+  const st = { pedido: null, version: null, estado: null, cargando: false, error: null, guardando: new Set(), plegar: true, confirmados: new Set(), varias: false };
   async function rpc(fn, body) {
     const r = await fetch("/rest/v1/rpc/" + fn, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), cache: "no-store" });
     let j = null; try { j = await r.json(); } catch (e) {}
@@ -13907,7 +13938,7 @@ var qrcode = function() {
     st.cargando = true; st.error = null; pintar();
     try {
       const s = await rpc("qr_chequeo_estado", { p_pedido: String(p.id) });
-      if (pedido() && String(pedido().id) === String(p.id)) { st.pedido = p.id; st.version = s.version; st.estado = s; }
+      if (pedido() && String(pedido().id) === String(p.id)) { st.pedido = p.id; st.version = s.version; st.estado = s; if (!st.guardando.size) st.confirmados.clear(); }
     } catch (e) { st.error = "No se pudo leer el chequeo: " + e.message; }
     st.cargando = false; pintar(); cambio();
   }
@@ -13964,16 +13995,18 @@ var qrcode = function() {
     sec.innerHTML = `<div class="m-chq-h"><div><b>Chequeo final Queruclor</b><span class="m-chq-prog">${esc(prog)}</span><span class="m-chq-meta">${meta}</span><button type="button" class="m-chq-lnk" data-cajas>Ver cajas preparadas</button></div>
         ${cerrado ? `<small>Remito ${esc(s.remito)} emitido: el chequeo quedó cerrado.</small>` : completo ? "" : `<small>Preguntale al armador si coinciden las cajas y confirmá de a uno. Confirmar no cambia el armado.</small>`}</div>
       <div class="m-chq-l">${arts.map(a => {
-        const est = a.vigente ? "ok" : a.cambio ? "cambio" : "pend";
+        const guardando = st.guardando.has(a.clave), yaOk = !a.vigente && (guardando || st.confirmados.has(a.clave));
+        const est = a.vigente ? "ok" : yaOk ? "ok guardando" : a.cambio ? "cambio" : "pend";
         const txt = a.vigente ? "Corroborado · " + esc(a.confirmado_por || "") + " " + esc(hhmm(a.confirmado_at))
+          : yaOk ? "Corroborado · " + esc(quien()) + (guardando ? " · guardando…" : "")
           : a.cambio ? "La preparación cambió (antes " + esc(a.confirmado_cajas) + " cajas): volver a corroborar"
           : "Pendiente";
-        const guardando = st.guardando.has(a.clave); const sl = sinLector(a.clave);
+        const sl = sinLector(a.clave);
         const det = [a.tipo && a.tipo !== "cerrada" ? esc(a.tipo) : "", esc(contenido(a.clave)), sl ? `<b class="m-chq-sl">${sl} sin lector: mirá esa caja</b>` : "", a.faltantes ? a.faltantes + " faltante" + (a.faltantes === 1 ? "" : "s") + " en Depósito" : "", a.retiradas ? a.retiradas + " retirada" + (a.retiradas === 1 ? "" : "s") : ""].filter(Boolean).join(" · ");
         return `<div class="m-chq-r ${est}" data-clave="${esc(a.clave)}"><div class="m-chq-n"><b>${esc(a.nombre)}</b>${det ? `<small>${det}</small>` : ""}</div>
           <div class="m-chq-c">${esc(a.cajas)} ${a.cajas === 1 ? "caja" : "cajas"}</div>
           <div class="m-chq-e">${txt}</div>
-          <div class="m-chq-b">${cerrado ? "" : (a.vigente ? "" : `<button type="button" class="m-b prim chico" data-ok="${esc(a.clave)}" ${guardando ? 'disabled aria-busy="true"' : ""}>${guardando ? "Guardando…" : "Confirmar"}</button>`) + `<button type="button" class="m-b chico" data-no="${esc(a.clave)}" ${guardando ? "disabled" : ""}>No coincide</button>`}</div></div>`;
+          <div class="m-chq-b">${cerrado ? "" : (a.vigente || yaOk ? "" : `<button type="button" class="m-b prim chico" data-ok="${esc(a.clave)}">Confirmar</button>`) + `<button type="button" class="m-b chico" data-no="${esc(a.clave)}" ${guardando ? "disabled" : ""}>No coincide</button>`}</div></div>`;
       }).join("")}</div>`;
     acomodarPreparacion();
   }
@@ -13985,14 +14018,19 @@ var qrcode = function() {
   async function confirmar(clave) {
     const p = pedido(); const s = st.estado; if (!p || !s) return;
     const a = (s.articulos || []).find(x => x.clave === clave); if (!a || st.guardando.has(clave)) return;
+    if (st.guardando.size) st.varias = true;
     st.guardando.add(clave); pintar();
     let r = null;
     try { r = await rpc("qr_chequeo_confirmar", { p: { pedido: String(p.id), clave, cajas: a.cajas, version: s.version, quien: quien() } }); }
     catch (e) { aviso("No se pudo guardar la corroboración: " + e.message, "error"); }
     st.guardando.delete(clave);
-    if (r && r.estado && pedido() && String(pedido().id) === String(p.id)) { st.estado = r.estado; st.version = r.estado.version; st.pedido = p.id; }
+    const mismo = !!(pedido() && String(pedido().id) === String(p.id));
+    if (r && r.ok && mismo) st.confirmados.add(clave); else st.confirmados.delete(clave);
+    if (r && r.estado && mismo) { st.estado = r.estado; st.version = r.estado.version; st.pedido = p.id; }
     if (r && !r.ok) { aviso(r.motivo || "No se pudo corroborar", "warn"); if (r.razon === "cambio") { try { qrFactPreparado.abrir(); } catch (e) {} } }
     pintar(); cambio();
+    /* Varias seguidas: con todas contestadas, una lectura deja el estado exacto (las fotos pudieron llegar desordenadas). */
+    if (mismo && !st.guardando.size && st.varias) { st.varias = false; cargar(true); }
   }
   function noCoincide(clave) {
     try { qrFactPreparado.abrir(); } catch (e) {}
@@ -14010,14 +14048,14 @@ var qrcode = function() {
   /* ── Puerta: sin corroboración vigente no se factura (además del servidor) ── */
   function envolverFacturar() {
     const o = window.facturarPedido; if (typeof o !== "function" || o.__chq) return;
-    const w = function () { const f = falta(); if (f.length) { irA(); aviso("Falta corroborar " + f.length + (f.length === 1 ? " artículo" : " artículos") + " de Queruclor con el armador antes de facturar.", "warn"); return; } return o.apply(this, arguments); };
+    const w = function () { const f = falta(); if (f.length) { irA(); aviso(st.guardando.size || st.varias ? "Guardando las corroboraciones de Queruclor: probá de nuevo en un segundo." : "Falta corroborar " + f.length + (f.length === 1 ? " artículo" : " artículos") + " de Queruclor con el armador antes de facturar.", "warn"); return; } return o.apply(this, arguments); };
     w.__chq = true; w.__alf = o.__alf; w.__fv2 = o.__fv2; w._conEtiqueta = o._conEtiqueta; w.__mesa = o.__mesa; for (const k of Object.keys(o)) if (!(k in w)) w[k] = o[k];
     window.facturarPedido = w;
   }
   function enganchar() {
     const wrap = (n, fn) => { const o = window[n]; if (typeof o !== "function" || o.__chq) return; const w = function () { const r = o.apply(this, arguments); const seguir = () => { try { fn(); } catch (e) { console.warn("[chequeo]", e); } }; if (r && typeof r.then === "function") r.then(seguir, seguir); else seguir(); return r; }; w.__chq = true; for (const k of Object.keys(o)) if (!(k in w)) w[k] = o[k]; w.__alf = o.__alf; w.__fv2 = o.__fv2; w._conEtiqueta = o._conEtiqueta; w.__mesa = o.__mesa; window[n] = w; };
     wrap("renderItemsF", refrescar);
-    wrap("seleccionar", () => { st.estado = null; st.version = null; st.pedido = pedido() ? pedido().id : null; st.plegar = true; refrescar(); });
+    wrap("seleccionar", () => { st.estado = null; st.version = null; st.pedido = pedido() ? pedido().id : null; st.plegar = true; st.confirmados.clear(); st.varias = false; refrescar(); });
     envolverFacturar();
   }
   function iniciar() {
@@ -14028,7 +14066,7 @@ var qrcode = function() {
     refrescar();
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
-  window.qrChequeo = { estado: () => st.estado, falta, aplica, irA, refrescar: () => cargar(true), confirmar, version: "2026-11-22" };
+  window.qrChequeo = { estado: () => st.estado, falta, aplica, irA, refrescar: () => cargar(true), confirmar, version: "2026-11-25" };
 })();
 </script>
 <script id="qrEtiquetasCaja">
