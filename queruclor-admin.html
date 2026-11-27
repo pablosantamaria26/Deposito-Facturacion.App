@@ -5265,7 +5265,7 @@ renderCatKPIs();
   const PCT_DEFECTO = 1, SIN_COMISION = ["MERCADO LIMPIO"];
   const cobraComision = v => !!v && !SIN_COMISION.includes(String(v).toUpperCase());
   function pctDe(vendedor) {   /* pct-identidad 27/11/2026 */
-    const filas = (S.get("qr_comision_cfg", "select=vendedor,pct,historial") || []).filter(x => String(x.vendedor || "").charAt(0) !== "*");
+    const filas = (S.get("qr_comision_cfg", "select=vendedor,pct,historial,escalas") || []).filter(x => String(x.vendedor || "").charAt(0) !== "*");
     const norm = s => String(s == null ? "" : s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s*\(.*\)\s*$/, "").trim().toUpperCase();
     const n = norm(vendedor);
     let vs = []; try { vs = (window.Vendedores && Vendedores.todos) ? Vendedores.todos() : []; } catch (e) {}
@@ -5439,7 +5439,7 @@ renderCatKPIs();
   const PCT_DEFECTO = 1, SIN_COMISION = ["MERCADO LIMPIO"];
   const cobraComision = v => !!v && !SIN_COMISION.includes(String(v).toUpperCase());
   function pctDe(vendedor) {   /* pct-identidad 27/11/2026 */
-    const filas = (S.get("qr_comision_cfg", "select=vendedor,pct,historial") || []).filter(x => String(x.vendedor || "").charAt(0) !== "*");
+    const filas = (S.get("qr_comision_cfg", "select=vendedor,pct,historial,escalas") || []).filter(x => String(x.vendedor || "").charAt(0) !== "*");
     const norm = s => String(s == null ? "" : s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s*\(.*\)\s*$/, "").trim().toUpperCase();
     const n = norm(vendedor);
     let vs = []; try { vs = (window.Vendedores && Vendedores.todos) ? Vendedores.todos() : []; } catch (e) {}
@@ -10031,7 +10031,7 @@ renderCatKPIs();
     const pct = parseFloat(String(inp.value).replace(",", ".")); if (!(pct >= 0 && pct <= 20)) { alert("El porcentaje tiene que estar entre 0 y 20."); return pintar(); }
     inp.disabled = true;
     Promise.resolve().then(() => Comisiones.setPct(inp.dataset.v, pct))
-      .then(() => { try { if (window.QRSrv) QRSrv.get("qr_comision_cfg", "select=vendedor,pct,historial", 0); } catch (e) {} })   /* solo esta lectura, fresca */
+      .then(() => { try { if (window.QRSrv) QRSrv.get("qr_comision_cfg", "select=vendedor,pct,historial,escalas", 0); } catch (e) {} })   /* solo esta lectura, fresca */
       .catch(e => alert("No se guardó el porcentaje: " + ((e && e.message) || e)))
       .then(() => setTimeout(() => { inp.disabled = false; pintar(); }, 400));
   };
@@ -15857,6 +15857,64 @@ renderCatKPIs();
     return { pct, nivel: pct >= 3 ? "bien" : pct >= -10 ? "atento" : "mal", tipo: "pct", act, ant };
   }
 
+  /* ── La SEMANA del negocio es el ciclo que cierra Laura (los viernes), no la semana del calendario ── */
+  /* Ciclos de una persona, del más viejo al en curso: lo vendido entre un cierre suyo y el siguiente (desde exclusivo, hasta inclusivo). */
+  function ciclosDe(vid, ciclos, prep, ahora) {
+    const cs = cierresDe(vid, ciclos).slice().reverse(), out = [];
+    let ant = null;
+    for (const c of cs) {
+      const desdeV = ant != null ? t(ant) : -Infinity, ini = c.desde ? t(c.desde) : (ant != null ? t(ant) : NaN);
+      out.push({ desde: desdeV, inicio: ini, hasta: t(c.hasta), vendido: acumular(prep, vid, desdeV, t(c.hasta)).vendido, abierto: false });
+      ant = c.hasta;
+    }
+    out.push({ desde: ant != null ? t(ant) : -Infinity, inicio: ant != null ? t(ant) : NaN, hasta: ahora, vendido: acumular(prep, vid, ant != null ? t(ant) : -Infinity, Infinity).vendido, abierto: true });
+    return out;
+  }
+  const durCiclo = c => isFinite(c.inicio) ? Math.max(DIA, c.hasta - c.inicio) : NaN;
+  /* Variación semanal: el ciclo en curso contra el anterior AL MISMO AVANCE; si recién arranca (< 15 %), la semana que acaba de
+     cerrar contra la anterior (por día, porque un ciclo puede haber durado dos semanas). */
+  function varSemana(cyc, ahora) {
+    const ab = cyc[cyc.length - 1], p1 = cyc[cyc.length - 2], p2 = cyc[cyc.length - 3];
+    if (!p1) return { pct: null, nivel: "neutro", tipo: "sin_historial", modo: "primero", act: ab.vendido, ant: 0 };
+    const d1 = durCiclo(p1), frac = isFinite(d1) && isFinite(ab.inicio) ? (ahora - ab.inicio) / d1 : 1;
+    if (frac >= 0.15) return Object.assign(variacion(ab.vendido, p1.vendido * Math.min(1, frac)), { modo: "ritmo" });
+    if (!p2) return { pct: null, nivel: "neutro", tipo: "sin_historial", modo: "empieza", act: 0, ant: 0, cerro: p1.hasta };
+    const d2 = durCiclo(p2), r1 = isFinite(d1) ? p1.vendido / d1 * 7 * DIA : p1.vendido, r2v = isFinite(d2) ? p2.vendido / d2 * 7 * DIA : p2.vendido;
+    return Object.assign(variacion(Math.round(r1), Math.round(r2v)), { modo: "cerrada", cerro: p1.hasta });
+  }
+  /* Escala de premios vigente, de la fila «*premios» de qr_comision_cfg (la misma lectura del porcentaje): sirve cuando nadie tiene
+     cobranzas en el ciclo abierto (por ejemplo, recién cerrado) y el servidor todavía no devolvió ningún premio. */
+  function escalaVigente(cfg, ahora) {
+    const fila = (cfg || []).find(x => x.vendedor === "*premios"), vs = (fila && fila.escalas && fila.escalas.versiones) || [];
+    const v = vs.filter(x => !(t(x.vigente_desde) > ahora)).sort((a, b) => t(b.vigente_desde) - t(a.vigente_desde))[0];
+    if (!v) return null;
+    if (v.activo === false) return { activo: false, escalones: [] };
+    const tol = Math.max(0, num(v.tolerancia));
+    return { activo: true, tolerancia: tol, escalones: (v.escalones || []).map(e => ({ desde: num(e.desde), premio: num(e.premio), minimo: Math.ceil(Math.round(num(e.desde) * (100 - tol) * 1e6) / 1e6) / 100 })).sort((a, b) => a.desde - b.desde) };
+  }
+  /* Serie semanal por CICLOS: cada ciclo cerrado va a la semana (sábado a viernes) en que Laura lo cerró; lo vendido después del último
+     cierre, a «Ciclo actual» (solo si ya hay ventas). */
+  function serieCiclos(prep, vendedores, ciclos, n, ahora) {
+    const semDe = ts => { const d = new Date(t(ts) - H3), dow = (d.getUTCDay() + 1) % 7; return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dow) + H3; };
+    const per = new Map(), actual = { desde: null, hasta: ahora, actual: true, valores: {}, det: {} };
+    for (const v of vendedores || []) {
+      for (const c of ciclosDe(v.id, ciclos, prep, ahora)) {
+        if (c.abierto) { actual.valores[v.id] = c.vendido; actual.det[v.id] = isFinite(c.desde) ? c.desde : null; continue; }
+        const k = semDe(c.hasta), p = per.get(k) || { desde: k, hasta: k + 7 * DIA, actual: false, valores: {}, det: {} };
+        p.valores[v.id] = r2((p.valores[v.id] || 0) + c.vendido); p.det[v.id] = { desde: isFinite(c.inicio) ? c.inicio : null, hasta: c.hasta };
+        per.set(k, p);
+      }
+    }
+    let periodos = [...per.values()].sort((a, b) => a.desde - b.desde).slice(-(n || 6));
+    while (periodos.length > 1 && !Object.values(periodos[0].valores).some(x => Math.abs(x) > 0.004)) periodos.shift();   /* semanas vacías del principio */
+    const hayActual = Object.values(actual.valores).some(x => Math.abs(x) > 0.004);
+    if (hayActual) periodos.push(actual);
+    const desdeActual = Math.max(-Infinity, ...Object.values(actual.det).filter(x => x != null));
+    const series = (vendedores || []).map(v => ({ id: v.id, nombre: v.nombre, valores: periodos.map(p => p.valores[v.id] || 0), det: periodos.map(p => p.det[v.id] || null) }));
+    return { periodos: periodos.map(p => ({ desde: p.desde, hasta: p.hasta, actual: p.actual })), series, max: Math.max(0, ...series.flatMap(s => s.valores)), porCiclos: true,
+      actualSinVentas: !hayActual, actualDesde: isFinite(desdeActual) ? desdeActual : null, desdeDatos: prep.length ? Math.min(...prep.map(m => m.ts)) : null };
+  }
+
   /* Semana y mes en curso contra el mismo tramo del período anterior. */
   function tramos(ahora) {
     const L = inicioSemana(ahora), M = inicioMes(ahora), Mp = inicioMes(ahora, -1);
@@ -15878,7 +15936,7 @@ renderCatKPIs();
   function premioDe(p, escalonesRef) {
     const esc = (p && p.escalones) || escalonesRef || [];
     const nDe = d => { const i = esc.findIndex(e => num(e.desde) === num(d)); return i >= 0 ? i + 1 : null; };
-    if (!p) return esc.length ? { monto: 0, escalon: null, alcanzado: false, faltan: num(esc[0].desde), siguienteDesde: num(esc[0].desde), siguienteN: 1, maximo: false, conTolerancia: false, total: null, comision: null, nivel: "neutro", supuesto: true } : null;
+    if (!p) return esc.length ? { monto: 0, escalon: null, alcanzado: false, faltan: num(esc[0].minimo != null ? esc[0].minimo : esc[0].desde), siguienteDesde: num(esc[0].desde), siguienteN: 1, maximo: false, conTolerancia: false, total: null, comision: null, nivel: "neutro", supuesto: true } : null;
     if (!p.activo) return null;
     const sig = p.siguiente || null, faltan = sig ? num(sig.faltan) : 0, sigDesde = sig ? num(sig.desde) : 0, alc = p.alcanzado != null;
     return { monto: num(p.premio), escalon: alc ? nDe(p.alcanzado) : null, alcanzado: alc, faltan, siguienteDesde: sigDesde, siguienteN: sig ? nDe(sig.desde) : null, maximo: !!p.maximo,
@@ -15915,15 +15973,24 @@ renderCatKPIs();
     if (pend.length) L.push({ nivel: "atento", texto: (pend.length === 1 ? "1 liquidación cerrada sin pagar" : pend.length + " liquidaciones cerradas sin pagar") + ": " + m0(pend.reduce((a, p) => a + p.total, 0)) + " (" + [...new Set(pend.map(p => titulo(p.nombre)))].join(", ") + "). Se pagan en Haberes de la Caja." });
     for (const f of R.filas.filter(x => !x.casa)) {
       const n = titulo(f.nombre), vs = f.var && f.var.sem;
-      if (vs && vs.tipo === "pct" && vs.pct < -10) L.push({ nivel: "mal", texto: n + " vende " + Math.abs(Math.round(vs.pct)) + " % menos que la semana pasada a esta altura." });
+      if (vs && vs.tipo === "pct" && vs.pct < -10) L.push({ nivel: "mal", texto: vs.modo === "cerrada" ? n + " cerró la semana con " + Math.abs(Math.round(vs.pct)) + " % menos de venta que la anterior." : n + " vende " + Math.abs(Math.round(vs.pct)) + " % menos que en su ciclo anterior a esta altura." });
       if (f.ritmo && f.ritmo.tipo === "pct" && f.ritmo.nivel === "mal") L.push({ nivel: "mal", texto: n + " cobra por debajo del ritmo de su ciclo anterior (" + f.ritmo.pct + " %)." });
       if (!f.vendido && !f.cobrado) L.push({ nivel: "atento", texto: n + " todavía no vendió en este ciclo." });
       if (f.premio && !f.premio.alcanzado && f.premio.nivel === "atento") L.push({ nivel: "atento", texto: n + " está a " + m0(f.premio.faltan) + " del escalón " + (f.premio.siguienteN || 1) + "." });
       if (f.premio && f.premio.alcanzado) L.push({ nivel: "bien", texto: n + " alcanzó el escalón " + (f.premio.escalon || "") + ": premio " + m0(f.premio.monto) + "." });
-      if (vs && vs.tipo === "pct" && vs.pct >= 15) L.push({ nivel: "bien", texto: n + " vende " + Math.round(vs.pct) + " % más que la semana pasada a esta altura." });
+      if (vs && vs.tipo === "pct" && vs.pct >= 15) L.push({ nivel: "bien", texto: vs.modo === "cerrada" ? n + " cerró la semana con " + Math.round(vs.pct) + " % más de venta que la anterior." : n + " vende " + Math.round(vs.pct) + " % más que en su ciclo anterior a esta altura." });
     }
     const orden = { mal: 0, atento: 1, bien: 2 };
     return L.sort((a, b) => orden[a.nivel] - orden[b.nivel]).slice(0, 5);
+  }
+
+  /* KPI: la misma comparación sumando a todos (los que van «a ritmo» si hay alguno; si no, los de la semana recién cerrada). */
+  function varSemanaTotal(filas) {
+    const vs = filas.map(f => f.var && f.var.sem).filter(v => v && (v.modo === "ritmo" || v.modo === "cerrada"));
+    const modo = vs.some(v => v.modo === "ritmo") ? "ritmo" : vs.length ? "cerrada" : null;
+    if (!modo) return { pct: null, nivel: "neutro", tipo: "sin_historial", modo: "primero" };
+    const sel = vs.filter(v => v.modo === modo);
+    return Object.assign(variacion(sel.reduce((a, v) => a + num(v.act), 0), sel.reduce((a, v) => a + num(v.ant), 0)), { modo, cerro: (sel.find(v => v.cerro) || {}).cerro });
   }
 
   /* El modelo completo de la pantalla, una fila por vendedor activo (la casa al final). */
@@ -15932,7 +15999,8 @@ renderCatKPIs();
     const linea = lineaDe(catalogo), prep = preparar(movs, vendedores, linea), tr = tramos(ahora);
     const primer = prep.length ? Math.min(...prep.map(m => m.ts)) : Infinity;
     const porId = new Map(((abierto && abierto.vendedores) || []).map(v => [v.vendedor_id || personaDe(v.vendedor, vendedores), v]));
-    const escRef = (((abierto && abierto.vendedores) || []).find(v => v.premio && v.premio.activo && (v.premio.escalones || []).length) || {}).premio;
+    const escAb = (((abierto && abierto.vendedores) || []).find(v => v.premio && v.premio.activo && (v.premio.escalones || []).length) || {}).premio;
+    const escCfg = escalaVigente(cfg, ahora), escRef = escAb || (escCfg && escCfg.activo ? escCfg : null);
     const filas = (vendedores || []).filter(v => v.activo !== false).map(v => {
       const inicio = inicioCiclo(v.id, ciclos), ventas = acumular(prep, v.id, inicio ? t(inicio) : -Infinity, Infinity), d = porId.get(v.id) || {}, c = cfgDe(v, cfg);
       const premio = v.casa ? null : premioDe(d.premio, escRef && escRef.escalones);
@@ -15942,7 +16010,7 @@ renderCatKPIs();
       const semAct = vendidoEntre(prep, v.id, tr.sem.act), semAnt = vendidoEntre(prep, v.id, tr.sem.ant), mesAct = vendidoEntre(prep, v.id, tr.mes.act), mesAnt = vendidoEntre(prep, v.id, tr.mes.ant);
       return { id: v.id, nombre: v.nombre, casa: !!v.casa, inicio, vendido: ventas.vendido, remitos: ventas.remitos, cobrado: num(d.cobrado), comision, recibos: num(d.recibos),
         pct: c.pct, pctPorDefecto: c.porDefecto, historial: c.historial, top: topArticulos(ventas.articulos, 5), premio, total,
-        semAct, semAnt, mesAct, mesAnt, var: { sem: variacion(semAct, semAnt, primer < tr.sem.act[0]), mes: variacion(mesAct, mesAnt, primer < tr.mes.act[0]) },
+        semAct, semAnt, mesAct, mesAnt, var: { sem: varSemana(ciclosDe(v.id, ciclos, prep, ahora), ahora), mes: variacion(mesAct, mesAnt, primer < tr.mes.act[0]) },
         ritmo: v.casa ? null : ritmoCobro(d.cobrado, antCob, inicio, ahora), cicloAnterior: antCob };
     }).sort((a, b) => (a.casa - b.casa) || (b.vendido - a.vendido) || a.nombre.localeCompare(b.nombre));
     const cobran = filas.filter(f => !f.casa), inicios = cobran.map(f => f.inicio).filter(Boolean).sort(), suma = k => cobran.reduce((a, f) => a + num(f[k]), 0);
@@ -15951,13 +16019,13 @@ renderCatKPIs();
     const ritmo = esperado > 0 ? (p => ({ tipo: "pct", pct: p, nivel: p >= 100 ? "bien" : p >= 75 ? "atento" : "mal" }))(Math.round(cobConRitmo / esperado * 100)) : null;
     const R = { filas, pendientes: pendientesDePago(ciclos, vendedores), cicloDesde: inicios.length ? inicios[0] : null, ahora, prep, filtroLinea: !!linea,
       kpi: { activos: cobran.length, vendido: r2(suma("vendido")), cobrado: suma("cobrado"), comisiones: r2(suma("comision")), premios: r2(cobran.reduce((a, f) => a + (f.premio ? f.premio.monto : 0), 0)), total: r2(suma("total")),
-        conVentasSemana: cobran.filter(f => f.semAct > 0).length, varSem: variacion(suma("semAct"), suma("semAnt"), primer < tr.sem.act[0]), ritmo } };
+        conVentasSemana: cobran.filter(f => f.vendido > 0).length, varSem: varSemanaTotal(cobran), ritmo } };
     R.lecturas = lecturas(R);
     return R;
   }
 
   return { norm, titulo, personaDe, lineaDe, preparar, acumular, inicioCiclo, cierresDe, ventasCiclo, topArticulos, cfgDe, variacion, tramos, ritmoCobro, premioDe,
-    pendientesDePago, serie, lecturas, resumen, inicioSemana, inicioMes };
+    pendientesDePago, serie, serieCiclos, ciclosDe, varSemana, escalaVigente, lecturas, resumen, inicioSemana, inicioMes };
 });
 </script>
 <script id="vv2Vista">
@@ -15984,7 +16052,7 @@ renderCatKPIs();
   const hora = ts => { try { return new Date(ts).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: TZ }); } catch (e) { return ""; } };
   const titulo = C.titulo;
   const GESTOR = "https://pablosantamaria26.github.io/App-actualizacion-BaseClientes/";
-  const SEL = "select=vendedor,pct,historial";
+  const SEL = "select=vendedor,pct,historial,escalas";   /* la MISMA lectura que pctDe (el parche la iguala en todo el Admin): un solo pedido */
   const CICLOS = "select=id,vendedor,vendedor_id,desde,hasta,cerrado_en,base,importe_cobrado,base_premio,total,pagado_en&order=seq.asc";
   const COLORES = ["#006A90", "#14A3B8", "#4F68C9"], OTROS = "#8A9AA3";   /* validados para daltonismo; el color sigue a la persona, no al puesto */
   const I = {
@@ -16013,7 +16081,7 @@ renderCatKPIs();
     try { ciclos = QRSrv.get("qr_ciclos", CICLOS) || []; } catch (e) {}
     try { movs = window.Cuentas ? Cuentas.movimientos() : []; } catch (e) {}
     try { catalogo = window.Catalogo ? Catalogo.todos() : null; } catch (e) {}
-    modelo = Object.assign(C.resumen({ vendedores, abierto, ciclos, movs, cfg: leerCfg(false), catalogo, ahora: ahora() }), { vendedores, anteriores: vendedores.filter(v => v.activo === false) });
+    modelo = Object.assign(C.resumen({ vendedores, abierto, ciclos, movs, cfg: leerCfg(false), catalogo, ahora: ahora() }), { vendedores, ciclos, anteriores: vendedores.filter(v => v.activo === false) });
     leidoEn = Date.now();
     const cob = modelo.filas.filter(f => !f.casa);
     if (!sel || !cob.some(f => f.id === sel)) sel = cob.length ? cob[0].id : null;
@@ -16027,6 +16095,15 @@ renderCatKPIs();
   const chip = (nivel, icono, texto, tit) => `<span class="vv2-st ${nivel}"${tit ? ` title="${esc(tit)}"` : ""}>${icono || ""}<span>${texto}</span></span>`;
   function chipVar(v, sufijo) {
     if (!v) return "";
+    if (v.modo) {   /* semana = ciclo de Laura */
+      if (v.modo === "primero") return chip("neutro", I.igual, "primer ciclo", "Todavía no tiene un ciclo cerrado para comparar");
+      if (v.modo === "empieza") return chip("neutro", I.igual, "ciclo recién empieza", "Se cerró el " + diaMes(v.cerro) + "; falta otra semana cerrada para comparar");
+      const cerrada = v.modo === "cerrada", suf = cerrada ? "sem. cerrada" : sufijo;
+      const tip = cerrada ? "Semana cerrada el " + diaMes(v.cerro) + ": " + m0(v.act) + " por semana · la anterior: " + m0(v.ant) : "Ciclo en curso: " + m0(v.act) + " · el anterior, al mismo avance: " + m0(v.ant);
+      if (v.tipo === "nuevo") return chip("bien", I.sube, "nuevo · " + suf, tip);
+      if (v.tipo === "sin") return chip("neutro", I.igual, "— " + suf, tip);
+      const p = v.pct; return chip(v.nivel, p > 0.05 ? I.sube : p < -0.05 ? I.baja : I.igual, (p > 0 ? "+" : p < 0 ? "−" : "") + Math.abs(p).toLocaleString("es-AR", { maximumFractionDigits: 1 }) + " % " + suf, tip);
+    }
     if (v.tipo === "sin_historial") return chip("neutro", I.igual, "sin " + sufijo + " ant.", "Todavía no hay datos del " + (sufijo === "mes" ? "mes" : "período") + " anterior para comparar");
     if (v.tipo === "sin") return chip("neutro", I.igual, "— " + sufijo);
     if (v.tipo === "nuevo") return chip("bien", I.sube, "nuevo " + sufijo, "Sin ventas en el mismo tramo del período anterior");
@@ -16075,7 +16152,7 @@ renderCatKPIs();
   function histHTML() {
     const f = modelo.filas.find(x => x.id === sel); if (!f) return `<h2>Historial y Sincronización</h2><p class="vv2-vacio">Elegí un vendedor.</p>`;
     const h = f.historial || [], p = f.premio, pend = (modelo.pendientes || []).filter(x => x.vendedorId === f.id);
-    const premioTxt = !p ? "sin premio configurado" : p.alcanzado ? `Escalón ${p.escalon} alcanzado · ${m0(p.monto)}${p.conTolerancia ? " (con tolerancia)" : ""}${p.maximo ? " · máximo" : " · faltan " + m0(p.faltan) + " para el " + p.siguienteN}` : `faltan ${m0(p.faltan)} para el escalón ${p.siguienteN || 1}`;
+    const premioTxt = !p ? "premio por escalón desactivado o sin escala vigente" : p.alcanzado ? `Escalón ${p.escalon} alcanzado · ${m0(p.monto)}${p.conTolerancia ? " (con tolerancia)" : ""}${p.maximo ? " · máximo" : " · faltan " + m0(p.faltan) + " para el " + p.siguienteN}` : `faltan ${m0(p.faltan)} para el escalón ${p.siguienteN || 1}`;
     return `<h2>Historial y Sincronización · ${esc(titulo(f.nombre))}</h2>
       ${h.length ? `<ul class="vv2-hl">${h.map((x, i) => `<li><span><b>Comisión:</b> ${esc(fechaHora(x.cuando))} · ${pctTxt(x.anterior)} → <b>${pctTxt(x.pct)}</b> · ${esc(titulo(x.quien || ""))}</span><em>${i === 0 ? "Vigente a futuro" : "Reemplazado"}</em></li>`).join("")}</ul>`
         : `<p class="vv2-vacio"><b>Comisión:</b> sin cambios registrados: cobra el ${pctTxt(f.pct)}${f.pctPorDefecto ? " (el porcentaje por defecto)" : ""}.</p>`}
@@ -16095,12 +16172,16 @@ renderCatKPIs();
     const caja = $("#vv2Graf .vv2-gbody"); if (!caja || !modelo) return;
     const vs = modelo.filas.filter(f => !f.casa).map(f => ({ id: f.id, nombre: f.nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre));
     const prin = vs.slice(0, COLORES.length), resto = vs.slice(COLORES.length);
-    const S = C.serie(modelo.prep, vs, modoGraf, 6, modelo.ahora);
+    const S = modoGraf === "meses" ? C.serie(modelo.prep, vs, "meses", 6, modelo.ahora) : C.serieCiclos(modelo.prep, vs, modelo.ciclos, 6, modelo.ahora);
     let series = prin.map((v, i) => Object.assign({}, S.series.find(s => s.id === v.id), { color: COLORES[i], nombre: titulo(v.nombre) }));
     if (resto.length) series.push({ id: "otros", nombre: "Otros", color: OTROS, valores: S.periodos.map((_, k) => resto.reduce((a, v) => a + (S.series.find(s => s.id === v.id).valores[k] || 0), 0)) });
     const P = S.periodos, max = Math.max(1, ...series.flatMap(s => s.valores));
     const etq = p => modoGraf === "meses" ? new Date(p.desde).toLocaleDateString("es-AR", { month: "short", year: "2-digit", timeZone: TZ }).replace(".", "")
-      : (a => { const b = diaMes(p.hasta - 864e5), ma = a.replace(/^\d+\s*/, ""), mb = b.replace(/^\d+\s*/, ""); return ma === mb ? a.replace(/\s.*/, "") + "–" + b : a + "–" + b; })(diaMes(p.desde));
+      : p.actual ? "Ciclo actual" : "al " + diaMes(p.hasta - 864e5);
+    const largo = 8 * 864e5, dm = x => new Date(x).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", timeZone: TZ });
+    const tipDe = (s, p, i) => { if (modoGraf === "meses") return etq(p) + (p.actual ? " (en curso)" : ""); const d = s.det && s.det[i];
+      if (p.actual) return "ciclo actual" + (d ? " (desde el " + diaMes(d) + ")" : "") + ", todavía sin cerrar";
+      return "semana cerrada el " + (d ? diaMes(d.hasta) : diaMes(p.hasta - 864e5)) + (d && d.desde && d.hasta - d.desde > largo ? " (ciclo del " + dm(d.desde) + " al " + dm(d.hasta) + ")" : ""); };
     const W = Math.max(280, caja.clientWidth || 600), H = W < 480 ? 210 : 250, ml = W < 480 ? 46 : 56, mr = 8, mt = 10, mb = 38;
     const iw = W - ml - mr, ih = H - mt - mb, gw = iw / Math.max(1, P.length), gap = 2, pad = Math.min(18, gw * 0.18);
     const bw = Math.max(4, (gw - pad * 2 - gap * (series.length - 1)) / series.length);
@@ -16115,14 +16196,17 @@ renderCatKPIs();
         const v = s.valores[i] || 0, x = x0 + j * (bw + gap), yy = y(v), h = mt + ih - yy, r = Math.min(4, bw / 2, h);
         const d = h > 0 ? `M${x},${mt + ih}V${yy + r}Q${x},${yy} ${x + r},${yy}H${x + bw - r}Q${x + bw},${yy} ${x + bw},${yy + r}V${mt + ih}Z` : "";
         if (d) svg += `<path d="${d}" fill="${s.color}" class="bar" style="--d:${(i * series.length + j) * 25}ms"/>`;
-        svg += `<rect x="${x - gap / 2}" y="${mt}" width="${bw + gap}" height="${ih}" class="hit" tabindex="0" data-tip="${esc(s.nombre + " · " + etq(p) + (p.actual ? " (en curso)" : "") + ": " + m0(v))}"/>`;
+        svg += `<rect x="${x - gap / 2}" y="${mt}" width="${bw + gap}" height="${ih}" class="hit" tabindex="0" data-tip="${esc(s.nombre + " · " + tipDe(s, p, i) + ": " + m0(v))}"/>`;
       });
-      svg += `<text x="${ml + i * gw + gw / 2}" y="${H - mb + 18}" class="ax" text-anchor="middle">${esc(etq(p))}</text>${p.actual ? `<text x="${ml + i * gw + gw / 2}" y="${H - mb + 32}" class="ax curso" text-anchor="middle">en curso</text>` : ""}`;
+      svg += `<text x="${ml + i * gw + gw / 2}" y="${H - mb + 18}" class="ax" text-anchor="middle">${esc(etq(p))}</text>${p.actual ? `<text x="${ml + i * gw + gw / 2}" y="${H - mb + 32}" class="ax curso" text-anchor="middle">${modoGraf === "meses" ? "en curso" : "sin cerrar"}</text>` : ""}`;
     });
     svg += "</svg>";
     const legend = `<ul class="vv2-leg">${series.map(s => `<li><i style="background:${s.color}"></i>${esc(s.nombre)}</li>`).join("")}</ul>`;
-    const nota = P.length < 2 ? `<p class="vv2-nota">Hay ventas registradas desde el ${esc(diaMes(S.desdeDatos))}: la comparación entre ${modoGraf === "meses" ? "meses se completa desde el mes que viene" : "semanas se completa la semana que viene"}.</p>`
-      : `<p class="vv2-nota">Vendido de la línea Queruclor (con IVA, neto de devoluciones). ${P.some(p => p.actual) ? "La franja sombreada es el período en curso: todavía no terminó." : ""}</p>`;
+    const nueva = S.porCiclos && S.actualSinVentas && S.actualDesde ? ` El ciclo nuevo arrancó el ${esc(diaMes(S.actualDesde))} y todavía no tiene ventas.` : "";
+    const nota = S.porCiclos
+      ? `<p class="vv2-nota">Cada barra es una semana de comisiones: lo vendido entre dos cierres de Laura, ubicado en la semana en que se cerró.${P.some(p => p.actual) ? " La franja sombreada es el ciclo actual: todavía no se cerró." : ""}${nueva}${P.length < 2 ? " La comparación se completa con el próximo cierre." : ""}</p>`
+      : P.length < 2 ? `<p class="vv2-nota">Hay ventas registradas desde el ${esc(diaMes(S.desdeDatos))}: la comparación entre meses se completa desde el mes que viene.</p>`
+      : `<p class="vv2-nota">Vendido de la línea Queruclor (con IVA, neto de devoluciones). ${P.some(p => p.actual) ? "La franja sombreada es el mes en curso: todavía no terminó." : ""}</p>`;
     const tabla = `<details class="vv2-tabla"><summary>Ver como tabla</summary><div class="vv2-tw"><table><thead><tr><th>Vendedor</th>${P.map(p => `<th class="n">${esc(etq(p))}</th>`).join("")}</tr></thead><tbody>${series.map(s => `<tr><td>${esc(s.nombre)}</td>${s.valores.map(v => `<td class="n">${m0(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div></details>`;
     caja.innerHTML = legend + `<div class="vv2-plot">${svg}<div class="vv2-tip" hidden></div></div>` + nota + tabla;
   }
@@ -16156,7 +16240,7 @@ renderCatKPIs();
         <section class="vv2-card vv2-izq"><h2>Monitor de Vendedores — Ciclo Actual</h2>
           <div class="vv2-tw"><table><thead><tr><th>Vendedor</th><th class="n">Vendido semana</th><th>Vs ant.</th><th class="n">Cobrado</th><th class="n">% Com.</th><th class="n">Premio escalón</th><th class="n">Total a pagar</th></tr></thead>
           <tbody>${tablaHTML()}</tbody></table></div>
-          <p class="vv2-nota">Cada vendedor, desde su último cierre. «Vs ant.» compara la semana y el mes en curso con el mismo tramo del período anterior. Comisión y premio son provisorios hasta cerrar el ciclo.</p>
+          <p class="vv2-nota">Cada vendedor, desde su último cierre. «Vs ant.»: la semana es el ciclo que cierra Laura (el en curso contra el anterior al mismo avance; recién cerrado, la semana cerrada contra la anterior) y el mes, contra el mismo tramo del mes anterior. Comisión y premio son provisorios hasta cerrar el ciclo.</p>
           ${pieHTML()}</section>
           ${graficoHTML()}
         <div class="vv2-der"><section class="vv2-card" id="vv2Top">${topHTML()}</section><section class="vv2-card" id="vv2Hist">${histHTML()}</section></div>
