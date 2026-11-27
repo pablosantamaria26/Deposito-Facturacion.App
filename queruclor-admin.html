@@ -1877,31 +1877,9 @@ td[align=right]{text-align:right; font-variant-numeric:tabular-nums}
   </div>
 </div>
 
-<!-- ──────────────── TAB 5: VENDEDORES ──────────────── -->
-<div class="panel" id="tab-vendedores">
-  <div class="kpi-grid" id="kpi-vendedores"></div>
-
-  <div class="card">
-    <div class="card-hdr">
-      <div><h3>👥 Vendedores — Ciclo actual</h3><p id="ciclo-lbl">Ciclo: cargando...</p></div>
-      <button class="btn-amber" onclick="cerrarCiclo()">💳 Cerrar ciclo y registrar pago</button>
-    </div>
-    <div class="card-body" style="padding:0 20px 20px" id="vendor-cards"></div>
-  </div>
-
-  <div class="card">
-    <div class="card-hdr"><h3>📜 Historial de pagos de comisiones</h3></div>
-    <div class="tbl-wrap">
-      <table>
-        <thead><tr><th>Fecha pago</th><th>Vendedor</th><th>Período</th><th>Ventas del período</th><th>Comisión %</th><th>Comisión + Plus</th><th>Total a pagar</th></tr></thead>
-        <tbody id="hist-pagos"></tbody>
-      </table>
-    </div>
-    <div id="pagos-empty" style="text-align:center;padding:36px;color:var(--gl);font-size:13px">
-      Aún no hay pagos registrados. Cerrá el primer ciclo para empezar.
-    </div>
-  </div>
-</div>
+<!-- vendedores-v2 27/11/2026 -->
+<!-- ──────────────── TAB 5: VENDEDORES (v2) ──────────────── -->
+<div class="panel" id="tab-vendedores"><div id="vv2"></div></div>
 
 </div><!-- /content -->
 
@@ -5286,8 +5264,13 @@ renderCatKPIs();
   /* ── Comisiones ──────────────────────────────────────────────────── */
   const PCT_DEFECTO = 1, SIN_COMISION = ["MERCADO LIMPIO"];
   const cobraComision = v => !!v && !SIN_COMISION.includes(String(v).toUpperCase());
-  function pctDe(vendedor) {
-    const r = (S.get("qr_comision_cfg", "select=vendedor,pct") || []).find(x => x.vendedor === vendedor);
+  function pctDe(vendedor) {   /* pct-identidad 27/11/2026 */
+    const filas = (S.get("qr_comision_cfg", "select=vendedor,pct,historial") || []).filter(x => String(x.vendedor || "").charAt(0) !== "*");
+    const norm = s => String(s == null ? "" : s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s*\(.*\)\s*$/, "").trim().toUpperCase();
+    const n = norm(vendedor);
+    let vs = []; try { vs = (window.Vendedores && Vendedores.todos) ? Vendedores.todos() : []; } catch (e) {}
+    const p = vs.find(x => x.id === vendedor || norm(x.nombre) === n || (x.nombres || []).some(y => norm(y && y.nombre != null ? y.nombre : y) === n));
+    const r = (p && filas.find(x => x.vendedor === p.id)) || filas.find(x => x.vendedor === vendedor || norm(x.vendedor) === n) || (p && filas.find(x => norm(x.vendedor) === norm(p.nombre)));
     return r ? Number(r.pct) : PCT_DEFECTO;
   }
   const setPct = (vendedor, pct) => S.rpc("qr_set_pct", { p_vendedor: vendedor, p_pct: Number(pct) });
@@ -5455,8 +5438,13 @@ renderCatKPIs();
   /* ── Comisiones ──────────────────────────────────────────────────── */
   const PCT_DEFECTO = 1, SIN_COMISION = ["MERCADO LIMPIO"];
   const cobraComision = v => !!v && !SIN_COMISION.includes(String(v).toUpperCase());
-  function pctDe(vendedor) {
-    const r = (S.get("qr_comision_cfg", "select=vendedor,pct") || []).find(x => x.vendedor === vendedor);
+  function pctDe(vendedor) {   /* pct-identidad 27/11/2026 */
+    const filas = (S.get("qr_comision_cfg", "select=vendedor,pct,historial") || []).filter(x => String(x.vendedor || "").charAt(0) !== "*");
+    const norm = s => String(s == null ? "" : s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s*\(.*\)\s*$/, "").trim().toUpperCase();
+    const n = norm(vendedor);
+    let vs = []; try { vs = (window.Vendedores && Vendedores.todos) ? Vendedores.todos() : []; } catch (e) {}
+    const p = vs.find(x => x.id === vendedor || norm(x.nombre) === n || (x.nombres || []).some(y => norm(y && y.nombre != null ? y.nombre : y) === n));
+    const r = (p && filas.find(x => x.vendedor === p.id)) || filas.find(x => x.vendedor === vendedor || norm(x.vendedor) === n) || (p && filas.find(x => norm(x.vendedor) === norm(p.nombre)));
     return r ? Number(r.pct) : PCT_DEFECTO;
   }
   const setPct = (vendedor, pct) => S.rpc("qr_set_pct", { p_vendedor: vendedor, p_pct: Number(pct) });
@@ -9892,7 +9880,7 @@ renderCatKPIs();
 
     return lista().map(v => {
       const d = porNombre.get(v.id) || porNombre.get(v.nombre) || { cobrado: 0, neto: 0, comision: 0 };
-      const pct = window.Comisiones ? Comisiones.pctDe(v.nombre) : 1;
+      const pct = window.Comisiones ? Comisiones.pctDe(v.id || v.nombre) : 1;   /* pct-identidad 27/11/2026 */
       const cobra = window.Comisiones ? Comisiones.cobraComision(v.nombre) : !v.casa;
       return {
         id: v.id, nombre: v.nombre, activo: v.activo, casa: !!v.casa,
@@ -10038,9 +10026,14 @@ renderCatKPIs();
     b.classList.toggle("abierto", !abierto);
   };
 
-  window.qrVendPct = function (inp) {
-    if (window.Comisiones) Comisiones.setPct(inp.dataset.v, parseFloat(inp.value) || 0);
-    pintar();
+  window.qrVendPct = function (inp) {   /* pct-identidad 27/11/2026 */
+    if (!window.Comisiones) return;
+    const pct = parseFloat(String(inp.value).replace(",", ".")); if (!(pct >= 0 && pct <= 20)) { alert("El porcentaje tiene que estar entre 0 y 20."); return pintar(); }
+    inp.disabled = true;
+    Promise.resolve().then(() => Comisiones.setPct(inp.dataset.v, pct))
+      .then(() => { try { if (window.QRSrv) QRSrv.get("qr_comision_cfg", "select=vendedor,pct,historial", 0); } catch (e) {} })   /* solo esta lectura, fresca */
+      .catch(e => alert("No se guardó el porcentaje: " + ((e && e.message) || e)))
+      .then(() => setTimeout(() => { inp.disabled = false; pintar(); }, 400));
   };
   /* ── Registro único: mismas reglas que el gestor ─────────────────── */
   let abiertos = [];
@@ -15597,6 +15590,373 @@ renderCatKPIs();
   window.qrOfSync = { listaVendedor, opciones, sincronizar, pintarSelector, traerDelOtro };
 })();
 
+</script>
+<style id="vv2Css">
+/* Admin · Vendedores v2 — estilo (27/11/2026). Solo modo claro, gris perla + azul petróleo, sin naranja/ámbar/dorado. */
+#tab-vendedores{ --vv-fondo:#EEF2F5; --vv-fondo2:#F4F6F8; --vv-tarjeta:rgba(255,255,255,.74); --vv-borde:rgba(15,76,92,.11); --vv-linea:rgba(15,76,92,.08);
+  --vv-texto:#0E2229; --vv-suave:#5A6B72; --vv-acento:#0F4C5C; --vv-acento2:#135D66; --vv-acento-f:#DDE9EC; --vv-sel:#D3E3E7; --vv-mal:#9B2C2C;
+  background:linear-gradient(180deg,var(--vv-fondo2),var(--vv-fondo)); color:var(--vv-texto); color-scheme:light; border-radius:18px; padding:clamp(14px,2.2vw,28px) }
+#vv2{ font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif; color:var(--vv-texto); font-variant-numeric:tabular-nums; max-width:1500px; margin:0 auto }
+#vv2 svg{ width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex:none }
+.vv2-hd{ display:flex; align-items:center; gap:12px 16px; flex-wrap:wrap; margin-bottom:18px }
+.vv2-hd h1{ margin:0; font-size:clamp(24px,3vw,34px); font-weight:800; letter-spacing:-.02em; color:var(--vv-texto); text-wrap:balance }
+.vv2-badge{ display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px; background:var(--vv-tarjeta); border:1px solid var(--vv-borde);
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); font-weight:600; font-size:14px; color:var(--vv-texto); white-space:nowrap }
+.vv2-acc{ margin-left:auto; display:flex; gap:10px; flex-wrap:wrap }
+.vv2-btn{ display:inline-flex; align-items:center; gap:8px; min-height:44px; padding:0 18px; border-radius:12px; font:600 15px system-ui,sans-serif; cursor:pointer; border:1px solid transparent; transition:background .15s, box-shadow .15s }
+.vv2-btn.pri{ background:var(--vv-acento); color:#fff; box-shadow:0 6px 18px rgba(15,76,92,.22) }
+.vv2-btn.pri:hover{ background:var(--vv-acento2) }
+.vv2-btn.sec{ background:var(--vv-tarjeta); color:var(--vv-acento); border-color:var(--vv-borde); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px) }
+.vv2-btn.sec.on{ background:var(--vv-acento-f); border-color:var(--vv-acento) }
+.vv2-btn[disabled]{ opacity:.6; cursor:wait }
+#vv2 button:focus-visible, #vv2 a:focus-visible, #vv2 input:focus-visible, #vv2 tr:focus-visible, #vv2Modal button:focus-visible, #vv2Modal input:focus-visible{ outline:3px solid rgba(19,93,102,.45); outline-offset:2px }
+.vv2-card{ background:var(--vv-tarjeta); border:1px solid var(--vv-borde); border-radius:18px; box-shadow:0 1px 0 rgba(255,255,255,.7) inset, 0 10px 30px rgba(14,34,41,.06);
+  backdrop-filter:blur(16px) saturate(1.2); -webkit-backdrop-filter:blur(16px) saturate(1.2) }
+.vv2-kpis{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; margin-bottom:18px }
+.vv2-card.kpi{ padding:16px 18px; display:flex; flex-direction:column; gap:6px; min-width:0 }
+.vv2-card.kpi span{ font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--vv-suave) }
+.vv2-card.kpi b{ font-size:clamp(22px,2.4vw,32px); font-weight:800; letter-spacing:-.01em; overflow-wrap:anywhere }
+.vv2-cuerpo{ display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:18px; align-items:start }
+.vv2-der{ display:grid; gap:18px; min-width:0 }
+.vv2-card h2{ margin:0 0 12px; font-size:19px; font-weight:800; letter-spacing:-.01em; text-wrap:balance }
+.vv2-izq, #vv2Top, #vv2Hist{ padding:18px 20px }
+.vv2-tw{ overflow-x:auto; margin:0 -6px }
+#vv2 table{ width:100%; border-collapse:separate; border-spacing:0; min-width:520px }
+#vv2 th{ text-align:left; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--vv-suave); padding:8px 12px; border-bottom:1px solid var(--vv-linea) }
+#vv2 td{ padding:13px 12px; border-bottom:1px solid var(--vv-linea); vertical-align:middle }
+#vv2 .n{ text-align:right; white-space:nowrap }
+#vv2 tbody tr{ cursor:pointer; transition:background .12s }
+#vv2 tbody tr:hover td{ background:rgba(15,76,92,.04) }
+#vv2 tbody tr.sel td{ background:var(--vv-sel) }
+#vv2 tbody tr.sel td:first-child{ border-radius:12px 0 0 12px } #vv2 tbody tr.sel td:last-child{ border-radius:0 12px 12px 0 }
+#vv2 tbody tr.casa{ cursor:default } #vv2 tbody tr.casa td{ color:var(--vv-suave) }
+#vv2 td small{ display:block; font-size:12px; color:var(--vv-suave); font-weight:500; margin-top:2px }
+.vv2-chip{ display:inline-block; margin-left:8px; padding:2px 9px; border-radius:999px; background:rgba(14,34,41,.07); color:var(--vv-suave); font-size:12px; font-weight:600; vertical-align:2px }
+.vv2-pctc{ display:inline-flex; align-items:center; justify-content:flex-end; gap:6px; vertical-align:middle }
+.vv2-chip{ white-space:nowrap }
+.vv2-hist{ display:inline-grid; place-items:center; width:32px; height:32px; border-radius:9px; border:0; background:transparent; color:var(--vv-acento); cursor:pointer }
+.vv2-hist:hover{ background:var(--vv-acento-f) }
+.vv2-pctin{ display:inline-flex; align-items:center; gap:4px }
+.vv2-pctin input{ width:72px; min-height:38px; border-radius:10px; border:1.5px solid var(--vv-acento); background:#fff; color:var(--vv-texto); font:600 15px system-ui,sans-serif; text-align:right; padding:0 8px }
+.vv2-pctin i{ font-style:normal; color:var(--vv-suave) }
+.vv2-nota{ margin:10px 0 0; font-size:12.5px; color:var(--vv-suave); max-width:70ch }
+.vv2-pie{ display:flex; flex-wrap:wrap; gap:6px 22px; margin-top:14px; padding-top:12px; border-top:1px solid var(--vv-linea) }
+.vv2-pie a, .vv2-pie button{ display:inline-flex; align-items:center; gap:6px; min-height:36px; font:600 14px system-ui,sans-serif; color:var(--vv-acento); background:none; border:0; padding:0; cursor:pointer; text-decoration:none }
+.vv2-pie a:hover, .vv2-pie button:hover{ text-decoration:underline }
+.vv2-pie svg{ width:15px; height:15px }
+.vv2-ext{ margin-top:8px; padding:10px 14px; border-radius:12px; background:rgba(255,255,255,.6); border:1px solid var(--vv-linea); font-size:14px }
+.vv2-ext ul{ margin:0; padding-left:18px } .vv2-ext li{ margin:3px 0 } .vv2-ext p{ margin:4px 0 }
+.vv2-pills{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px }
+.vv2-pill{ min-height:38px; padding:0 16px; border-radius:11px; border:1px solid var(--vv-borde); background:rgba(15,76,92,.07); color:var(--vv-acento); font:600 14px system-ui,sans-serif; cursor:pointer }
+.vv2-pill.on{ background:var(--vv-acento); color:#fff; border-color:var(--vv-acento) }
+.vv2-top{ list-style:none; margin:0; padding:0; display:grid; gap:12px }
+.vv2-top .t{ font-size:15px; overflow-wrap:anywhere } .vv2-top .t b{ font-weight:800 }
+.vv2-top .b{ display:flex; align-items:center; gap:10px; margin-top:5px }
+.vv2-top .barra{ flex:1; height:8px; border-radius:99px; background:rgba(15,76,92,.12); overflow:hidden; min-width:60px }
+.vv2-top .barra i{ display:block; height:100%; border-radius:99px; background:linear-gradient(90deg,var(--vv-acento),var(--vv-acento2)) }
+.vv2-top .d{ font-size:13.5px; color:var(--vv-texto); white-space:nowrap }
+.vv2-vacio{ margin:4px 0; color:var(--vv-suave) }
+.vv2-hl{ list-style:none; margin:0; padding:0; display:grid; gap:8px }
+.vv2-hl li{ display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:14.5px }
+.vv2-hl em{ font-style:normal; font-size:12.5px; font-weight:600; color:var(--vv-acento); background:var(--vv-acento-f); border-radius:999px; padding:1px 9px; align-self:center }
+.vv2-hl li+li em{ color:var(--vv-suave); background:rgba(14,34,41,.06) }
+#vv2Hist.flash{ box-shadow:0 0 0 3px rgba(19,93,102,.35), 0 10px 30px rgba(14,34,41,.06) }
+.vv2-err{ margin:0 0 14px; padding:10px 14px; border-radius:12px; background:#fdecec; color:var(--vv-mal); font-weight:600 }
+#vv2Modal[hidden]{ display:none }
+#vv2Modal{ position:fixed; inset:0; z-index:9000; display:grid; place-items:center; padding:16px }
+.vv2-mfondo{ position:absolute; inset:0; background:rgba(14,34,41,.35); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px) }
+.vv2-m{ position:relative; width:min(560px,100%); max-height:90vh; overflow:auto; background:rgba(255,255,255,.95); border:1px solid rgba(15,76,92,.12); border-radius:18px; padding:20px 22px;
+  box-shadow:0 24px 60px rgba(14,34,41,.22); color:#0E2229; font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; font-variant-numeric:tabular-nums }
+.vv2-m h3{ margin:0 0 8px; font-size:20px } .vv2-m p{ margin:6px 0; color:#3d4f56 }
+.vv2-mlist{ list-style:none; margin:12px 0; padding:0; display:grid; gap:10px }
+.vv2-mlist li{ padding:10px 12px; border-radius:12px; background:#F4F6F8; display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px 12px }
+.vv2-mlist li.mal{ background:#fdecec; color:#9B2C2C }
+.vv2-mlist label{ display:inline-flex; align-items:center; gap:8px; cursor:pointer }
+.vv2-pago{ flex-basis:100%; display:grid; gap:6px; font-size:14px }
+.vv2-m .vv2-macc{ display:flex; justify-content:flex-end; gap:10px; margin-top:14px; flex-wrap:wrap }
+.vv2-m .vv2-btn{ display:inline-flex; align-items:center; min-height:44px; padding:0 18px; border-radius:12px; font:600 15px system-ui,sans-serif; cursor:pointer; border:1px solid transparent }
+.vv2-m .vv2-btn.pri{ background:#0F4C5C; color:#fff } .vv2-m .vv2-btn.sec{ background:#fff; color:#0F4C5C; border-color:rgba(15,76,92,.2) }
+.vv2-izq, .vv2-der > *{ min-width:0 }
+@media (max-width:1100px){ .vv2-kpis{ grid-template-columns:repeat(2,minmax(0,1fr)) } .vv2-cuerpo{ grid-template-columns:minmax(0,1fr) } .vv2-acc{ margin-left:0 } }
+@media (max-width:520px){ #tab-vendedores{ border-radius:0; padding:14px 12px } .vv2-kpis{ gap:10px } .vv2-card.kpi{ padding:12px 14px } .vv2-card.kpi span{ font-size:11px }
+  .vv2-izq, #vv2Top, #vv2Hist{ padding:14px } .vv2-acc{ width:100% } .vv2-chip{ display:table; margin:4px 0 0 } .vv2-acc .vv2-btn{ flex:1; justify-content:center } #vv2 table{ min-width:480px } }
+@media (prefers-reduced-motion:reduce){ #vv2 *{ transition:none!important; scroll-behavior:auto!important } }
+</style>
+<script id="vv2Calc">
+/* Admin · Vendedores v2 — CÁLCULOS (27/11/2026). Sin DOM y sin lecturas: todo sale de datos que el Admin ya tiene en memoria.
+     · ciclos:  filas de qr_ciclos (los cierres de Laura o de Pablo), las mismas que ya usa el módulo Comisiones.
+     · movs:    Cuentas.movimientos() — remitos y notas de crédito con vendedor, fecha y renglones (la misma lectura que el Tablero).
+     · vendedores: Vendedores.todos() — { id, nombre, activo, casa }.
+   El ciclo de cada vendedor arranca en su último cierre y dura hasta el próximo: «Vendido semana» y el Top 5 quedan a la vista
+   todo ese tiempo y vuelven a cero solo cuando se cierra. Se usa igual en el navegador (window.VV2Calc) y en las pruebas (require). */
+(function (raiz, fabrica) { const m = fabrica(); if (typeof module === "object" && module.exports) module.exports = m; else raiz.VV2Calc = m; })(typeof self !== "undefined" ? self : this, function () {
+  "use strict";
+  const norm = s => String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s*\(.*\)\s*$/, "").trim().toUpperCase();
+  const num = n => Number(n) || 0;
+  const t = s => { const x = Date.parse(s); return isFinite(x) ? x : NaN; };
+
+  /* Quién es una persona a partir del texto del vendedor de un remito (el nombre de ese momento). */
+  function personaDe(texto, vendedores) {
+    const n = norm(texto); if (!n) return null;
+    const v = (vendedores || []).find(x => norm(x.nombre) === n || (x.nombres || []).some(y => norm(y && y.nombre != null ? y.nombre : y) === n));
+    return v ? v.id : null;
+  }
+
+  /* Inicio del ciclo en curso de un vendedor: el último cierre suyo (qr_ciclos.id = «liq|<id>|<fecha>»). null = nunca se le cerró. */
+  function inicioCiclo(vendedorId, ciclos) {
+    let max = null;
+    for (const c of ciclos || []) {
+      const p = String(c.id || "").split("|");
+      if (p[0] !== "liq" || p[1] !== vendedorId) continue;
+      const h = c.hasta || c.cerrado_en;
+      if (h && (max == null || t(h) > t(max))) max = h;
+    }
+    return max;
+  }
+
+  /* Lo vendido por un vendedor en su ciclo: remitos emitidos (con IVA) menos notas de crédito, y los artículos con bultos y $. */
+  function ventasCiclo(vendedorId, movs, vendedores, inicio) {
+    const desde = inicio ? t(inicio) : -Infinity;
+    const out = { vendido: 0, remitos: 0, notas: 0, articulos: new Map() };
+    for (const m of movs || []) {
+      if (m.tipo !== "remito" && m.tipo !== "nc") continue;
+      if (personaDe(m.vendedor, vendedores) !== vendedorId) continue;
+      const f = t(m.fecha); if (!(f > desde)) continue;   /* lo emitido en el instante del cierre o antes es del ciclo anterior */
+      const signo = m.tipo === "nc" ? -1 : 1;
+      out.vendido += signo * num(m.total);
+      if (signo > 0) out.remitos++; else out.notas++;
+      for (const r of m.renglones || []) {
+        const k = r.ean || norm(r.nombre); if (!k) continue;
+        const uc = num(r.uc) || 1, unidades = r.unidades != null ? num(r.unidades) : num(r.cajas) * uc;
+        const bultos = r.cajas != null ? num(r.cajas) : unidades / uc;
+        const monto = r.total != null ? num(r.total) : unidades * num(r.precio_unit);
+        const a = out.articulos.get(k) || { ean: r.ean || null, nombre: r.nombre || k, bultos: 0, monto: 0 };
+        a.bultos += signo * bultos; a.monto += signo * monto;
+        out.articulos.set(k, a);
+      }
+    }
+    out.vendido = Math.round(out.vendido * 100) / 100;
+    return out;
+  }
+
+  /* Top N: más bultos primero; a igual cantidad, más $. Solo lo vendido de verdad (neto de devoluciones > 0). Barra relativa al primero. */
+  function topArticulos(articulos, n) {
+    const l = [...(articulos instanceof Map ? articulos.values() : articulos || [])].map(a => ({ ...a, bultos: Math.round(a.bultos * 100) / 100, monto: Math.round(a.monto * 100) / 100 }))
+      .filter(a => a.bultos > 0.0001).sort((a, b) => b.bultos - a.bultos || b.monto - a.monto || String(a.nombre).localeCompare(String(b.nombre))).slice(0, n || 5);
+    const max = l.length ? l[0].bultos : 0;
+    return l.map((a, i) => ({ ...a, posicion: i + 1, barra: max ? Math.max(4, Math.round(a.bultos / max * 100)) : 0 }));
+  }
+
+  /* Configuración de comisión de una persona: % vigente y su historial (de la fila por id, o de una vieja por nombre). */
+  function cfgDe(vendedor, filas) {
+    const f = (filas || []).filter(x => String(x.vendedor || "").charAt(0) !== "*");
+    const r = f.find(x => x.vendedor === vendedor.id) || f.find(x => norm(x.vendedor) === norm(vendedor.nombre));
+    return { pct: r ? num(r.pct) : 1, historial: (r && Array.isArray(r.historial) ? r.historial : []).slice().sort((a, b) => String(b.cuando).localeCompare(String(a.cuando))), porDefecto: !r };
+  }
+
+  /* El resumen completo de la pantalla, una fila por vendedor activo (la casa al final). */
+  function resumen({ vendedores, abierto, ciclos, movs, cfg }) {
+    const porId = new Map(((abierto && abierto.vendedores) || []).map(v => [v.vendedor_id || personaDe(v.vendedor, vendedores), v]));
+    const filas = (vendedores || []).filter(v => v.activo !== false).map(v => {
+      const inicio = inicioCiclo(v.id, ciclos), ventas = ventasCiclo(v.id, movs, vendedores, inicio), d = porId.get(v.id) || {}, c = cfgDe(v, cfg);
+      return { id: v.id, nombre: v.nombre, casa: !!v.casa, inicio, vendido: ventas.vendido, remitos: ventas.remitos, cobrado: num(d.cobrado), comision: v.casa ? 0 : num(d.comision),
+        recibos: num(d.recibos), pct: c.pct, pctPorDefecto: c.porDefecto, historial: c.historial, top: topArticulos(ventas.articulos, 5) };
+    }).sort((a, b) => (a.casa - b.casa) || (b.vendido - a.vendido) || a.nombre.localeCompare(b.nombre));
+    const cobran = filas.filter(f => !f.casa);
+    const inicios = cobran.map(f => f.inicio).filter(Boolean).sort();
+    /* KPI de los vendedores que cobran comisión (la casa tiene su fila, pero no suma: no es la venta de un vendedor). */
+    return { filas, kpi: { activos: cobran.length, vendido: cobran.reduce((a, f) => a + f.vendido, 0), cobrado: cobran.reduce((a, f) => a + f.cobrado, 0), comisiones: cobran.reduce((a, f) => a + f.comision, 0) },
+      cicloDesde: inicios.length ? inicios[0] : null };
+  }
+
+  return { norm, personaDe, inicioCiclo, ventasCiclo, topArticulos, cfgDe, resumen };
+});
+</script>
+<script id="vv2Vista">
+/* Admin · Vendedores v2 — PANTALLA (27/11/2026, pedido de Pablo). Reemplaza la pestaña Vendedores entera.
+   Datos (sin consultas nuevas): Vendedores.todos() · Comisiones.abierto() (qr_comisiones_abierto, ya era de esta pestaña) · qr_ciclos (en lugar
+   del aviso «entregas sin cobro», que se quitó) · Cuentas.movimientos() (los remitos que ya lee el Tablero) · qr_comision_cfg (la misma lectura
+   del porcentaje, ahora con el historial en la fila).
+   Después de guardar un % se relee SOLO qr_comision_cfg y se redibuja con lo ya calculado (no se vuelven a pedir remitos).
+   Cerrar el ciclo usa la MISMA función que la Caja (qr_comision_cerrar: el servidor calcula comisión + premio). El pago: si lo paga Laura en
+   efectivo se registra en Haberes (así la caja cuadra); desde acá solo se registra un pago hecho por fuera de la caja. */
+(function () {
+  "use strict";
+  const C = window.VV2Calc; if (!C) return;
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const m0 = n => "$" + Math.round(Number(n) || 0).toLocaleString("es-AR");
+  const m2 = n => { const x = Math.round((Number(n) || 0) * 100) / 100; return "$" + x.toLocaleString("es-AR", { minimumFractionDigits: Number.isInteger(x) ? 0 : 2, maximumFractionDigits: 2 }); };
+  const pctTxt = p => (Number(p) || 0).toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + " %";
+  const TZ = "America/Argentina/Buenos_Aires";
+  const diaMes = iso => { try { return new Date(iso).toLocaleDateString("es-AR", { day: "numeric", month: "short", timeZone: TZ }).replace(".", ""); } catch (e) { return ""; } };
+  const fechaHora = iso => { try { const d = new Date(iso); return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", timeZone: TZ }) + " " + d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: TZ }); } catch (e) { return ""; } };
+  const titulo = s => String(s || "").toLowerCase().replace(/(^|\s)(\S)/g, (a, b, c) => b + c.toUpperCase());
+  const GESTOR = "https://pablosantamaria26.github.io/App-actualizacion-BaseClientes/";
+  const SEL = "select=vendedor,pct,historial";
+  const I = {
+    cal: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/></svg>',
+    reloj: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3 4.5v4h4"/><path d="M12 8v4.3l3 1.8"/></svg>',
+    afuera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+    candado: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>',
+    abierto: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 7.6-1.8"/></svg>',
+  };
+  let modelo = null, sel = null, editando = false, abiertoPanel = null, error = null;
+
+  function leerCfg(fresca) { try { return QRSrv.get("qr_comision_cfg", SEL, fresca ? 0 : undefined) || []; } catch (e) { return []; } }
+  function calcular() {
+    const vendedores = window.Vendedores ? Vendedores.todos() : [];
+    let abierto = { vendedores: [] }, ciclos = [], movs = [];
+    try { abierto = window.Comisiones ? Comisiones.abierto() : abierto; } catch (e) { error = "No se pudo leer el ciclo en curso: " + e.message; }
+    try { ciclos = QRSrv.get("qr_ciclos", "select=id,vendedor,hasta&order=seq.asc") || []; } catch (e) {}
+    try { movs = window.Cuentas ? Cuentas.movimientos() : []; } catch (e) {}
+    modelo = Object.assign(C.resumen({ vendedores, abierto, ciclos, movs, cfg: leerCfg(false) }), { vendedores, anteriores: vendedores.filter(v => v.activo === false) });
+    const cob = modelo.filas.filter(f => !f.casa);
+    if (!sel || !cob.some(f => f.id === sel)) sel = cob.length ? cob[0].id : null;
+  }
+  /* Después de guardar un %: solo la configuración, el resto queda como estaba. */
+  function refrescarCfg() {
+    const cfg = leerCfg(true);
+    for (const f of modelo.filas) { const c = C.cfgDe({ id: f.id, nombre: f.nombre }, cfg); f.pct = c.pct; f.pctPorDefecto = c.porDefecto; f.historial = c.historial; }
+  }
+
+  function tablaHTML() {
+    return modelo.filas.map(f => `<tr data-vv="${esc(f.id)}" class="${f.id === sel ? "sel" : ""} ${f.casa ? "casa" : ""}" ${f.casa ? "" : 'tabindex="0"'}>
+      <td><b>${esc(f.nombre)}</b>${f.casa ? '<span class="vv2-chip">No cobra comisión</span>' : `<small>${f.inicio ? "desde el " + esc(diaMes(f.inicio)) : "sin cierres todavía"}</small>`}</td>
+      <td class="n">${m0(f.vendido)}</td><td class="n">${m0(f.cobrado)}</td>
+      <td class="n"><span class="vv2-pctc">${f.casa ? "—" : editando
+        ? `<span class="vv2-pctin"><input type="number" inputmode="decimal" min="0" max="20" step="0.5" value="${f.pct}" data-pct="${esc(f.id)}" aria-label="Porcentaje de comisión de ${esc(titulo(f.nombre))}"><i>%</i></span>`
+        : `<span class="vv2-pctv">${pctTxt(f.pct)}</span>`}${f.casa ? "" : `<button type="button" class="vv2-hist" data-hist="${esc(f.id)}" aria-label="Historial de comisión de ${esc(titulo(f.nombre))}" title="Ver historial">${I.reloj}</button>`}</span></td>
+      <td class="n"><b>${f.casa ? "—" : m2(f.comision)}</b></td></tr>`).join("");
+  }
+  function topHTML() {
+    const cob = modelo.filas.filter(f => !f.casa), f = cob.find(x => x.id === sel);
+    const pills = cob.map(x => `<button type="button" class="vv2-pill ${x.id === sel ? "on" : ""}" data-pill="${esc(x.id)}" aria-pressed="${x.id === sel}">${esc(titulo(x.nombre))}</button>`).join("");
+    const lista = !f ? "" : f.top.length ? `<ol class="vv2-top">${f.top.map(a => `<li><div class="t"><span><b>${a.posicion}.</b> ${esc(a.nombre)}</span></div>
+        <div class="b"><span class="barra"><i style="width:${a.barra}%"></i></span><span class="d">${a.bultos.toLocaleString("es-AR", { maximumFractionDigits: 1 })} bulto${a.bultos === 1 ? "" : "s"} · ${m0(a.monto)}</span></div></li>`).join("")}</ol>`
+      : `<p class="vv2-vacio">${esc(titulo(f.nombre))} todavía no tiene ventas en este ciclo.</p>`;
+    return `<h2>Top 5 Más Vendidos — Línea Queruclor</h2><div class="vv2-pills" role="group" aria-label="Vendedor">${pills}</div>${lista}`;
+  }
+  function histHTML() {
+    const f = modelo.filas.find(x => x.id === sel); if (!f) return `<h2>Historial de Comisión</h2><p class="vv2-vacio">Elegí un vendedor.</p>`;
+    const h = f.historial || [];
+    return `<h2>Historial de Comisión · ${esc(titulo(f.nombre))}</h2>${h.length ? `<ul class="vv2-hl">${h.map((x, i) => `<li><span>${esc(fechaHora(x.cuando))} · ${pctTxt(x.anterior)} → <b>${pctTxt(x.pct)}</b> · ${esc(titulo(x.quien || ""))}</span><em>${i === 0 ? "Vigente a futuro" : "Reemplazado"}</em></li>`).join("")}</ul>`
+      : `<p class="vv2-vacio">Sin cambios registrados: cobra el ${pctTxt(f.pct)}${f.pctPorDefecto ? " (el porcentaje por defecto)" : ""}.</p>`}
+      <p class="vv2-nota">Un cambio vale desde que se guarda: no recalcula cobranzas ni cierres anteriores.</p>`;
+  }
+  function pieHTML() {
+    const ant = modelo.anteriores;
+    let prest = []; try { prest = Vendedores.activos().flatMap(v => (Vendedores.prestamosDe ? Vendedores.prestamosDe(v.nombre) : []).map(p => ({ a: v.nombre, de: p.de, hasta: p.hasta }))); } catch (e) {}
+    const fecha = s => { const p = String(s || "").split("-"); return p.length === 3 ? p[2] + "/" + p[1] : s; };
+    return `<div class="vv2-pie"><a href="${GESTOR}" target="_blank" rel="noopener">Gestionar vendedores ${I.afuera}</a>
+        <button type="button" data-panel="ant" aria-expanded="${abiertoPanel === "ant"}">Vendedores anteriores (${ant.length})</button>
+        <button type="button" data-panel="prest" aria-expanded="${abiertoPanel === "prest"}">Carteras prestadas${prest.length ? " (" + prest.length + ")" : ""}</button></div>
+      ${abiertoPanel === "ant" ? `<div class="vv2-ext">${ant.length ? `<ul>${ant.map(v => `<li><b>${esc(titulo(v.nombre))}</b> · dado de baja: conserva su historial</li>`).join("")}</ul>` : "<p>No hay vendedores anteriores.</p>"}</div>` : ""}
+      ${abiertoPanel === "prest" ? `<div class="vv2-ext">${prest.length ? `<ul>${prest.map(p => `<li><b>${esc(titulo(p.a))}</b> atiende la cartera de <b>${esc(titulo(p.de))}</b> hasta el ${esc(fecha(p.hasta))}</li>`).join("")}</ul>` : "<p>No hay carteras prestadas.</p>"}
+        <p class="vv2-nota">Se prestan y se terminan en el gestor de clientes.</p></div>` : ""}`;
+  }
+  function pintar() {
+    const raiz = $("#vv2"); if (!raiz || !modelo) return;
+    const k = modelo.kpi, hoy = new Date();
+    raiz.innerHTML = `<header class="vv2-hd"><h1>Vendedores y Comisiones</h1>
+        <span class="vv2-badge">${I.cal}Ciclo actual: ${modelo.cicloDesde ? esc(diaMes(modelo.cicloDesde)) + " – " : "hasta "}${esc(diaMes(hoy.toISOString()))} ${hoy.getFullYear()}</span>
+        <div class="vv2-acc"><button type="button" class="vv2-btn pri" data-accion="cerrar">Cerrar ciclo y registrar pago</button>
+          <button type="button" class="vv2-btn sec ${editando ? "on" : ""}" data-accion="editar" aria-pressed="${editando}">${editando ? I.abierto + "Editando comisiones" : I.candado + "Desbloquear edición"}</button></div></header>
+      ${error ? `<div class="vv2-err" role="alert">${esc(error)}</div>` : ""}
+      <section class="vv2-kpis" aria-label="Resumen">
+        <div class="vv2-card kpi"><span>Vendedores activos</span><b>${k.activos}</b></div>
+        <div class="vv2-card kpi"><span>Vendido cerrado (semana)</span><b>${m0(k.vendido)}</b></div>
+        <div class="vv2-card kpi"><span>Total cobrado</span><b>${m0(k.cobrado)}</b></div>
+        <div class="vv2-card kpi"><span>Comisiones a pagar</span><b>${m0(k.comisiones)}</b></div></section>
+      <div class="vv2-cuerpo">
+        <section class="vv2-card vv2-izq"><h2>Resumen por Vendedor — Ciclo Actual</h2>
+          <div class="vv2-tw"><table><thead><tr><th>Vendedor</th><th class="n">Vendido semana</th><th class="n">Cobrado</th><th class="n">% Comisión</th><th class="n">Comisión</th></tr></thead>
+          <tbody>${tablaHTML()}</tbody></table></div>
+          <p class="vv2-nota">Cada vendedor, desde su último cierre. La comisión se calcula sobre lo cobrado con recibo y es provisoria hasta cerrar el ciclo; el premio por objetivo lo suma el cierre.</p>
+          ${pieHTML()}</section>
+        <div class="vv2-der"><section class="vv2-card" id="vv2Top">${topHTML()}</section><section class="vv2-card" id="vv2Hist">${histHTML()}</section></div>
+      </div>`;
+  }
+  function elegir(id) { if (!id || id === sel) return; sel = id; pintar(); }
+
+  async function guardarPct(inp) {
+    const f = modelo.filas.find(x => x.id === inp.dataset.pct); if (!f) return;
+    const pct = parseFloat(String(inp.value).replace(",", "."));
+    if (!(pct >= 0 && pct <= 20)) { alert("El porcentaje tiene que estar entre 0 y 20."); inp.value = f.pct; return; }
+    if (pct === f.pct) return;
+    if (!confirm(titulo(f.nombre) + ": de " + pctTxt(f.pct) + " a " + pctTxt(pct) + ".\nVale para las cobranzas que se confirmen desde ahora; lo anterior no cambia.")) { inp.value = f.pct; return; }
+    inp.disabled = true; await new Promise(r => setTimeout(r, 30));
+    try { const r = QRSrv.rpc("qr_set_pct", { p_vendedor: f.id, p_pct: pct, p_quien: "PABLO" }); if (r && r.ok === false) throw new Error(r.motivo || "no se guardó"); refrescarCfg(); }
+    catch (e) { alert("No se guardó el porcentaje: " + (e.message || e)); }
+    pintar();
+  }
+
+  /* ── Cerrar ciclo y registrar pago ── */
+  function modal(html) { let m = $("#vv2Modal"); if (!m) { m = document.createElement("div"); m.id = "vv2Modal"; document.body.appendChild(m); } m.innerHTML = `<div class="vv2-mfondo" data-cerrar-modal></div><div class="vv2-m" role="dialog" aria-modal="true" aria-labelledby="vv2MT">${html}</div>`; m.hidden = false; const b = m.querySelector("button, input"); if (b) b.focus(); return m; }
+  const cerrarModal = () => { const m = $("#vv2Modal"); if (m) m.hidden = true; };
+  let opBase = null, cerradas = [];
+  function abrirCierre() {
+    opBase = "admin-cierre-" + Date.now(); cerradas = [];
+    const cob = modelo.filas.filter(f => !f.casa && f.cobrado > 0);
+    if (!cob.length) return modal(`<h3 id="vv2MT">Cerrar ciclo</h3><p>No hay cobranzas confirmadas para cerrar en este ciclo.</p><div class="vv2-macc"><button type="button" class="vv2-btn pri" data-cerrar-modal>Entendido</button></div>`);
+    modal(`<h3 id="vv2MT">Cerrar ciclo</h3><p>Se cierra con la misma cuenta que usa Laura en la Caja: comisión sobre lo cobrado y, si corresponde, el premio por objetivo. El ciclo siguiente arranca en cero.</p>
+      <ul class="vv2-mlist">${cob.map(f => `<li><label><input type="checkbox" data-cerrar="${esc(f.id)}" checked> <b>${esc(titulo(f.nombre))}</b></label><span>${m0(f.cobrado)} cobrado · comisión ${m2(f.comision)}</span></li>`).join("")}</ul>
+      <div class="vv2-macc"><button type="button" class="vv2-btn sec" data-cerrar-modal>Cancelar</button><button type="button" class="vv2-btn pri" data-accion="confirmar-cierre">Cerrar ciclo</button></div>`);
+  }
+  async function confirmarCierre(btn) {
+    const ids = [...document.querySelectorAll("#vv2Modal [data-cerrar]:checked")].map(i => i.dataset.cerrar); if (!ids.length) return;
+    btn.disabled = true; btn.textContent = "Cerrando…"; await new Promise(r => setTimeout(r, 30));
+    const res = [];
+    for (const id of ids) {
+      const f = modelo.filas.find(x => x.id === id);
+      try { const r = QRSrv.rpc("qr_comision_cerrar", { p: { vendedor: id, op: opBase + "-" + id, quien: "PABLO" } }); res.push({ f, ok: r && r.ok !== false, r, motivo: r && r.motivo }); }
+      catch (e) { res.push({ f, ok: false, motivo: e.message }); }
+    }
+    cerradas = res.filter(x => x.ok && x.r && x.r.liquidacion);
+    modal(`<h3 id="vv2MT">Registrar el pago</h3>
+      <ul class="vv2-mlist">${res.map(x => x.ok && x.r.liquidacion ? `<li><b>${esc(titulo(x.f.nombre))}</b><span>cerrado: ${m2(x.r.liquidacion.total)}${Number(x.r.liquidacion.premio) > 0 ? " (incluye premio " + m2(x.r.liquidacion.premio) + ")" : ""}</span>
+          <div class="vv2-pago"><label><input type="radio" name="pago-${esc(x.f.id)}" value="haberes" checked> Lo paga Laura en Haberes (en efectivo, descuenta de la caja)</label>
+          <label><input type="radio" name="pago-${esc(x.f.id)}" value="afuera"> Ya lo pagué por fuera de la caja (transferencia)</label></div></li>`
+        : `<li class="mal"><b>${esc(titulo(x.f.nombre))}</b><span>no se cerró: ${esc(x.motivo || "sin respuesta")}. Volvé a intentar: no se duplica.</span></li>`).join("")}</ul>
+      <p class="vv2-nota">Lo que paga Laura queda pendiente en su Caja («Cerrada · falta registrar el pago en Haberes») y lo registra al pagar, así el efectivo cuadra.</p>
+      <div class="vv2-macc"><button type="button" class="vv2-btn pri" data-accion="confirmar-pago">Listo</button></div>`);
+  }
+  async function confirmarPago(btn) {
+    btn.disabled = true; await new Promise(r => setTimeout(r, 30));
+    const fallas = [];
+    for (const x of cerradas) {
+      const v = (document.querySelector(`#vv2Modal input[name="pago-${CSS.escape(x.f.id)}"]:checked`) || {}).value;
+      if (v !== "afuera") continue;
+      try { const r = QRSrv.rpc("qr_liquidacion_pagar", { p: { liquidacion: x.r.liquidacion.id, op: opBase + "-pago-" + x.f.id, forma: "transferencia (Admin)", quien: "PABLO" } }); if (r && r.ok === false) fallas.push(titulo(x.f.nombre) + ": " + (r.motivo || "")); }
+      catch (e) { fallas.push(titulo(x.f.nombre) + ": " + e.message); }
+    }
+    cerrarModal();
+    if (fallas.length) alert("No se registró el pago de: " + fallas.join(" · ") + ". La liquidación quedó cerrada: se puede pagar desde la Caja.");
+    render();
+  }
+
+  document.addEventListener("click", e => {
+    if (!e.target.closest) return;
+    const raiz = e.target.closest("#vv2, #vv2Modal"); if (!raiz) return;
+    const h = e.target.closest("[data-hist]"); if (h) { elegir(h.dataset.hist); const c = $("#vv2Hist"); if (c) { c.scrollIntoView({ block: "nearest", behavior: "smooth" }); c.classList.add("flash"); setTimeout(() => c.classList.remove("flash"), 900); } return; }
+    const p = e.target.closest("[data-pill]"); if (p) return elegir(p.dataset.pill);
+    const pn = e.target.closest("[data-panel]"); if (pn) { abiertoPanel = abiertoPanel === pn.dataset.panel ? null : pn.dataset.panel; return pintar(); }
+    const a = e.target.closest("[data-accion]");
+    if (a) { const ac = a.dataset.accion; if (ac === "editar") { editando = !editando; return pintar(); } if (ac === "cerrar") return abrirCierre(); if (ac === "confirmar-cierre") return confirmarCierre(a); if (ac === "confirmar-pago") return confirmarPago(a); }
+    if (e.target.closest("[data-cerrar-modal]")) return cerrarModal();
+    if (e.target.closest("input, button, a")) return;
+    const tr = e.target.closest("tr[data-vv]:not(.casa)"); if (tr) elegir(tr.dataset.vv);
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && $("#vv2Modal") && !$("#vv2Modal").hidden) return cerrarModal();
+    const tr = e.target.closest && e.target.closest("#vv2 tr[data-vv]:not(.casa)"); if (tr && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); elegir(tr.dataset.vv); }
+  });
+  document.addEventListener("change", e => { const i = e.target.closest && e.target.closest("#vv2 input[data-pct]"); if (i) guardarPct(i); });
+
+  function render() { error = null; calcular(); pintar(); }
+  window.renderVendedores = render;   /* reemplaza la pestaña original (ciclo y pagos de prueba en el navegador) */
+  window.VV2 = { render, modelo: () => modelo };
+})();
 </script>
 </body>
 </html>
