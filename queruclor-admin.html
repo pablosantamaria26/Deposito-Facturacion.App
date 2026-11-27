@@ -15863,7 +15863,8 @@ renderCatKPIs();
     const cs = cierresDe(vid, ciclos).slice().reverse(), out = [];
     let ant = null;
     for (const c of cs) {
-      const desdeV = ant != null ? t(ant) : -Infinity, ini = c.desde ? t(c.desde) : (ant != null ? t(ant) : NaN);
+      /* La duración va de cierre a cierre: qr_ciclos.desde es el PRIMER COBRO del ciclo (no su comienzo); solo sirve para el primer ciclo. */
+      const desdeV = ant != null ? t(ant) : -Infinity, ini = ant != null ? t(ant) : Math.min(c.desde ? t(c.desde) : Infinity, t(c.hasta) - 7 * DIA);   /* el primero: al menos una semana */
       out.push({ desde: desdeV, inicio: ini, hasta: t(c.hasta), vendido: acumular(prep, vid, desdeV, t(c.hasta)).vendido, abierto: false });
       ant = c.hasta;
     }
@@ -15975,7 +15976,7 @@ renderCatKPIs();
       const n = titulo(f.nombre), vs = f.var && f.var.sem;
       if (vs && vs.tipo === "pct" && vs.pct < -10) L.push({ nivel: "mal", texto: vs.modo === "cerrada" ? n + " cerró la semana con " + Math.abs(Math.round(vs.pct)) + " % menos de venta que la anterior." : n + " vende " + Math.abs(Math.round(vs.pct)) + " % menos que en su ciclo anterior a esta altura." });
       if (f.ritmo && f.ritmo.tipo === "pct" && f.ritmo.nivel === "mal") L.push({ nivel: "mal", texto: n + " cobra por debajo del ritmo de su ciclo anterior (" + f.ritmo.pct + " %)." });
-      if (!f.vendido && !f.cobrado) L.push({ nivel: "atento", texto: n + " todavía no vendió en este ciclo." });
+      if (!f.vendido && !f.cobrado && (!f.inicio || num(R.ahora) - t(f.inicio) > 2 * DIA)) L.push({ nivel: "atento", texto: n + " todavía no vendió en este ciclo." });   /* recién cerrado no es un aviso */
       if (f.premio && !f.premio.alcanzado && f.premio.nivel === "atento") L.push({ nivel: "atento", texto: n + " está a " + m0(f.premio.faltan) + " del escalón " + (f.premio.siguienteN || 1) + "." });
       if (f.premio && f.premio.alcanzado) L.push({ nivel: "bien", texto: n + " alcanzó el escalón " + (f.premio.escalon || "") + ": premio " + m0(f.premio.monto) + "." });
       if (vs && vs.tipo === "pct" && vs.pct >= 15) L.push({ nivel: "bien", texto: vs.modo === "cerrada" ? n + " cerró la semana con " + Math.round(vs.pct) + " % más de venta que la anterior." : n + " vende " + Math.round(vs.pct) + " % más que en su ciclo anterior a esta altura." });
@@ -16006,7 +16007,7 @@ renderCatKPIs();
       const premio = v.casa ? null : premioDe(d.premio, escRef && escRef.escalones);
       const comision = v.casa ? 0 : (premio && premio.comision != null ? premio.comision : num(d.comision));
       const total = v.casa ? 0 : (premio && premio.total != null ? premio.total : comision + (premio ? premio.monto : 0));
-      const ant = cierresDe(v.id, ciclos)[0], antCob = ant ? { cobrado: num(ant.importe_cobrado != null ? ant.importe_cobrado : ant.base_premio), desde: ant.desde, hasta: ant.hasta } : null;
+      const cz = cierresDe(v.id, ciclos), ant = cz[0], antCob = ant ? { cobrado: num(ant.importe_cobrado != null ? ant.importe_cobrado : ant.base_premio), desde: cz[1] ? cz[1].hasta : Math.min(ant.desde ? t(ant.desde) : Infinity, t(ant.hasta) - 7 * DIA), hasta: ant.hasta } : null;   /* de cierre a cierre (el primero, al menos una semana) */
       const semAct = vendidoEntre(prep, v.id, tr.sem.act), semAnt = vendidoEntre(prep, v.id, tr.sem.ant), mesAct = vendidoEntre(prep, v.id, tr.mes.act), mesAnt = vendidoEntre(prep, v.id, tr.mes.ant);
       return { id: v.id, nombre: v.nombre, casa: !!v.casa, inicio, vendido: ventas.vendido, remitos: ventas.remitos, cobrado: num(d.cobrado), comision, recibos: num(d.recibos),
         pct: c.pct, pctPorDefecto: c.porDefecto, historial: c.historial, top: topArticulos(ventas.articulos, 5), premio, total,
